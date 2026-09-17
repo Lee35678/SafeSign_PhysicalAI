@@ -1,0 +1,4 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pyserial==3.5
+# RPi5 실물 서보 제어 시 하드웨어 확정 후 추가 (예: adafruit-circuitpython-servokit, RPi.GPIO 등)

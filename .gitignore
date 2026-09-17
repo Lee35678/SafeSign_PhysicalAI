@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node (web frontend에서 빌드 도구 사용 시)
+node_modules/
+dist/
+
+# 환경변수
+.env
+
+# 데이터 (원본 촬영본은 용량이 크므로 git 대신 별도 공유 스토리지 사용 권장)
+services/data/datasets/raw/*
+!services/data/datasets/raw/.gitkeep
+services/data/datasets/processed/*
+!services/data/datasets/processed/.gitkeep
+
+# DB 파일
+*.sqlite3
+*.db
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

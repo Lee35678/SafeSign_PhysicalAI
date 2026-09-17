@@ -1,0 +1,52 @@
+services:
+  vision:
+    build: ./services/vision
+    container_name: safesign-vision
+    ports:
+      - "8001:8000"
+    environment:
+      - SERVICE_NAME=vision
+      - DB_PATH=/data/db/signdb.sqlite3
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.8}
+    volumes:
+      - signdb:/data/db
+    # 실제 USB 웹캠 연결 시 (Linux/RPi5 전용, Windows Docker Desktop 미지원):
+    # devices:
+    #   - /dev/video0:/dev/video0
+
+  actuation:
+    build: ./services/actuation
+    container_name: safesign-actuation
+    ports:
+      - "8002:8000"
+    environment:
+      - SERVICE_NAME=actuation
+      - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
+    # 실제 micro:bit/서보 컨트롤러 연결 시 (Linux 전용, 장치 경로는 실측 후 수정):
+    # devices:
+    #   - /dev/ttyACM0:/dev/ttyACM0
+
+  web:
+    build: ./services/web
+    container_name: safesign-web
+    ports:
+      - "8000:8000"
+    environment:
+      - VISION_URL=http://vision:8000
+      - ACTUATION_URL=http://actuation:8000
+    volumes:
+      - signdb:/data/db
+    depends_on:
+      - vision
+      - actuation
+
+  data-tools:
+    build: ./services/data
+    container_name: safesign-data-tools
+    profiles: ["tools"]
+    volumes:
+      - signdb:/data/db
+      - ./services/data/datasets:/data/datasets
+
+volumes:
+  signdb:

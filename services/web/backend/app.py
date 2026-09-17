@@ -1,0 +1,26 @@
+"""web 서비스 진입점.
+
+담당: 조은수 (웹 R, 성능측정 R)
+역할: 09_화면목록_v1.md의 SC-01~SC-10 흐름을 담당하는 교육 상태머신 + 프론트엔드 서빙.
+vision(/predict), actuation(/command, /result) 서비스를 httpx로 호출.
+"""
+import os
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from backend.state_machine import router as state_machine_router
+
+VISION_URL = os.getenv("VISION_URL", "http://localhost:8001")
+ACTUATION_URL = os.getenv("ACTUATION_URL", "http://localhost:8002")
+
+app = FastAPI(title="SafeSign Web Service")
+app.include_router(state_machine_router, prefix="/api")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "web"}
+
+
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
