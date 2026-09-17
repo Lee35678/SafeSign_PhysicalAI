@@ -1,26 +1,23 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "LandmarkFrame",
-  "description": "Perception -> Cognition. MediaPipe Hand Landmarker 출력 1프레임. 02_설계문서_v1 / 03_인터페이스계약서_v1 §3 참고.",
+  "description": "Perception -> Cognition. MediaPipe HandLandmarker(LIVE_STREAM) 콜백 출력 1건. hand_world_landmarks 기준. document/02_설계문서_v2, document/03_인터페이스계약서_v2 §3 참고.",
   "type": "object",
   "required": ["timestamp", "hand_detected", "landmarks"],
   "properties": {
-    "timestamp": { "type": "string", "format": "date-time", "description": "ISO8601" },
+    "timestamp": { "type": "integer", "description": "밀리초(ms), LIVE_STREAM 콜백에 전달한 단조 증가 타임스탬프 (05_모델카드_v3 §3-2)" },
     "hand_detected": { "type": "boolean" },
-    "field_id": {
-      "type": "string",
-      "description": "분야 ID (industry|construction|agriculture|underwater). micro:bit 버튼 순환 결과, 시스템_구성도_초안 참고."
-    },
     "landmarks": {
       "type": "array",
-      "minItems": 21,
+      "minItems": 0,
       "maxItems": 21,
+      "description": "hand_detected=false면 빈 배열",
       "items": {
         "type": "object",
         "required": ["id", "x", "y", "z"],
         "properties": {
           "id": { "type": "integer", "minimum": 0, "maximum": 20 },
-          "x": { "type": "number" },
+          "x": { "type": "number", "description": "hand_world_landmarks, 실세계 미터 단위" },
           "y": { "type": "number" },
           "z": { "type": "number" }
         }

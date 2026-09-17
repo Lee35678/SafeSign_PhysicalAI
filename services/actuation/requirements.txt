@@ -1,4 +1,6 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pyserial==3.5
-# RPi5 실물 서보 제어 시 하드웨어 확정 후 추가 (예: adafruit-circuitpython-servokit, RPi.GPIO 등)
+gpiozero==2.0.1
+# gpiozero는 MockFactory를 지원해 비-RPi 환경에서도 임포트/단위테스트가 가능합니다.
+# 실물 RPi5에서는 GPIO 접근을 위해 별도 설정이 필요할 수 있습니다 (README 참고).

@@ -7,10 +7,15 @@ services:
     environment:
       - SERVICE_NAME=vision
       - DB_PATH=/data/db/signdb.sqlite3
-      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.8}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.75}
+      - N_FRAMES=${N_FRAMES:-3}
+      - MOCK_CAMERA=${MOCK_CAMERA:-true}
     volumes:
       - signdb:/data/db
-    # 실제 USB 웹캠 연결 시 (Linux/RPi5 전용, Windows Docker Desktop 미지원):
+    # 실제 Raspberry Pi Camera Module 3(CSI) 연결 시 (RPi5/Linux 전용, Windows Docker Desktop 미지원):
+    # CSI 카메라는 USB 웹캠과 달리 libcamera 스택을 거치므로 /dev/video0 매핑만으로는 부족할 수 있음.
+    # picamera2는 Raspberry Pi OS apt 패키지라 이 컨테이너 이미지에 없음 — 실물 연동은
+    # services/vision/README.md의 "네이티브 실행 권장" 안내를 참고할 것.
     # devices:
     #   - /dev/video0:/dev/video0
 
@@ -22,9 +27,11 @@ services:
     environment:
       - SERVICE_NAME=actuation
       - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
-    # 실제 micro:bit/서보 컨트롤러 연결 시 (Linux 전용, 장치 경로는 실측 후 수정):
+      - MICROBIT_PORT=${MICROBIT_PORT:-/dev/ttyACM0}
+    # 실제 micro:bit/서보/picar 연결 시 (Linux 전용, 장치 경로는 실측 후 수정):
     # devices:
-    #   - /dev/ttyACM0:/dev/ttyACM0
+    #   - /dev/ttyACM0:/dev/ttyACM0   # micro:bit USB 시리얼
+    #   - /dev/gpiomem:/dev/gpiomem   # AI Hand 서보 + picar 모터/LED GPIO 직결 (privileged 필요할 수 있음)
 
   web:
     build: ./services/web
@@ -44,6 +51,9 @@ services:
     build: ./services/data
     container_name: safesign-data-tools
     profiles: ["tools"]
+    environment:
+      - DB_PATH=/data/db/signdb.sqlite3
+      - PROCESSED_DIR=/data/datasets/processed
     volumes:
       - signdb:/data/db
       - ./services/data/datasets:/data/datasets

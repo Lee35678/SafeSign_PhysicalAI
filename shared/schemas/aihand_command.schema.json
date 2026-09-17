@@ -1,12 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AiHandCommand",
-  "description": "교육 상태머신(web) / vision -> actuation. 03_인터페이스계약서_v1 §5-1 참고. servo_angles 값은 실물 테스트 전까지 목업.",
+  "description": "교육 상태머신(web) -> actuation. document/03_인터페이스계약서_v2 §5-1 참고. servo_angles 초기 기본값(펴짐=170, 굽힘=10, 손목중립=90)은 05_모델카드_v3 §8-0 근거, 실물 캘리브레이션 전 잠정치.",
   "type": "object",
   "required": ["command", "target_signal", "servo_angles"],
   "properties": {
     "command": { "type": "string", "enum": ["demo", "correct_pose"] },
-    "target_signal": { "type": "string", "description": "수신호 이름 (최종 채택 5종 중 하나)" },
+    "target_signal": {
+      "type": "string",
+      "enum": ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"],
+      "description": "수신호 이름 (통합 7종 중 하나, 02_설계문서_v2 §4)"
+    },
     "servo_angles": {
       "type": "object",
       "required": ["thumb", "index", "middle", "ring", "pinky", "wrist_rotation"],
@@ -16,7 +20,7 @@
         "middle": { "type": "integer", "minimum": 0, "maximum": 180 },
         "ring": { "type": "integer", "minimum": 0, "maximum": 180 },
         "pinky": { "type": "integer", "minimum": 0, "maximum": 180 },
-        "wrist_rotation": { "type": "integer", "minimum": 0, "maximum": 180, "description": "좌우 회전만 가능, 상하 꺾기 불가 (02_설계문서_v1 §3)" }
+        "wrist_rotation": { "type": "integer", "minimum": 0, "maximum": 180, "default": 90, "description": "이번 7종은 항상 정면(중립 90) — 좌우 회전 미사용, 02_설계문서_v2 §4 참고사항 4" }
       }
     }
   }

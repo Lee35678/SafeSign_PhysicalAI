@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PicarCommand",
+  "description": "교육 상태머신(web) -> actuation. document/03_인터페이스계약서_v2 §5-2 참고. RPi5가 picar를 GPIO로 직접 구동하므로 실제로는 네트워크 메시지가 아니라 같은 프로세스 내 함수 호출 인자로도 쓰인다.",
+  "type": "object",
+  "required": ["command", "target_signal", "motor", "led"],
+  "properties": {
+    "command": {
+      "type": "string",
+      "enum": ["stop", "slow", "turn_left", "turn_right", "reverse", "caution", "complete"]
+    },
+    "target_signal": {
+      "type": "string",
+      "enum": ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
+    },
+    "motor": {
+      "type": "object",
+      "required": ["action", "speed"],
+      "properties": {
+        "action": { "type": "string", "enum": ["stop", "forward", "backward", "left", "right"] },
+        "speed": { "type": "integer", "minimum": 0, "maximum": 100, "description": "%, slow 명령은 정상보다 낮은 고정값 — ⚠️ 실측 후 확정" }
+      }
+    },
+    "led": {
+      "type": "object",
+      "required": ["red", "yellow_left", "yellow_right"],
+      "properties": {
+        "red": { "type": "string", "enum": ["off", "on", "blink"] },
+        "yellow_left": { "type": "string", "enum": ["off", "on", "blink"] },
+        "yellow_right": { "type": "string", "enum": ["off", "on", "blink"] }
+      }
+    }
+  }
+}

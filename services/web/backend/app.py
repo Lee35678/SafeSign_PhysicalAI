@@ -1,8 +1,9 @@
 """web 서비스 진입점.
 
 담당: 조은수 (웹 R, 성능측정 R)
-역할: 09_화면목록_v1.md의 SC-01~SC-10 흐름을 담당하는 교육 상태머신 + 프론트엔드 서빙.
-vision(/predict), actuation(/command, /result) 서비스를 httpx로 호출.
+역할: 09_화면목록_v2.md의 SC-01~SC-07 흐름을 담당하는 교육 상태머신 + 프론트엔드 서빙.
+vision(GET /latest), actuation(POST /command, /picar, /result, /progress) 서비스를 httpx로 호출.
+관리자/등록 관련 라우트 없음 — 수신호 등록 기능은 범위에서 제외됨 (03_인터페이스계약서_v2 §6).
 """
 import os
 

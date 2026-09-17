@@ -2,37 +2,54 @@
 
 RACI: 파이프라인·판정로직 **R**, 하드웨어·로봇동작 **A**
 
-`document/02_설계문서_v1.md` §1~2, `document/시스템_구성도_초안.md` 기준 담당 범위:
+`document/02_설계문서_v2.md` §1-1·§4, `document/05_모델카드_v3.md` 기준 담당 범위:
 
 ```
-[USB 웹캠] → [MediaPipe Hand Landmarker] → 21 keypoints
-          → 정규화(원점이동·스케일·회전정렬) → 63차원 특징벡터
-          → 분류기(SVM/MLP) + 분야별 라벨 매핑 → predicted_class, confidence
-          → cosine similarity vs DB 템플릿 → match_score(0~100)
+Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
+  → 정규화(원점이동·스케일·회전·좌우손) → 63차원 특징벡터
+  → SVM(RBF) 분류(8클래스) + N프레임 연속 확인 → predicted_class, confidence
+  → cosine similarity vs DB 템플릿 → match_score(0~100)
 ```
+
+## 하드웨어/실행 방식 확정 사항 (2026-09-18)
+
+- **카메라**: Raspberry Pi Camera Module 3, CSI 직결 (범용 USB 웹캠 아님) — 15핀→22핀 변환 케이블로
+  RPi5 CAM/DISP 포트 연결. 해상도/FPS는 **1920×1080 @ 60fps (Binned Mode)** 확정.
+- **MediaPipe 실행 모드**: `LIVE_STREAM`(비동기 콜백) 채택. `VIDEO`(동기 루프) 대비 캡처가 추론을
+  기다리지 않아 실시간 처리에 유리 — 근거는 05_모델카드_v3 §3-2.
+- **RPi5가 카메라 추론(이 서비스)과 picar GPIO 구동을 모두 겸함** — 배포 환경에서는 이 서비스와
+  actuation의 picar 제어가 물리적으로 같은 보드에서 돈다 (10_PRD_v1.md §1.3 참고). 로컬 개발/통합
+  테스트는 지금처럼 컨테이너로 분리해도 무방하다.
+- **카메라가 이 서비스에 직결**되어 있으므로, 외부에서 프레임을 받는 구조가 아니라 **이 서비스가 스스로
+  카메라 루프를 돌며 최신 판정 결과를 만들어 둔다.** 다른 서비스(web)는 `GET /latest`로 폴링한다.
 
 ## 디렉터리
 
-- `src/perception/` — 카메라 캡처, MediaPipe 랜드마크 추출 (`shared/schemas/landmark_frame.schema.json` 출력)
-- `src/cognition/` — 정규화, 분류기, 일치율(유사도) 산출 (`shared/schemas/judgment_result.schema.json` 출력)
-- `src/app.py` — FastAPI 진입점 (`/health`, `/predict`)
+- `src/perception/capture.py` — 카메라 캡처(picamera2, 실물 도착 전 MOCK_CAMERA) + MediaPipe
+  LIVE_STREAM 콜백 → 최신 `landmark_frame` 저장
+- `src/cognition/normalize.py` — 정규화 (원점이동·스케일·회전·좌우손 반전)
+- `src/cognition/smoothing.py` — N프레임 연속 동일 클래스 확인 (초기값 N=3)
+- `src/cognition/classify.py` — SVM 분류 + 일치율 산출 (τ 초기값 0.75)
+- `src/app.py` — FastAPI 진입점: 백그라운드로 카메라+판정 루프 실행, `/health`, `/latest`(런타임용),
+  `/predict`(카메라 없이 분류기만 테스트하는 개발용)
 
-## 아직 확정 안 된 것 (팀 결정 필요, 02_설계문서_v1 참고)
+## 아직 확정 안 된 것 (팀 결정/실측 필요)
 
-- [ ] 파이프라인 방식: 랜드마크 기반 vs 이미지 분류 기반 (§2)
-- [ ] 최종 채택 5종 수신호 (§4)
-- [ ] 카메라 해상도/FPS (03_인터페이스계약서_v1 §2)
-- [ ] 신뢰도 임계값 τ (`.env`의 `CONFIDENCE_THRESHOLD`)
+- [ ] SVM 하이퍼파라미터(`C`, `gamma`) 최종값 (실측 데이터로 그리드서치, 05_모델카드_v3 §6)
+- [ ] τ=0.75, N=3은 초기 기본값 — 카메라/데이터 확보 후 05_모델카드_v3 §8-1 절차로 재검증
+- [ ] hand_landmarker.task 모델 파일 다운로드 및 `models/` 배치 (05_모델카드_v3 §1 URL)
 
 ## 로컬 실행
 
 ```bash
 docker compose up --build vision
 curl http://localhost:8001/health
+curl http://localhost:8001/latest
 ```
 
-카메라 장치는 Windows Docker Desktop에서 컨테이너로 직접 전달되지 않으므로, 로컬 개발 중에는
-가상환경(`python -m venv`)에서 직접 실행해 웹캠으로 테스트하고, 컨테이너 빌드는 배포/RPi5 대상 검증용으로 사용하세요.
+카메라(Pi Camera Module 3)는 아직 팀에 도착하지 않았고, `picamera2`는 Raspberry Pi OS의 apt 패키지라
+일반 pip/Docker(x86)에서 설치되지 않습니다. 그래서 기본값 `MOCK_CAMERA=true`로 배선만 검증하고,
+실물 카메라 연동은 RPi5 확보 후 `perception/capture.py`의 TODO를 채우세요.
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate
