@@ -9,7 +9,7 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
 `document/02_설계문서_v2.md` §1-1·§3, `document/03_인터페이스계약서_v2.md` §5-1·§5-3 기준 담당 범위:
 
 - **AI Hand**: 손가락 서보 5개 + 손목 서보 1개 제어 (`shared/schemas/aihand_command.schema.json`)
-- **micro:bit**: USB 시리얼(115200 baud)로 LED 매트릭스(O/X, 진행 표시) 송신, 버튼 입력 수신
+- **micro:bitv2**: USB 시리얼(115200 baud)로 LED 매트릭스(O/X, 진행 표시) 송신, 버튼 입력 수신
   (`shared/schemas/microbit_protocol.md`)
 
 ## 디렉터리
@@ -42,4 +42,7 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
 ```bash
 docker compose up --build actuation
 curl http://localhost:8002/health
+
+
+
 ```
