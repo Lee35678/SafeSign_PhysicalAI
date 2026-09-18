@@ -6,7 +6,9 @@
   "required": ["timestamp", "hand_detected", "landmarks"],
   "properties": {
     "timestamp": { "type": "integer", "description": "밀리초(ms), LIVE_STREAM 콜백에 전달한 단조 증가 타임스탬프 (05_모델카드_v3 §3-2)" },
+    "captured_at_ms": { "type": "integer", "description": "벽시계 기준 캡처 시각(ms). 판정 지연(P95 ≤ 1.0초) 측정용 — timestamp는 단조 증가 카운터라 지연 계산에 쓸 수 없다" },
     "hand_detected": { "type": "boolean" },
+    "handedness": { "type": "string", "enum": ["Right", "Left"], "default": "Right", "description": "MediaPipe Handedness. 정규화 단계에서 왼손을 오른손 기준으로 미러링하는 데 필요 (05_모델카드_v3 §3-5 4번)" },
     "landmarks": {
       "type": "array",
       "minItems": 0,

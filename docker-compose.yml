@@ -7,11 +7,16 @@ services:
     environment:
       - SERVICE_NAME=vision
       - DB_PATH=/data/db/signdb.sqlite3
-      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.75}
-      - N_FRAMES=${N_FRAMES:-3}
+      # 비워두면 학습 번들(svm_classifier.joblib)에 기록된 τ·N을 쓴다.
+      # .env에서 값을 주면 그 값이 번들을 덮어쓴다(운영 중 급히 조일 때용).
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-}
+      - N_FRAMES=${N_FRAMES:-}
       - MOCK_CAMERA=${MOCK_CAMERA:-true}
     volumes:
       - signdb:/data/db
+      # Colab에서 학습해 내려받은 svm_classifier.joblib을 여기에 넣으면 재빌드 없이 바로 적용된다
+      # (services/vision/models/README.md 참고)
+      - ./services/vision/models:/app/models
     # 실제 Raspberry Pi Camera Module 3(CSI) 연결 시 (RPi5/Linux 전용, Windows Docker Desktop 미지원):
     # CSI 카메라는 USB 웹캠과 달리 libcamera 스택을 거치므로 /dev/video0 매핑만으로는 부족할 수 있음.
     # picamera2는 Raspberry Pi OS apt 패키지라 이 컨테이너 이미지에 없음 — 실물 연동은

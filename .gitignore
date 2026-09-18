@@ -18,6 +18,14 @@ services/data/datasets/raw/*
 services/data/datasets/processed/*
 !services/data/datasets/processed/.gitkeep
 
+# 학습 파이프라인 예행연습용 더미 데이터 (scripts/make_dummy_dataset.py가 언제든 재생성)
+services/vision/training/_dummy_dataset/
+
+# 학습된 모델 가중치: Colab 산출물이라 각자 내려받아 넣는다.
+# 팀 전체가 같은 모델을 공유해야 할 시점(시연 직전 등)이 오면 아래 두 줄을 지우고 커밋할 것.
+services/vision/models/*.joblib
+services/vision/models/*.task
+
 # DB 파일
 *.sqlite3
 *.db

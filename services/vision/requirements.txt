@@ -3,6 +3,12 @@ uvicorn[standard]==0.30.6
 mediapipe==0.10.14
 numpy==1.26.4
 scikit-learn==1.5.1
+joblib==1.4.2
+
+# scikit-learn / joblib 은 Colab에서 학습한 분류기 번들(svm_classifier.joblib)을 로드해 추론하는 데 쓴다.
+# 학습 자체는 이 서비스가 하지 않는다 (services/vision/training/train_svm_colab.ipynb 참고).
+# ⚠️ 학습 환경(Colab)과 추론 환경(여기)의 scikit-learn 메이저/마이너 버전이 크게 다르면 joblib 로드 시
+#    경고나 오류가 날 수 있다. 번들 메타데이터의 sklearn_version과 이 핀을 맞춰 두는 것을 권장.
 
 # picamera2는 여기 포함하지 않습니다: Raspberry Pi OS apt 패키지(python3-picamera2)로 설치되며
 # libcamera 시스템 라이브러리에 의존해 일반 pip/Docker(x86)에서 설치되지 않습니다.
