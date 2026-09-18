@@ -3,6 +3,8 @@
 데이터 수집 전이라 실제 모델이 없는 상태에서도 vision 서비스가 죽지 않고 "미판정"으로 응답해야
 카메라~Actuation 배선 검증을 계속할 수 있다 (10_PRD_v2 §11 우선순위).
 
+**카메라를 쓰지 않는다.** 학습된 모델을 실제 손으로 확인하려면 `scripts/webcam_check.py`를 쓸 것.
+
 실행:
     cd services/vision && python -m pytest tests -q
     (pytest가 없으면) python tests/test_classify.py

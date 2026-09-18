@@ -4,6 +4,9 @@ document/05_모델카드_v3.md §3-5는 정규화가 **위치·크기·회전·�
 이 테스트는 그 주장이 코드에서 실제로 성립하는지 확인한다 — 여기가 깨지면 학습 데이터와 실제 추론
 입력이 서로 다른 공간에 놓이게 되므로, 정확도가 조용히 무너진다.
 
+**카메라를 쓰지 않는다.** 합성 좌표로 로직만 검증하는 단위 테스트다.
+학습된 모델을 실제 손으로 확인하려면 `scripts/webcam_check.py`(노트북 웹캠)를 쓸 것.
+
 실행:
     cd services/vision && python -m pytest tests -q
     (pytest가 없으면) python tests/test_normalize.py

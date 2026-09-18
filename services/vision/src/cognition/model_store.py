@@ -45,6 +45,28 @@ def _normalize_bundle(obj: Any) -> dict:
     return {"format_version": 0, "model": obj, "classes": list(getattr(obj, "classes_", []))}
 
 
+def _warn_if_sklearn_mismatch(bundle: dict) -> None:
+    """학습(Colab)과 추론(여기)의 scikit-learn 버전이 어긋나면 경고한다.
+
+    joblib 직렬화 모델은 버전이 크게 다르면 조용히 이상하게 동작하거나 로드가 깨진다.
+    번들 metadata에 기록된 학습 시점 버전과 현재 설치 버전의 major.minor를 비교한다.
+    """
+    trained_with = (bundle.get("metadata") or {}).get("sklearn_version")
+    if not trained_with:
+        return
+    try:
+        import sklearn
+    except ImportError:
+        return
+    if trained_with.split(".")[:2] != sklearn.__version__.split(".")[:2]:
+        logger.warning(
+            "scikit-learn 버전 불일치: 학습 %s vs 현재 %s — 예측이 어긋나거나 로드가 깨질 수 있습니다. "
+            "requirements.txt의 scikit-learn 범위를 학습 환경에 맞추거나, 같은 환경에서 재학습하세요.",
+            trained_with,
+            sklearn.__version__,
+        )
+
+
 def load_bundle(force: bool = False) -> Optional[dict]:
     """모델 번들을 로드(캐시). 파일이 없으면 None.
 
@@ -74,6 +96,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
         _bundle = _normalize_bundle(joblib.load(MODEL_PATH))
         _loaded = True
         _loaded_mtime = mtime
+        _warn_if_sklearn_mismatch(_bundle)
         logger.info(
             "분류기 모델 로드 완료: %s (classes=%s, tau=%s, trained_at=%s)",
             MODEL_PATH,

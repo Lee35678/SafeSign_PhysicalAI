@@ -1,0 +1,12 @@
+# 노트북에서 웹캠으로 모델을 확인할 때만 필요한 의존성 (scripts/webcam_check.py).
+# 운영 컨테이너(requirements.txt)에는 들어가지 않는다 — RPi5는 CSI 카메라를 picamera2로 쓰므로
+# OpenCV 웹캠 캡처가 필요 없다.
+#
+# 설치 (가상환경 권장):
+#   python -m venv .venv && .venv\Scripts\activate
+#   pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+opencv-python>=4.10,<6.0   # 노트북 웹캠 캡처 + 화면 표시
+pillow>=10.0               # 오버레이에 한글 클래스명 표시 (없으면 영문으로 폴백)

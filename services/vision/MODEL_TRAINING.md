@@ -181,10 +181,20 @@ match_score가 0이 아닌 값을 낸다. **DB가 비어 있으면 match_score�
 새로 학습하면 확률 분포도 바뀌므로 τ도 같이 바뀌어야 한다. 파일 하나만 교체하면 둘 다 갱신된다.
 
 ```bash
-# 교체 후 확인
+# ① 서비스가 모델을 물었는지 확인
 docker compose up --build vision
 curl http://localhost:8001/health     # model.loaded == true, tau, classes 확인
+
+# ② 실제로 잘 맞히는지 눈으로 확인 (노트북 웹캠)
+cd services/vision
+pip install -r requirements-dev.txt
+python scripts/webcam_check.py        # 손을 비추면 예측 클래스·confidence·match_score가 뜬다
 ```
+
+②는 **숫자(정답률)만으로는 안 보이는 문제**를 잡는 단계다. 예를 들어 좌회전/우회전이 실제로는 잘
+갈리는지, 손을 천천히 바꿀 때 N프레임 안정화가 답답하지 않은지, 특정 각도에서만 무너지는지 같은 것들.
+webcam_check는 운영과 **같은 `cognition/` 코드**를 쓰므로, 여기서 본 판정이 곧 RPi5에서의 판정이다
+(카메라 기종 차이는 남는다 — 최종 확인은 Pi Camera Module 3로).
 
 환경변수 `CONFIDENCE_THRESHOLD`를 주면 번들의 τ를 **덮어쓴다**(운영 중 급히 조일 때용).
 평소에는 설정하지 않고 번들 값을 쓰는 것을 권장한다.

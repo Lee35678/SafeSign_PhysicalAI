@@ -36,9 +36,11 @@ src/
     ├── templates.py          템플릿 DB 조회 + cosine similarity → 0~100 매핑
     └── smoothing.py          N프레임 연속 동일 클래스 확인 (§3-6)
 training/train_svm_colab.ipynb   Colab 학습 노트북
-scripts/make_dummy_dataset.py    (데이터 오기 전) 예행연습용 더미 데이터 생성기
+scripts/
+├── webcam_check.py              노트북 웹캠으로 학습된 모델을 눈으로 확인 (사람이 판단)
+└── make_dummy_dataset.py        (데이터 오기 전) 예행연습용 더미 데이터 생성기
 models/                          학습된 번들을 넣는 자리
-tests/                           정규화 불변성 + 분류 경로 테스트
+tests/                           카메라 없이 도는 단위 테스트 (정규화 불변성 + 분류 경로)
 ```
 
 ## 3. API
@@ -78,7 +80,9 @@ curl http://localhost:8001/latest
 설치되지 않는다. 그래서 기본값 `MOCK_CAMERA=true`로 "손 미검출" 프레임만 흘려보내며 배선을 검증하고,
 실물 카메라 연동은 RPi5 확보 후 `perception/capture.py`의 TODO를 채운다(네이티브 실행 권장).
 
-### 테스트
+### 확인 방법 두 가지 (용도가 다름)
+
+**① 단위 테스트 — 카메라 없이, 로직만** (CI/머지 전 검증용)
 
 ```bash
 cd services/vision
@@ -86,6 +90,27 @@ python tests/test_normalize.py      # 정규화 불변성(위치/크기/회전/�
 python tests/test_classify.py       # 모델 없이도 안전하게 미판정하는지 4개
 # pytest가 있으면: python -m pytest tests -q
 ```
+
+**② 웹캠 확인 — 학습한 모델을 실제 손으로** (사람이 눈으로 판단)
+
+```bash
+cd services/vision
+python -m venv .venv && .venv\Scripts\activate    # mediapipe가 numpy를 내릴 수 있어 venv 권장
+pip install -r requirements-dev.txt
+
+python scripts/webcam_check.py                    # 기본 카메라
+python scripts/webcam_check.py --list-cameras     # 카메라 인덱스 확인
+python scripts/webcam_check.py --camera 1
+python scripts/webcam_check.py --no-window --max-frames 60   # 창 없이 콘솔만
+```
+
+- 화면에 **예측 클래스 / confidence / match_score / N프레임 진행도 / 지연·FPS** 가 표시된다.
+  `q`·`ESC` 종료, `r` 누적 초기화.
+- 추론 경로는 **운영 코드와 동일**(`cognition/*`)하고 웹캠 캡처 부분만 다르다. 여기서 잘 맞히면
+  RPi5에서도 같은 판정이 나온다.
+- `hand_landmarker.task`가 없으면 공식 URL에서 **자동으로 받아온다**(`--no-download`로 끌 수 있음).
+- **분류기가 아직 없어도 실행된다** — 랜드마크는 그려지고 판정만 `model_not_loaded`로 나오므로,
+  데이터·모델이 오기 전에도 카메라·MediaPipe 배선을 확인할 수 있다.
 
 ### 데이터 오기 전에 학습 파이프라인 예행연습
 
