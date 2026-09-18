@@ -19,6 +19,7 @@ services:
     # devices:
     #   - /dev/video0:/dev/video0
 
+  # AI Hand + micro:bit. 실물 배포 시 vision과 같은 Raspberry Pi 5(고정 스테이션)에서 실행된다.
   actuation:
     build: ./services/actuation
     container_name: safesign-actuation
@@ -28,10 +29,26 @@ services:
       - SERVICE_NAME=actuation
       - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
       - MICROBIT_PORT=${MICROBIT_PORT:-/dev/ttyACM0}
-    # 실제 micro:bit/서보/picar 연결 시 (Linux 전용, 장치 경로는 실측 후 수정):
+    # 실제 micro:bit/서보 연결 시 (Linux 전용, 장치 경로는 실측 후 수정):
     # devices:
     #   - /dev/ttyACM0:/dev/ttyACM0   # micro:bit USB 시리얼
-    #   - /dev/gpiomem:/dev/gpiomem   # AI Hand 서보 + picar 모터/LED GPIO 직결 (privileged 필요할 수 있음)
+    #   - /dev/gpiomem:/dev/gpiomem   # AI Hand 서보 GPIO 직결 (privileged 필요할 수 있음)
+
+  # picar 전용 컨트롤러. 실물 배포 시 picar 차체에 탑재된 별도의 Raspberry Pi 4B 8GB에서 실행되며,
+  # web과는 Wi-Fi(HTTP)로 통신한다 (02_설계문서_v2 §1-1 — picar가 주행하면 카메라도 함께 이동해버리는
+  # 문제 때문에 vision/actuation(RPi5)과 물리적으로 분리했다, 2026-09-18). 로컬 개발에서는 이 docker
+  # 네트워크가 그 Wi-Fi 구간을 대신한다.
+  picar:
+    build: ./services/picar
+    container_name: safesign-picar
+    ports:
+      - "8003:8000"
+    environment:
+      - SERVICE_NAME=picar
+      - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
+    # 실제 picar/RPi4B 연결 시 (Linux 전용):
+    # devices:
+    #   - /dev/gpiomem:/dev/gpiomem   # picar 모터/LED GPIO 직결 (privileged 필요할 수 있음)
 
   web:
     build: ./services/web
@@ -41,11 +58,14 @@ services:
     environment:
       - VISION_URL=http://vision:8000
       - ACTUATION_URL=http://actuation:8000
+      - PICAR_URL=http://picar:8000
+      - PICAR_TIMEOUT_MS=${PICAR_TIMEOUT_MS:-500}
     volumes:
       - signdb:/data/db
     depends_on:
       - vision
       - actuation
+      - picar
 
   data-tools:
     build: ./services/data

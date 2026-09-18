@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "PicarCommand",
-  "description": "교육 상태머신(web) -> actuation. document/03_인터페이스계약서_v2 §5-2 참고. RPi5가 picar를 GPIO로 직접 구동하므로 실제로는 네트워크 메시지가 아니라 같은 프로세스 내 함수 호출 인자로도 쓰인다.",
+  "description": "교육 상태머신(web, RPi5) -> picar 서비스 (Raspberry Pi 4B 8GB, Wi-Fi/HTTP). document/03_인터페이스계약서_v2 §5-2 참고. picar가 주행하면 카메라도 함께 이동하는 문제 때문에 컴퓨트 보드를 분리했다(2026-09-18) — 실제 네트워크 메시지이며, 타임아웃 500ms + 1회 재시도 정책을 따른다.",
   "type": "object",
   "required": ["command", "target_signal", "motor", "led"],
   "properties": {

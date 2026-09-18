@@ -1,6 +1,6 @@
 # shared/
 
-4개 서비스(vision / actuation / web / data)가 공통으로 참조하는 인터페이스 정의입니다.
+5개 서비스(vision / actuation / picar / web / data)가 공통으로 참조하는 인터페이스 정의입니다.
 출처는 `document/03_인터페이스계약서_v2.md`이며, 그 문서가 원본(source of truth)입니다.
 여기 있는 JSON Schema는 문서 내용을 코드에서 검증/자동완성하기 쉽게 옮겨둔 것이므로,
 **계약서 문서를 고치면 이 폴더도 같이 고치고, 반대도 마찬가지입니다.**
@@ -9,9 +9,13 @@
 | --- | --- | --- |
 | `schemas/landmark_frame.schema.json` | §3 Perception → Cognition | vision 내부(LIVE_STREAM 콜백 출력) |
 | `schemas/judgment_result.schema.json` | §4 Cognition → 교육 상태머신 | vision → web |
-| `schemas/aihand_command.schema.json` | §5-1 AI Hand 제어 명령 | web → actuation |
-| `schemas/picar_command.schema.json` | §5-2 picar 제어 명령 | web → actuation (RPi5 GPIO 직결이므로 실제로는 같은 프로세스 내 호출) |
-| `schemas/microbit_protocol.md` | §5-3 micro:bit 시리얼 프로토콜 | actuation ↔ micro:bit |
+| `schemas/aihand_command.schema.json` | §5-1 AI Hand 제어 명령 | web → actuation (같은 RPi5) |
+| `schemas/picar_command.schema.json` | §5-2 picar 제어 명령 | web → **picar (별도 서비스, Raspberry Pi 4B 8GB, Wi-Fi/HTTP)** — 2026-09-18 RPi5 GPIO 직결에서 정정 |
+| `schemas/microbit_protocol.md` | §5-3 micro:bit 시리얼 프로토콜 | actuation ↔ micro:bit (같은 RPi5) |
+
+> **하드웨어 배치 (2026-09-18)**: picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에, picar
+> 제어만 별도 보드(Raspberry Pi 4B 8GB)·별도 서비스(`services/picar`)로 분리했습니다. vision·actuation은
+> 카메라·AI Hand·micro:bit와 함께 Raspberry Pi 5(고정 스테이션)에서 실행됩니다.
 
 > **범위 제외**: 수신호 등록(신규 수신호 실시간 추가) 기능은 03_인터페이스계약서_v2 §6에 따라 구현하지
 > 않습니다 — 이 폴더에도 그에 대응하는 스키마를 두지 않습니다. DB 템플릿은 `services/data/src/seed_templates.py`로

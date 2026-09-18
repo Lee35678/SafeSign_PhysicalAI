@@ -17,9 +17,10 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
   RPi5 CAM/DISP 포트 연결. 해상도/FPS는 **1920×1080 @ 60fps (Binned Mode)** 확정.
 - **MediaPipe 실행 모드**: `LIVE_STREAM`(비동기 콜백) 채택. `VIDEO`(동기 루프) 대비 캡처가 추론을
   기다리지 않아 실시간 처리에 유리 — 근거는 05_모델카드_v3 §3-2.
-- **RPi5가 카메라 추론(이 서비스)과 picar GPIO 구동을 모두 겸함** — 배포 환경에서는 이 서비스와
-  actuation의 picar 제어가 물리적으로 같은 보드에서 돈다 (10_PRD_v1.md §1.3 참고). 로컬 개발/통합
-  테스트는 지금처럼 컨테이너로 분리해도 무방하다.
+- **RPi5는 카메라 추론(이 서비스)과 AI Hand/micro:bit(services/actuation)를 겸함.** picar는 더 이상
+  RPi5가 구동하지 않는다 — picar가 주행하면 카메라도 함께 이동해버리는 문제가 있어, picar 전용
+  컨트롤러를 **별도의 Raspberry Pi 4B 8GB**(`services/picar`)로 분리하고 Wi-Fi로 통신한다
+  (10_PRD_v2.md §1.3 참고). 로컬 개발/통합 테스트는 지금처럼 컨테이너로 분리해도 무방하다.
 - **카메라가 이 서비스에 직결**되어 있으므로, 외부에서 프레임을 받는 구조가 아니라 **이 서비스가 스스로
   카메라 루프를 돌며 최신 판정 결과를 만들어 둔다.** 다른 서비스(web)는 `GET /latest`로 폴링한다.
 

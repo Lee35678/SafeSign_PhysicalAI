@@ -1,15 +1,16 @@
-"""actuation 서비스 진입점.
+"""actuation 서비스 진입점 — **Raspberry Pi 5(고정 스테이션)** 에서 실행.
 
 담당: 송승호 (하드웨어·로봇동작 R)
-역할: 상태머신으로부터 AiHandCommand/PicarCommand를 받아 서보/모터·LED 구동,
-micro:bit 시리얼 송수신(RESULT/PROGRESS 송신, BTN 수신).
+역할: 상태머신으로부터 AiHandCommand를 받아 서보 구동, micro:bit 시리얼 송수신
+(RESULT/PROGRESS 송신, BTN 수신). AI Hand와 micro:bit는 둘 다 RPi5에 직결되어 있다.
 
-입력 스키마: shared/schemas/aihand_command.schema.json, picar_command.schema.json
+picar는 이 서비스가 아니라 **별도 서비스(services/picar, Raspberry Pi 4B 8GB)** 에서 담당한다 —
+picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에 컴퓨트 보드를 분리했다
+(document/02_설계문서_v2 §1-1, 2026-09-18). 상태머신(web)이 picar_command는 이 서비스가 아니라
+services/picar의 `/picar` 엔드포인트로 직접(Wi-Fi) 전송한다.
+
+입력 스키마: shared/schemas/aihand_command.schema.json
 시리얼 프로토콜: shared/schemas/microbit_protocol.md
-
-참고: 실물 배포 시 picar는 이 서비스가 아니라 vision과 같은 RPi5 프로세스에서 GPIO로 직접
-구동되는 편이 지연 면에서 유리하다(02_설계문서_v2 §1-1). 지금은 팀 분업을 위해 별도 서비스로
-개발하고, 실제 통합 단계에서 배치를 재검토한다 (10_PRD_v1.md §4 참고).
 """
 import os
 
@@ -17,7 +18,6 @@ from fastapi import FastAPI
 
 from aihand import controller as aihand_controller
 from microbit import bridge as microbit_bridge
-from picar import controller as picar_controller
 
 MOCK_HARDWARE = os.getenv("MOCK_HARDWARE", "true").lower() == "true"
 
@@ -38,12 +38,6 @@ def health():
 def command(aihand_command: dict):
     """aihand_command.schema.json 형식 입력을 받아 서보 구동."""
     return aihand_controller.execute(aihand_command, mock=MOCK_HARDWARE)
-
-
-@app.post("/picar")
-def picar(picar_command: dict):
-    """picar_command.schema.json 형식 입력을 받아 모터/LED 구동."""
-    return picar_controller.execute(picar_command, mock=MOCK_HARDWARE)
 
 
 @app.post("/result")

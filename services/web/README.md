@@ -2,17 +2,20 @@
 
 RACI: 웹 **R**, 성능측정 **R**
 
-`document/09_화면목록_v2.md`의 SC-01~SC-07 화면 흐름을 상태머신으로 구현하고,
-vision(`GET /latest`)·actuation(`POST /command`, `/picar`, `/result`, `/progress`) 서비스를
-호출해 화면에 반영합니다.
+`document/09_화면목록_v2.md`의 SC-01~SC-07 화면 흐름을 상태머신으로 구현하고, vision(`GET /latest`)·
+actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) · **picar(`POST /picar`,
+별도 서비스, Raspberry Pi 4B 8GB, Wi-Fi)** 를 호출해 화면에 반영합니다. picar는 actuation과 다른
+서비스/보드이므로 `PICAR_URL`로 따로 호출하고, 타임아웃(500ms)+1회 재시도 후 실패하면 picar 없이
+진행합니다 (03_인터페이스계약서_v2 §5-2·§7 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
+보드를 분리했습니다, 02_설계문서_v2 §1-1).
 
-> **현재 우선순위 (10_PRD_v1.md §1 갱신 로그 참고)**: 지금은 인식→판정→Actuation 입력-출력
+> **현재 우선순위 (10_PRD_v2.md §1 갱신 로그 참고)**: 지금은 인식→판정→Actuation 입력-출력
 > 파이프라인이 정상 동작하는지 확인하는 단계입니다. 이 서비스는 그 흐름을 눈으로 확인할 수 있는
 > 최소 골격이면 충분하며, 화면 디자인/레이아웃은 파이프라인 검증 이후에 다듬습니다.
 
 ## 담당 범위
 
-- `backend/` — FastAPI. 교육 상태머신(현재 화면/세션 상태), vision·actuation 호출
+- `backend/` — FastAPI. 교육 상태머신(현재 화면/세션 상태), vision·actuation·picar 호출
 - `frontend/` — 정적 HTML/CSS/JS (SC-01~SC-07 화면). 프레임워크 도입은 팀 논의 후 결정
 
 ## 화면 ↔ 상태 매핑 (09_화면목록_v2.md 참고, 2026-09-18 갱신)

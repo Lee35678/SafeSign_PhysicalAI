@@ -20,6 +20,12 @@
 > ACK 없는 self-healing 정책), τ=0.75·N=3프레임·서보각도 초기값(하드웨어 제약 근거), SC-07 세션 이어하기
 > 미구현, Macro F1 신호 7종만 평균. **picar 전원 계통 분리 여부만** 카메라·picar 미도착으로 구현 담당자의
 > 실물 테스트로 남겨둠(§11.2).
+>
+> **2026-09-18 갱신 4 (하드웨어 보드 분리)**: picar가 주행하면 그 위 카메라도 함께 이동해 학습자가
+> 카메라를 따라가야 하는 문제를 발견 — **Raspberry Pi 4B 8GB를 추가**해 picar 전용 컨트롤러로 분리하고,
+> **Raspberry Pi 5는 카메라·AI Hand·micro:bit(고정 스테이션)만 전담**하도록 변경. 두 보드는 **Wi-Fi
+> (HTTP, 500ms 타임아웃+1회 재시도)** 로 통신하며, 실패 시 picar 없이 진행(§7 폴백과 동일 철학).
+> §1.3, §3.5, §4, §5, §7, §11 갱신. 부수 효과로 "RPi5 리소스 경합" 리스크가 해소됨.
 
 ---
 
@@ -60,18 +66,25 @@ AI Hand가 수신호 시범 → 학습자 손동작 → Pi Camera Module 3(Perce
 
 *(근거: 시스템_구성도_초안.md, 02_설계문서_v2 §4, `수신호에 따른 picar 동작.md`)*
 
-### 1.3 하드웨어 배치 확정 (보유 장비 기준)
+### 1.3 하드웨어 배치 확정 (보유 장비 기준, 2026-09-18 2보드 분리로 정정)
+
+> **왜 보드를 2개로 나눴나**: 처음에는 RPi5 한 대가 카메라와 picar 구동을 모두 겸했다. 그런데 picar가
+> 실제로 주행하면 그 위의 카메라도 함께 움직여, **학습자가 판정을 받을 때마다 카메라를 따라 이동해서
+> 다시 손을 보여줘야 하는 모순**이 생긴다. 그래서 카메라·AI Hand·micro:bit(학습자 앞 고정)는 **RPi5**,
+> picar 구동은 새로 추가한 **Raspberry Pi 4B 8GB**로 분리하고 **Wi-Fi**로 연결했다.
 
 | 장비 | 연결/배치 | 역할 |
 | --- | --- | --- |
-| Raspberry Pi 5 | 중앙 컴퓨트 보드 | Perception(카메라 추론) + Cognition(분류) + **picar 모터/LED 직접 구동**을 모두 수행하는 단일 보드 |
+| Raspberry Pi 5 | 학습자 앞 **고정** 스테이션 | Perception(카메라 추론) + Cognition(분류) + AI Hand/micro:bit 구동 |
 | Raspberry Pi Camera Module 3 | CSI (15핀 → 22핀 변환 케이블 → RPi5 CAM/DISP 포트) | 학습자 손 촬영 (범용 USB 웹캠 아님) |
-| picar | RPi5가 직접 탑재/구동 (GPIO 직결) | RPi5가 picar의 두뇌 역할을 겸함 — 별도 컨트롤러·통신 프로토콜 불필요 |
 | AI Hand | RPi5에 서보 연결 | 수신호 시범(먼저 보여줌) / 오답 시 교정 자세 재시범 |
 | micro:bit | USB 시리얼로 RPi5 연결 | LED 매트릭스 O/X 표시, 버튼 입력 |
+| **Raspberry Pi 4B 8GB (신규)** | **picar 차체에 탑재, 이동** | picar 모터/LED를 GPIO로 직접 구동. RPi5와 **Wi-Fi(HTTP)** 로 통신 |
+| picar | RPi4B가 직접 구동 | RPi5의 명령을 Wi-Fi로 받아 물리 동작(§3.2 표) 수행 |
 
 **제품 동작 순서**: ① AI Hand가 수신호를 시범 → ② 학습자가 따라 함 → ③ Pi Camera Module 3로 인식 →
-④ 동일 수신호로 판정되면 **picar가 §3.2 표의 정해진 동작으로 물리적으로 반응**(+micro:bit LED 표시).
+④ 동일 수신호로 판정되면 RPi5가 Wi-Fi로 명령을 보내 **picar가 §3.2 표의 정해진 동작으로 물리적으로
+반응**(+micro:bit LED 표시). picar는 학습자 앞에서 벗어나 움직여도 카메라 위치는 그대로 고정된다.
 
 *(근거: 02_설계문서_v2 §1-1)*
 
@@ -192,11 +205,11 @@ SC-01 랜딩 → SC-02 교육 시작 확인(수신호 7종 안내) → SC-03 수
 | 채널 | 트리거 | 동작 | 근거 |
 | --- | --- | --- | --- |
 | AI Hand | `command: demo \| correct_pose` | 손가락 서보 5개 + 손목 서보 1개로 정답 수신호 시범/교정 자세 제시. 서보 각도 초기값(펴짐 170°/굽힘 10°/손목중립 90°) 확정, 실물 캘리브레이션 전 잠정 | 02_설계문서_v2 §3, 03_인터페이스계약서_v2 §5-1 |
-| picar | `command: stop\|slow\|turn_left\|turn_right\|reverse\|caution\|complete` | 모터(전진/후진/정지/좌우회전/속도2단) + LED(적색×2, 황색×2)로 수신호 의미를 주행으로 표현 | 02_설계문서_v2 §3-2, 03_인터페이스계약서_v2 §5-2 |
+| picar | `command: stop\|slow\|turn_left\|turn_right\|reverse\|caution\|complete` | **RPi5 → RPi4B 8GB Wi-Fi(HTTP POST, 500ms 타임아웃+1회 재시도)** — RPi4B가 모터(전진/후진/정지/좌우회전/속도2단) + LED(적색×2, 황색×2)로 수신호 의미를 주행으로 표현 | 02_설계문서_v2 §1-1·§3-2, 03_인터페이스계약서_v2 §5-2 |
 | micro:bit | 판정 결과(OK/NG + match_score), 진행 표시 | USB 시리얼 115200baud, `RESULT`/`PROGRESS`/`BTN` 메시지 + `HELLO`/`READY` 핸드셰이크(확정) — 5×5 LED 매트릭스 O/X 표시, A/B 버튼으로 웹 화면 이동 | 02_설계문서_v2 §5, 03_인터페이스계약서_v2 §5-3 |
 
 - **물리 피드백 지연**: 손 정지 시점 → (AI Hand 완료 + picar 완료 + micro:bit 표시 완료) 중 **가장 늦은 시점**까지 P95 ≤ 2.0초
-- **picar 통신/전원 장애 시**: picar 없이도 AI Hand + micro:bit만으로 교육 흐름이 끊기지 않아야 함(보조 출력으로 간주) — ⚠️ 팀 확정 필요
+- **picar Wi-Fi 통신 장애 시(확정)**: 500ms 타임아웃 + 1회 재시도 후 picar 없이도 AI Hand + micro:bit만으로 교육 흐름을 계속 진행(보조 출력으로 간주) — 03_인터페이스계약서_v2 §7
 - **micro:bit 통신 장애 시**: 화면 폴백 UI로 정오답 표시
 
 *(근거: 03_인터페이스계약서_v2 §5, §7)*
@@ -214,29 +227,34 @@ SC-01 랜딩 → SC-02 교육 시작 확인(수신호 7종 안내) → SC-03 수
 
 ```mermaid
 flowchart TD
-    subgraph PERCEPTION["Perception"]
-        D["Pi Camera Module 3 (CSI)"] --> E["MediaPipe HandLandmarker (LIVE_STREAM)"]
-        E --> F["21 keypoints (world landmarks)"]
-        F --> G["정규화 (원점이동·스케일·회전·좌우손)"]
-        G --> H["63차원 특징벡터"]
-    end
-    subgraph COGNITION["Cognition"]
-        H --> I["SVM(RBF) 분류 — 8클래스"]
-        H --> J["cosine similarity vs DB 템플릿"]
-        I --> K{"confidence ≥ τ ?"}
-        K -->|Yes| L["판정 확정 (N프레임 연속)"]
-        K -->|No| M["미판정 → 재시도 유도"]
-        J --> N["0~100 일치율"]
-    end
-    subgraph DB["DB"]
-        O[(수신호 템플릿 DB<br/>학습 데이터로 오프라인 시드)]
-    end
-    O -.조회.-> J
-    subgraph ACTUATION["Actuation"]
-        L --> P[AI Hand 시범]
-        L --> Q[micro:bit LED/버튼]
-        L --> R[picar 주행+LED]
+    subgraph RPI5["Raspberry Pi 5 — 고정 스테이션"]
+        subgraph PERCEPTION["Perception"]
+            D["Pi Camera Module 3 (CSI)"] --> E["MediaPipe HandLandmarker (LIVE_STREAM)"]
+            E --> F["21 keypoints (world landmarks)"]
+            F --> G["정규화 (원점이동·스케일·회전·좌우손)"]
+            G --> H["63차원 특징벡터"]
+        end
+        subgraph COGNITION["Cognition"]
+            H --> I["SVM(RBF) 분류 — 8클래스"]
+            H --> J["cosine similarity vs DB 템플릿"]
+            I --> K{"confidence ≥ τ ?"}
+            K -->|Yes| L["판정 확정 (N프레임 연속)"]
+            K -->|No| M["미판정 → 재시도 유도"]
+            J --> N["0~100 일치율"]
+        end
+        subgraph DB["DB"]
+            O[(수신호 템플릿 DB<br/>학습 데이터로 오프라인 시드)]
+        end
+        O -.조회.-> J
+        subgraph ACTUATION_LOCAL["Actuation (고정)"]
+            L --> P[AI Hand 시범]
+            L --> Q[micro:bit LED/버튼]
+        end
         N --> Q
+    end
+    L -.Wi-Fi HTTP<br/>500ms 타임아웃+1회 재시도.-> RPI4B
+    subgraph RPI4B["Raspberry Pi 4B 8GB — picar 탑재(이동)"]
+        R[picar 주행+LED, GPIO 직결]
     end
     A[학습자] --> D
     P --> A
@@ -244,13 +262,15 @@ flowchart TD
     R --> A
 ```
 
-**서비스 분리(개발 담당 매핑)**: `services/vision`(Perception+Cognition) · `services/actuation`(AI Hand+micro:bit,
-picar 확장 필요) · `services/web`(프론트+교육 상태머신) · `services/data`(수집 스크립트+템플릿 DB) — 4개
-Docker 컨테이너로 분리 개발 후 `docker-compose up`으로 로컬 통합.
+**서비스 분리(개발 담당 매핑)**: `services/vision`(Perception+Cognition, RPi5) · `services/actuation`(AI
+Hand+micro:bit, RPi5) · `services/picar`(picar GPIO 제어, **RPi4B 8GB**) · `services/web`(프론트+교육
+상태머신) · `services/data`(수집 스크립트+템플릿 DB) — 5개 Docker 컨테이너로 분리 개발 후
+`docker-compose up`으로 로컬 통합.
 
-> **실제 배포 환경 주의**: 위 4개 서비스 분리는 로컬 개발/통합 편의를 위한 것이고, **실물 RPi5 한 대에서는
-> Perception + Cognition + picar 제어(GPIO 직결)가 물리적으로 같은 보드에서 실행**된다(§1.3). `services/actuation`이
-> picar를 지원하도록 확장할 때, picar 제어는 원격 API 호출이 아니라 같은 보드 내 GPIO 제어로 구현해야 한다.
+> **실제 배포 환경**: `vision`과 `actuation`은 실물 RPi5 한 대에서, `picar`는 **별도의 Raspberry Pi 4B
+> 8GB**에서 돈다(§1.3). `services/actuation`이 picar_command를 보낼 때는 같은 프로세스 호출이 아니라
+> **`services/picar`의 HTTP 엔드포인트를 Wi-Fi로 호출**해야 한다 (03_인터페이스계약서_v2 §5-2). 로컬
+> 개발 시에는 docker-compose 네트워크로 이 Wi-Fi 구간을 흉내 낸다.
 
 *(근거: 시스템_구성도_초안.md, 역할 및 책임표.md, 02_설계문서_v2 §1-1)*
 
@@ -265,7 +285,7 @@ Docker 컨테이너로 분리 개발 후 `docker-compose up`으로 로컬 통합
 **상태머신 → AI Hand**: `command(demo|correct_pose), target_signal, servo_angles{thumb,index,middle,ring,pinky,wrist_rotation}`
 
 **상태머신 → picar**: `command(stop|slow|turn_left|turn_right|reverse|caution|complete), target_signal, motor{action,speed}, led{red,yellow_left,yellow_right}`
-(RPi5가 picar를 GPIO로 직접 구동하므로 네트워크 메시지가 아니라 **같은 프로세스 내 함수 호출 인자**로 매핑됨 — §1.3)
+— **RPi5 → RPi4B 8GB로 Wi-Fi(HTTP POST) 전송**, 타임아웃 500ms + 1회 재시도, 실패 시 picar 없이 진행 (§1.3, 03_인터페이스계약서_v2 §5-2)
 
 **상태머신 ↔ micro:bit** (USB 시리얼): `RESULT:OK|NG:<match_score>\n` / `BTN:A|B|AB\n`
 
@@ -295,7 +315,7 @@ Docker 컨테이너로 분리 개발 후 `docker-compose up`으로 로컬 통합
 | --- | --- |
 | 판정 지연 | P95 ≤ 1.0초 |
 | 물리 피드백 지연 | P95 ≤ 2.0초 (AI Hand·picar·micro:bit 중 최댓값 기준) |
-| 통신 방식 | micro:bit ↔ RPi: USB 시리얼 고정(BLE 미사용, 페어링 리스크 회피) |
+| 통신 방식 | micro:bit ↔ RPi5: USB 시리얼 고정(BLE 미사용, 페어링 리스크 회피). RPi5 ↔ RPi4B(picar): **Wi-Fi(HTTP)**, 500ms 타임아웃+1회 재시도 |
 | 장애 대응 | micro:bit/picar 통신 두절 시에도 학습 흐름이 끊기지 않도록 화면 폴백 UI 필수 |
 | 설명 가능성 | 비전공자 팀원도 이해 가능한 수준의 모델/파이프라인 복잡도 유지 (SVM 채택 근거) |
 | 인식 조건 | 평범한 실내 조명/단순 배경 전제 — 악조건(역광, 암실, 장갑 등)은 범위 제외 |
@@ -363,7 +383,9 @@ Docker 컨테이너로 분리 개발 후 `docker-compose up`으로 로컬 통합
 - ~~"서행"·"후진" AiHand 표현 동일~~ → 후진을 "검지만 펴기"로 재설계해 해결
 - ~~"우회전 유도" picar 동작 원문 오탈자~~ → "오른쪽으로 회전한다"로 정정 완료
 - ~~카메라 기종/연결 방식 미정~~ → **Raspberry Pi Camera Module 3, CSI 직결**로 확정 (2026-09-18)
-- ~~picar 제어 인터페이스 미정~~ → **RPi5 GPIO 직결**로 확정 — RPi5가 picar를 직접 구동 (2026-09-18)
+- ~~picar 제어 인터페이스 미정~~ → ~~RPi5 GPIO 직결~~ **(2026-09-18 재정정) RPi4B 8GB GPIO 직결 +
+  RPi5와 Wi-Fi(HTTP) 통신** — picar가 움직이면 카메라도 함께 이동하는 문제를 발견해 컴퓨트 보드를
+  분리함 (§1.3, §11.1 하단 "하드웨어 보드 분리" 항목 참고)
 - ~~MediaPipe 실행 모드 미정(VIDEO vs LIVE_STREAM)~~ → **`LIVE_STREAM`** 채택, 실시간 성능 우선 (2026-09-18)
 - ~~수신호 등록 기능 포함 여부~~ → **범위에서 제외** — 경량 분류기(SVM)는 고정 클래스만 예측 가능해
   재학습 없는 실시간 등록이 불가능함, 관리자 화면(구 SC-08)도 함께 제거 (2026-09-18)
@@ -380,11 +402,15 @@ Docker 컨테이너로 분리 개발 후 `docker-compose up`으로 로컬 통합
   세션 저장/복원은 만들지 않고, 재접속 시 항상 처음부터 시작 (09_화면목록_v2, 2026-09-18)
 - ~~Macro F1 계산 범위(negative 포함 여부)~~ → **신호 7종만 평균, negative 제외**로 최종 확정
   (05_모델카드_v3 §7-1, 2026-09-18)
+- ~~picar가 카메라와 함께 이동하는 문제~~ → **Raspberry Pi 4B 8GB를 추가**해 picar 전용 컨트롤러로
+  분리, RPi5(카메라 고정)와는 **Wi-Fi(HTTP)** 로 통신하도록 확정 (02_설계문서_v2 §1-1, 2026-09-18)
+- ~~RPi5 한 대의 카메라 추론+picar 제어 리소스 경합 우려~~ → 보드 분리로 **자연 해소** (2026-09-18)
 
 ### 11.2 구현 중 실물로 판단 예정 (개발 착수를 막지 않음)
 | 이슈 | 비고 |
 | --- | --- |
-| picar 전원 계통 분리 여부(모터 노이즈가 RPi5/카메라에 영향 주는지) | 큰 노이즈는 없을 것으로 예상하나, 카메라·picar가 아직 도착 전이라 지금은 검증 불가. picar/카메라 연동을 실제로 구현하는 담당자가 조립 후 직접 측정해 판단 (시스템_구성도_초안.md §5, 08_리스크레지스터) |
+| picar 전원 계통 분리 여부(모터 노이즈가 RPi4B 자체 Wi-Fi 모듈에 영향 주는지) | 큰 노이즈는 없을 것으로 예상하나, 카메라·picar가 아직 도착 전이라 지금은 검증 불가. picar 하드웨어 연동을 실제로 구현하는 담당자가 조립 후 직접 측정해 판단 (시스템_구성도_초안.md §5, 08_리스크레지스터) |
+| RPi5 ↔ RPi4B Wi-Fi IP 구성(고정 IP/mDNS) | 실물 네트워크 구성 후 확정 — 개발 착수 자체는 막지 않음(로컬 개발은 docker-compose 네트워크로 대체) |
 
 ### 11.3 상시 추적 리스크
 전체 목록은 08_리스크레지스터.md 참고 (좌/우회전 유도 혼동 가능성, picar 신규 하드웨어 통합 등 확인 중/미착수 항목 포함).

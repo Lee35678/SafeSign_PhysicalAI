@@ -1,8 +1,8 @@
-"""picar 모터+LED 제어. RPi5가 picar를 GPIO로 직접 구동한다 (document/02_설계문서_v2 §1-1).
+"""picar 모터+LED GPIO 직접 제어. 이 서비스는 **Raspberry Pi 4B 8GB(picar 차체 탑재)** 에서 실행된다.
 
-document/03_인터페이스계약서_v2 §5-2 picar_command 스키마를 그대로 GPIO 제어 함수 인자로 매핑한다.
-같은 RPi5 프로세스 내부 호출이므로 네트워크/시리얼 통신이 아니다 — 이 FastAPI 엔드포인트(/picar)는
-로컬 개발 시 서비스 경계를 나누기 위한 것이고, 실물 배포에서는 이 함수를 상태머신이 직접 호출해도 된다.
+document/02_설계문서_v2 §1-1, §3-2 참고 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
+picar 전용 컴퓨트 보드(RPi4B)로 분리했다(2026-09-18). RPi5의 교육 상태머신이 Wi-Fi(HTTP)로 이 서비스의
+`/picar` 엔드포인트를 호출한다 — document/03_인터페이스계약서_v2 §5-2 참고.
 
 TODO(송승호):
 - 실제 GPIO 핀 배정 (모터 드라이버 IN/EN 핀, LED 4개: 적색×2, 황색×2)
@@ -27,4 +27,4 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
     if mock:
         return {"status": "mocked", "received": picar_command}
     # TODO: motor = picar_command["motor"]; led = picar_command["led"] 를 실제 GPIO 핀에 적용
-    raise NotImplementedError("실물 picar GPIO 제어 미구현 — picar 도착 후 구현")
+    raise NotImplementedError("실물 picar GPIO 제어 미구현 — picar/RPi4B 도착 후 구현")
