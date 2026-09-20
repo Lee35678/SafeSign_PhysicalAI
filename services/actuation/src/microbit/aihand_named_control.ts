@@ -38,7 +38,7 @@ function moveServo(index: number, angle: number) {
     let max = fingerMaxAngle[index - 1];
     if (angle < min) angle = min;
     if (angle > max) angle = max;
-    StartbitV2.setPwmServo(StartbitV2.startbit_servorange.range1, index, angle, 150);
+    StartbitV2.setPwmServo(StartbitV2.startbit_servorange.range1, index, angle, 200);
 }
 
 // 검지/중지/약지/소지는 서보 장착 방향이 반대라서 각도를 뒤집어줌 (엄지는 정상 방향)
@@ -47,16 +47,18 @@ function moveInverted(index: number, angle: number) {
 }
 
 // 손가락 이름으로 한번에 지정 (다른 코드에서도 재사용하기 편하게 함수로 분리)
-// 2개씩 묶어서 동시 이동: (엄지+검지) -> 150ms -> (중지+약지) -> 150ms -> 소지
+// 손가락 하나씩 순차 이동, 각 손가락 사이 200ms 텀
 function setHand(thumb: number, index: number, middle: number, ring: number, pinky: number) {
     moveServo(THUMB, thumb);
+    basic.pause(200);
     moveInverted(INDEX, index);
-    basic.pause(150);
+    basic.pause(200);
     moveInverted(MIDDLE, middle);
+    basic.pause(200);
     moveInverted(RING, ring);
-    basic.pause(150);
+    basic.pause(200);
     moveInverted(PINKY, pinky);
-    basic.pause(150);
+    basic.pause(200);
 }
 
 // ---- 체크리스트 7가지 손동작 (표와 번호 그대로 매칭) ----
@@ -67,6 +69,9 @@ function gesture4() { setHand(0, 170, 170, 170, 0); }    // 엄지 펴기 + 소�
 function gesture5() { setHand(0, 170, 170, 170, 170); }  // 엄지만 펴기
 function gesture6() { setHand(170, 0, 170, 170, 170); }  // 검지 펴기
 function gesture7() { setHand(170, 170, 170, 170, 0); }  // 소지 펴기
+
+// 시작할 때 주먹 쥔 형태로 초기 자세 설정
+setHand(170, 170, 170, 170, 170);
 
 // ---- BLE 명령 수신 ----
 bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () {

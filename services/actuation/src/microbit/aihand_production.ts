@@ -21,7 +21,7 @@ function moveServo(index: number, angle: number) {
     let max = fingerMaxAngle[index - 1];
     if (angle < min) angle = min;
     if (angle > max) angle = max;
-    StartbitV2.setPwmServo(StartbitV2.startbit_servorange.range1, index, angle, 100);
+    StartbitV2.setPwmServo(StartbitV2.startbit_servorange.range1, index, angle, 200);
 }
 
 // 검지/중지/약지/소지는 서보 장착 방향이 반대라서 각도를 뒤집어줌 (엄지는 정상 방향)
@@ -29,18 +29,18 @@ function moveInverted(index: number, angle: number) {
     moveServo(index, 180 - angle);
 }
 
-// 손가락 하나씩 순차 이동, 각 손가락 사이 100ms 텀
+// 손가락 하나씩 순차 이동, 각 손가락 사이 200ms 텀
 function setHand(thumb: number, index: number, middle: number, ring: number, pinky: number) {
     moveServo(THUMB, thumb);
-    basic.pause(100);
+    basic.pause(200);
     moveInverted(INDEX, index);
-    basic.pause(100);
+    basic.pause(200);
     moveInverted(MIDDLE, middle);
-    basic.pause(100);
+    basic.pause(200);
     moveInverted(RING, ring);
-    basic.pause(100);
+    basic.pause(200);
     moveInverted(PINKY, pinky);
-    basic.pause(100);
+    basic.pause(200);
 }
 
 // ---- 체크리스트 7가지 손동작 ----
@@ -54,6 +54,9 @@ function gesture7() { setHand(170, 170, 170, 170, 0); }  // 소지 펴기
 
 StartbitV2.startbit_Init();
 basic.pause(300);
+
+// 시작할 때 주먹 쥔 형태로 초기 자세 설정
+setHand(170, 170, 170, 170, 170);
 
 bluetooth.startUartService();
 

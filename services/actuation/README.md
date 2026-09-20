@@ -9,14 +9,25 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
 `document/02_설계문서_v2.md` §1-1·§3, `document/03_인터페이스계약서_v2.md` §5-1·§5-3 기준 담당 범위:
 
 - **AI Hand**: 손가락 서보 5개 + 손목 서보 1개 제어 (`shared/schemas/aihand_command.schema.json`)
-- **micro:bitv2**: USB 시리얼(115200 baud)로 LED 매트릭스(O/X, 진행 표시) 송신, 버튼 입력 수신
-  (`shared/schemas/microbit_protocol.md`)
+- **micro:bit v2**: **BLE**(Nordic UART Service)로 통신. 운영 펌웨어(`aihand_production.ts`)가
+  `G1`~`G7` 제스처 명령만 처리한다 — micro:bit가 하드웨어 UART를 1개만 갖고 있어 서보 초기화 시
+  USB 시리얼이 죽는 제약 때문에 애초 계획이던 USB 시리얼(`shared/schemas/microbit_protocol.md`,
+  아직 미갱신)에서 BLE로 전환했다. LED 매트릭스(RESULT/PROGRESS)·버튼 입력은 아직 펌웨어에 없음.
 
 ## 디렉터리
 
-- `src/aihand/` — 서보 제어. `controller.py`에 7종 서보 각도 초기값(펴짐 170°/굽힘 10°/손목중립 90°) 포함
-- `src/microbit/` — pyserial 기반 시리얼 브릿지 (HELLO/READY 핸드셰이크, RESULT/PROGRESS 송신, BTN 수신)
-- `src/app.py` — FastAPI 진입점 (`/health`, `/command`, `/result`, `/progress`)
+- `src/aihand/controller.py` — `target_signal`(정지/서행/...) -> micro:bit `G{n}` 제스처 매핑
+  (`GESTURE_MAP`). 10_PRD_v2.md §3.2 표 순서와 동일하되, 우회전_유도(G4)는 문서상 "엄지+약지"이나
+  실제 펌웨어는 "엄지+소지"로 구현되어 있고 펌웨어 쪽이 최종 확정판이다(2026-09-21 팀 확인,
+  문서 갱신 필요). `DEFAULT_SERVO_ANGLES`는 실제 구동에는 쓰이지 않는 참고용 스키마 예시값.
+- `src/microbit/ble_bridge.py` — `bleak` 기반 BLE 브릿지. 연결/재연결, `G{n}` 전송과 `OK{n}`/
+  타임아웃 처리를 담당 (UUID·재연결 정책은 아래 "공통 전제" 참고)
+- `src/microbit/*.ts` — micro:bit(MakeCode) 쪽 펌웨어. 아래 각 파일 설명 참고
+- `src/app.py` — FastAPI 진입점 (`/health`, `/command`, `/result`, `/progress` — 뒤 둘은 펌웨어
+  미구현으로 MOCK_HARDWARE=false에서 `{"status": "unsupported"}` 반환)
+- `tests/vision_to_command_integration_test.py` — vision의 JudgmentResult 형태 값을
+  `/command`로 흘려보내 target_signal↔G{n} 매핑이 실제로 동작하는지 확인하는 통합 테스트
+  (MediaPipe 연동 전 단계 검증용, "다음 단계" 참고)
 
 ## MOCK_HARDWARE 모드
 
@@ -33,130 +44,55 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
 
 ## 아직 확정 안 된 것 (실물 테스트 필요)
 
-- [ ] AI Hand GPIO 핀 배정 및 연결 방식
-- [ ] 서보 각도 초기값(170/10/90)의 실물 캘리브레이션
-- [ ] micro:bit 실제 시리얼 코드로 프로토콜 동작 검증 -> bluetooth 방식으로 변경
+- [x] ~~AI Hand GPIO 핀 배정 및 연결 방식~~ → RPi5가 서보를 직접 구동하지 않음. micro:bit 펌웨어가
+  서보를 직접 제어하고 RPi5는 BLE로 `G{n}` 제스처만 지시
+- [x] ~~서보 각도 초기값(170/10/90)의 실물 캘리브레이션~~ → 손가락별 안전 가동범위 실측 완료(아래 표),
+  엄지 서보만 하드웨어 고장으로 교체 대기 중
+- [x] ~~micro:bit 실제 시리얼 코드로 프로토콜 동작 검증~~ → bluetooth 방식으로 전환 완료
+- [ ] `docker compose up actuation`으로 RPi5 실물 환경에서 BLE(BlueZ/D-Bus) 접근 검증 (컨테이너
+  네트워킹, docker-compose.yml 주석 참고)
+- [ ] RESULT/PROGRESS(micro:bit LED 매트릭스) 프로토콜 펌웨어 구현 — 현재 `/result`, `/progress`는
+  펌웨어 미지원으로 `MOCK_HARDWARE=false`에서도 동작하지 않음
+- [ ] `shared/schemas/microbit_protocol.md`를 BLE 프로토콜 기준으로 갱신 (아직 USB 시리얼 기준)
+- [ ] `document/10_PRD_v2.md` §3.2 표의 우회전_유도(G4) 설명을 "엄지+소지"로 정정 (현재 "엄지+약지"로
+  펌웨어와 불일치)
 
-# MicroPython 말고 STS를 선택한 이유
-1. 실행 속도
-STS는 브라우저에서 네이티브 머신코드로 컴파일되어 CODAL C++ 런타임과 직접 링크됨. 반면 MicroPython은 VM(인터프리터) 방식으로 한 줄씩 해석하며 실행.
-→ micro:bit 기준 순수 C++ 대비 STS는 2.1배 느림, MicroPython은 101배 느림 (약 48배 차이)
+# AiHand + micro:bit BLE 연동 코드
 
-2. 메모리 효율
-VM 방식은 인터프리터 자체와 바이트코드를 위한 추가 메모리가 필요함. STS는 컴파일된 결과물이 그대로 실행되어 오버헤드가 적음.
-→ RAM 사용량: MakeCode+CODAL 전체 1.8KB대 vs MicroPython 9.5KB (CircuitPython은 12.8KB)
+AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모터로 재현하기 위한 코드 모음입니다.
 
-3. 자원 제약 환경에서의 실질적 차이
-micro:bit는 블루투스 스택 구동에 8KB RAM이 필요한데, MicroPython은 RAM을 이미 많이 써서 블루투스 기능 자체가 동작 불가. MakeCode/STS는 이 문제 없음.
+## 공통 전제
 
-4. 타입 안정성
-STS는 정적 타입 시스템(Static TypeScript)을 써서 컴파일 시점에 오류를 잡아내고, 효율적인 코드 생성이 가능. Python은 동적 타입이라 이런 최적화가 어려움.
-
-5. 초보자 접근성 유지하면서 성능 확보
-블록 프로그래밍 ↔ STS 텍스트 코딩을 자유롭게 전환 가능하면서도, 두 방식 모두 동일한 컴파일 파이프라인을 거쳐 최종적으로 같은 성능을 냄 — "쉬운데 느린" 것이 아니라 "쉬우면서도 빠름"을 목표로 설계됨.
-
-참고 문헌 : Devine, J., Finney, J., de Halleux, P., Moskal, M., Ball, T., & Hodges, S. (2019). MakeCode and CODAL: Intuitive and efficient embedded systems programming for education. Journal of Systems Architecture, 98, 468–483. https://doi.org/10.1016/j.sysarc.2019.05.005
-
-# AiHand + micro:bit + BLE 연동 작업 정리
-
-> 목표: AI비전으로 8가지 수신호를 인식 → 라즈베리파이 → micro:bit(BLE) → AiHand 서보모터로 손동작 재현
+- micro:bit는 하드웨어 UART가 1개뿐이라 `startbit_Init()` 실행 시 USB 시리얼이 죽습니다. **PC와의 통신은 반드시 BLE**로 합니다.
+- 이 보드는 표준 Nordic UART Service와 달리 RX/TX UUID가 **반대로 배정**되어 있습니다 (`6e400003`=쓰기용 RX, `6e400002`=indicate용 TX). 다른 프로젝트 코드를 그대로 가져다 쓰면 안 됩니다.
+- 손가락 서보는 **동시 구동 금지**입니다(순간 전류 급증 → 전압 강하 → BLE 연결 끊김). 모든 코드는 손가락 간 200ms 텀을 둔 완전 순차 이동 방식을 사용합니다.
+  - 스펙상 근거(`doc/hardware_spec.md`): micro:bit v2 보드 최대 공급 전류 약 300mA vs 손가락 서보(LFD-01) 구속 전류 최대 700mA(6V). 서보 1개만 걸려도 보드 공급 한계를 넘으므로, 동시 구동 금지는 임시방편이 아니라 이 보드에서 사실상 유일하게 안전한 구동 방식이다.
 
 ---
 
-## 세션 1. USB 시리얼과 AiHand 서보 제어 충돌
+## `ble_debug_services.py`
 
-**문제**
-micro:bit로 AiHand 서보를 제어하면서 동시에 USB로 PC와 시리얼 통신을 하려 했으나, 둘 중 하나만 작동함.
+**용도**: micro:bit가 광고하는 BLE 서비스/캐릭터리스틱 UUID 전체를 스캔해서 출력하는 디버그 스크립트.
 
-**원인**
-micro:bit(nRF52832)는 하드웨어 UART가 1개뿐이며, `StartbitV2.startbit_Init()` 호출 시 `serial.redirect(P12, P8, 115200)`가 실행되어 UART 전체가 P12/P8(AiHand 서보 컨트롤러 채널)로 이동함. 이 순간 USB 시리얼 채널은 완전히 죽음.
+**언제 쓰나**: 새 micro:bit 보드로 교체했거나, `start_notify()`에서 `characteristic does not support notifications` 에러가 날 때 실제 UUID 속성을 확인하기 위해 실행합니다.
 
-**결과**
-테스트 코드로 실측 검증: 초기화 전엔 USB 시리얼 정상 → 초기화 후 USB로 재전송 시도 시 PC에 아무것도 안 찍힘 → 가설 확정.
-
-**해결**
-USB 시리얼 대신 **BLE(무선)**로 라즈베리파이와 통신하기로 결정. BLE는 UART와 별개 하드웨어라 서보 제어 채널과 충돌하지 않음.
+**주의**: 여기서 확인한 UUID가 위 "공통 전제"의 값과 다르면, 보드/펌웨어가 바뀐 것이니 다른 파일들의 UUID 상수도 함께 갱신해야 합니다.
 
 ---
 
-## 세션 2. 라즈베리파이 연동 방식 검토
+## `aihand_named_control.ts` / `aihand_named_control_pc.py` (캘리브레이션용)
 
-**문제**
-라즈베리파이와 어떤 방식으로 통신할지 결정 필요 (I2C / 여유 GPIO 시리얼 / USB / 블루투스).
+**용도**: 서보 개별 제어 및 각도 캘리브레이션 전용 코드. 운영 코드가 아니라 튜닝 도구입니다.
 
-**원인**
-- I2C: micro:bit가 슬레이브 모드를 지원하지 않아 구현 난이도 높음
-- 여유 GPIO 소프트웨어 시리얼: 응답속도 요구사항이 낮아 굳이 배선할 필요 없음, 양방향 구현도 번거로움
-- USB: 세션 1과 동일한 UART 충돌 문제 재발
+**지원 명령**:
+- `IDX` : 손가락 번호 확인용 (1=엄지, 2=검지, 3=중지, 4=약지, 5=소지)
+- `HAND:170,170,...` : 5개 서보 각도 동시 지정 (파싱 비용이 커서 운영용에는 미사용)
 
-**결과**
-요구사항 확인 결과 응답속도는 "초 단위 여유 있음", 방향은 "양방향 필요"로 확인됨.
+**서보 방향**:
+- 엄지: raw 각도 그대로 사용 (혼 장착 방향이 반대이므로 반전 불필요)
+- 검지~소지: `moveInverted()` (180-각도) 적용
 
-**해결**
-**BLE(UART 서비스)**로 최종 결정. 배선 불필요, 서보 채널과 무관, 양방향 지원.
-
----
-
-## 세션 3. PC ↔ micro:bit 순수 시리얼 테스트 (초기 디버깅)
-
-**문제**
-A버튼(초기화 전 USB 시리얼 테스트)을 눌러도 PuTTY에 아무것도 안 찍힘. B버튼(서보 제어)도 서보가 안 움직임.
-
-**원인 (복합)**
-1. **서보 미동작**: `setBusServo()`(버스 서보용 명령, cmd 0x35)를 사용했는데, 실제 AiHand는 **PWM 서보 인터페이스**에 연결되어 있어 `setPwmServo()`(cmd 0x03)를 써야 했음 — API 선택 오류
-2. **시리얼 미출력**: PuTTY 설정 문제 (COM 포트 오선택 및/또는 Flow control 기본값 문제)
-
-**결과**
-- 함수를 `setPwmServo()`로 교체 → 서보 정상 동작 확인
-- PuTTY를 Serial/115200/8N1/**Flow control: None**으로 재설정, 정확한 COM 포트 확인 → 시리얼 정상 수신 확인
-
-**해결**
-두 원인 모두 해결하여 A/B버튼 테스트, A+B(초기화 후 USB 재전송 실패) 테스트까지 전부 예상대로 재현 및 검증 완료.
-
----
-
-## 세션 4. BLE 통신 연결 및 UUID 문제
-
-**문제**
-`bleak`로 연결은 성공했으나 `start_notify()` 호출 시 `characteristic does not support notifications or indications` 에러 발생.
-
-**원인**
-표준 Nordic UART Service의 RX/TX UUID(`6e400002`=RX, `6e400003`=TX)를 그대로 사용했으나, **이 micro:bit(MakeCode Bluetooth 확장)는 두 UUID의 속성이 반대로 배정**되어 있었음:
-- `6e400003` → `write, write-without-response` (실제 RX)
-- `6e400002` → `indicate` (실제 TX, notify 아닌 indicate)
-
-**결과**
-서비스/캐릭터리스틱 전체 목록을 출력하는 디버그 스크립트로 실제 속성 확인.
-
-**해결**
-UUID를 스왑하여 코드 수정 (`bleak`의 `start_notify()`는 notify/indicate 모두 자동 처리). 이후 양방향 통신(A버튼 → PC 수신, PC → micro:bit 자동 전송) 정상 확인.
-
----
-
-## 세션 5. AiHand 5손가락 제어 및 방향/범위 캘리브레이션
-
-**문제 1: 손가락 매핑 확인 필요**
-서보 인덱스와 실제 손가락의 대응 관계를 몰라 5개를 한번에 제어할 수 없음.
-
-**해결**: `IDX:인덱스,각도` 명령으로 하나씩 테스트 → `1=엄지, 2=검지, 3=중지, 4=약지, 5=소지` 확정.
-
----
-
-**문제 2: 엄지만 방향이 반대**
-`hand 0,0,0,0,0` 실행 시 엄지만 다른 손가락과 반대로 움직임.
-
-**원인**: 엄지 서보만 물리적으로 반대 방향 장착.
-
-**해결**: 초기엔 `moveThumb()`로 엄지에만 반전(`180-각도`) 적용 → 이후 사용자 확인 결과 **엄지는 정상, 검지/중지/약지/소지가 반대**였음이 재확인되어 반전 대상을 엄지에서 나머지 4개로 수정 (`moveInverted()`).
-
----
-
-**문제 3: 서보 스톨(과부하)로 자체 정지**
-`hand 90,90,90,90,90` → `hand 10,10,10,10,10` 이동 시 서보가 기계적 한계에 부딪혀 멈춤.
-
-**원인**: 손가락마다 실제 안전 가동범위가 다른데 전체에 동일한 범위(0~180, 이후 10~170)를 적용함.
-
-**해결**: raw 각도 직접 테스트(`IDX` 명령)로 손가락별 실제 min/max 실측:
+**손가락별 안전 가동범위 (스톨 방지)**:
 
 | 손가락 | min | max |
 |---|---|---|
@@ -166,58 +102,60 @@ UUID를 스왑하여 코드 수정 (`bleak`의 `start_notify()`는 notify/indica
 | 약지 | 25 | 125 |
 | 소지 | 30 | 120 |
 
-코드에 `fingerMinAngle[]`, `fingerMaxAngle[]` 배열로 반영, `moveServo()` 내부에서 자동 clamp 처리.
+**이동 방식**: 손가락 간 텀 200ms 완전 순차 이동 (초기화 시 주먹 자세 포함).
+
+**PC 쪽(`_pc.py`)**: `bleak` 사용, RX/TX UUID는 위 "공통 전제" 참고.
 
 ---
 
-## 세션 6. BLE 연결 끊김 (Unreachable 에러)
+## `aihand_production.ts` / `aihand_production_pc.py` (운영용)
 
-**문제**
-`hand 170,170,170,170,170`(5개 손가락 동시 극단 이동) 실행 시 `BleakError: ... Unreachable`, micro:bit LED에 연결 끊김(X) 표시.
+**용도**: 실제 시연/운영에 쓰는 경량화 버전. 캘리브레이션 코드와 달리 파싱 비용을 최소화했습니다.
 
-**원인**
-5개 서보를 동시에(또는 짧은 텀으로 겹치게) 극단 각도로 구동 시 **순간 전류가 급증 → 전압 강하 → BLE 연결 불안정**. 개별 손가락은 문제없었으나 동시 구동 시 누적 부하로 간헐적 발생.
+**지원 명령**: `G1`~`G7` (수신호 7종에 대응하는 완성 동작만 전송). `HAND:` 형식은 지원하지 않습니다.
 
-**결과**
-손가락 사이 텀을 550ms(완전 순차) → 150ms(2개씩 묶음) → 100ms(완전 개별 순차)로 단계적으로 조정하며 안정성 테스트. `g 1`/`g 2` 반복 실행은 안정적으로 확인됨 (일부는 우연히 성공했을 가능성도 있어 반복 검증 지속).
+**경량화 이유**: `substr()+split()+parseInt()` 다회 호출은 micro:bit의 협소한 RAM에서 힙 할당이 잦아 불안정합니다. 운영 코드는 `charCodeAt()`으로 문자 직접 비교만 수행합니다.
 
-**해결**
-현재 **손가락 하나씩 순차 이동 + 100ms 텀**으로 설정한 상태. 완전한 해결은 세션 7과 연결됨 (근본 원인이 다른 데 있었음).
+**이동 방식**: 캘리브레이션용과 동일하게 손가락 간 200ms 순차 이동, 초기화 시 주먹 자세.
+
+**현재 제약**: 엄지 서보 고장(하드웨어 교체 대기 중)으로 인해 **엄지 제외 4손가락 기준**으로만 정상 동작합니다. 엄지 서보(Hiwonder LFD-01) 교체 후 `fingerMinAngle[0]`/`fingerMaxAngle[0]` 재검증 필요.
 
 ---
 
-## 세션 7. 패닉 코드 070 (SD_ASSERT) — BLE와 사운드 충돌
+## `aihand_finger_test.ts` (손가락별 개별 테스트)
 
-**문제**
-반복 테스트 중 micro:bit LED에 ☹(슬픈 얼굴) + **070** 패닉 코드 표시.
+**용도**: 손가락 1개씩 개별 채널을 격리해서 테스트하는 진단 도구. 버튼 단독 사용과 BLE(`IDX`) 겸용을 모두 지원합니다.
 
-**원인 규명 과정**
-1. 처음엔 "서보 각도 문제를 라이브러리가 감지해서 멈추는 기능"으로 의심 → 라이브러리 소스 확인 결과 그런 기능 자체가 없음(관련 코드는 전부 미완성 주석 처리 상태)
-2. 070이 micro:bit 런타임(CODAL)의 **패닉 코드**임을 확인
-3. 사용자가 공식 정보 제공: **070 = `MICROBIT_PANIC_SD_ASSERT`**, 즉 **BLE SoftDevice와의 상호작용 문제**
-4. 라이브러리 내부 코드 재검토 → `startbit_Init()`의 `basic.forever()` 루프 안에 배터리 전압이 6.8V 미만일 때 `music.playTone()`을 호출하는 저전압 경고음 코드 발견
-5. **`music.playTone()`은 micro:bit v2에서 BLE SoftDevice와 동일한 하드웨어 타이머 자원을 사용** → 배터리 소모로 전압이 낮아지며 이 경고음이 반복 실행되고, BLE 활성 상태와 충돌하여 SD_ASSERT(070) 발생
+**언제 쓰나**:
+- 특정 서보가 무반응/이상 동작할 때 하드웨어(보드 채널) 문제인지 서보 자체 문제인지 구분할 때
+- **서보 스왑 테스트** 절차: 의심되는 채널에 정상 작동 중인 다른 서보를 연결해 반응을 확인 (반전 방향으로 움직이면 채널은 정상, 서보 쪽이 원인)
 
-**결과**
-장시간 반복 구동(`loop` 테스트)으로 배터리 소모 → 저전압 임계값 도달 → 경고음 반복 → 패닉, 이라는 인과관계가 지금까지의 증상(반복 테스트 중 간헐적 발생)과 일치함을 확인.
-
-**해결**
-`StartbitV2` 라이브러리를 GitHub 확장이 아닌 **프로젝트 내 직접 파일로 복사**하여 `music.playTone()` 호출부를 **LED 아이콘 표시로 대체**한 패치본(`StartbitV2_patched.ts`) 제작 완료. (내일 적용 및 재검증 예정)
+**진단 이력 참고**: 엄지 채널(1번)은 이 도구로 스왑 테스트를 완료해 보드는 정상, 엄지 서보 자체의 하드웨어 고장으로 최종 확정되었습니다.
 
 ---
 
-## 세션 8. 코드 최적화 — 메모리/통신 경량화
+## FastAPI 레이어 (`src/app.py`)
 
-**문제**
-BLE + 서보 제어 반복 사용 시 안정성 우려, 명령 파싱 방식이 무거움.
+RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서비스 레이어입니다.
 
-**원인**
-`HAND:170,170,170,170,170` 같은 명령은 `substr()` + `split(",")` + `parseInt()` 5회 호출로 힙 메모리 할당이 잦음. micro:bit는 RAM이 작아 누적되면 불안정 요소가 될 수 있음.
+| 엔드포인트 | 설명 |
+| --- | --- |
+| `GET /health` | `mock_hardware`, `microbit_connected` 상태 확인 |
+| `POST /command` | `aihand_command.schema.json` 형식 입력 → `target_signal`을 `G{n}`으로 변환해 BLE 전송 |
+| `POST /result` | 판정 결과 LED 표시 (펌웨어 미구현, 현재는 `MOCK_HARDWARE=true`에서만 응답) |
+| `POST /progress` | 진행 표시 (`/result`와 동일한 이유로 펌웨어 미구현) |
 
-**해결**
-- 캘리브레이션용 코드(`IDX`, `HAND` 명령)와 운영용 코드를 분리
-- 운영용 최종 코드(`aihand_production.ts`)는 **`G1`~`G7` 형식만 지원**, `charCodeAt()`으로 직접 문자 비교하여 `substr`/`split`/`parseInt` 호출 자체를 제거 → 힙 할당 최소화
+`/command` 응답 예 (`MOCK_HARDWARE=true`): `{"status": "mocked", "sent": "G1", "target_signal": "정지", "gesture": 1}`
 
+## 다음 단계
+
+1. 엄지 서보(Hiwonder LFD-01) 교체 → `aihand_named_control.ts`의 엄지 min/max 재검증
+2. `aihand_production.ts`에 검증된 값 반영
+3. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command` end-to-end 검증
+   (`tests/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
+4. `services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 실제로
+   호출하도록 연동 (현재 `state_machine.py`는 TODO 상태)
+5. RESULT/PROGRESS 프로토콜을 펌웨어(`aihand_production.ts`)에 추가해 `/result`, `/progress` 실물 지원
 
 ## 로컬 실행
 
@@ -225,8 +163,8 @@ BLE + 서보 제어 반복 사용 시 안정성 우려, 명령 파싱 방식이 
 docker compose up --build actuation
 curl http://localhost:8002/health
 
-
-
+# 또는 컨테이너 없이 직접 (MOCK_HARDWARE 기본값 true):
+cd src && uvicorn app:app --reload --port 8002
 ```
 
 

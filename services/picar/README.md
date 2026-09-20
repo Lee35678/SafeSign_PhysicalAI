@@ -14,7 +14,9 @@ RACI: 하드웨어·로봇동작 **R** (services/actuation과 동일 담당자, 
 
 ## 담당 범위
 
-- `src/controller.py` — 모터(전진/후진/정지/좌우회전) + LED(적색×2, 황색×2) GPIO 직접 제어
+- `src/controller.py` — 모터(전진/후진/정지/좌우회전) + LED(적색×2, 황색×2) 제어. `services/actuation/doc/hardware_pinmap.md`의 Raspbot_pinmap 표(2026-09-21 확인) 기준:
+  - **모터**: Pi의 raw GPIO가 아니라 I2C(SCL=BCM3, SDA=BCM2)로 하위 코프로세서를 거쳐 구동 (Raspbot 벤더 I2C 명령 프로토콜 확보 필요, 아직 TODO)
+  - **LED**: 보드 내장 LED는 적색(BCM21)·청색(BCM20) 2개뿐. 황색 2개는 보드에 없어 외부 LED를 여유 GPIO에 추가 배선 예정(실물 배선 후 핀 확정, `controller.py`의 `USED_BCM_PINS` 참고해 충돌 회피)
 - `src/app.py` — FastAPI 진입점 (`/health`, `/picar`)
 
 입력 스키마: `shared/schemas/picar_command.schema.json`. `document/03_인터페이스계약서_v2.md` §5-2에
@@ -33,7 +35,9 @@ picar/RPi4B가 아직 팀에 도착하지 않았으므로, 기본값 `MOCK_HARDW
 
 ## 아직 확정 안 된 것
 
-- [ ] GPIO 핀 배정
+- [x] ~~GPIO 핀 배정~~ → LED 적색(BCM21)만 확정. 모터는 GPIO가 아니라 I2C 구조로 확인됨(위 "담당 범위" 참고)
+- [ ] 모터 I2C 명령 프로토콜(레지스터 주소/바이트 포맷) — Raspbot 벤더 라이브러리/문서 확보 필요
+- [ ] 황색 LED 2개 배선 및 최종 BCM 핀 번호 확정
 - [ ] picar 전원 계통 분리 여부(모터 노이즈가 RPi4B 자체 Wi-Fi 모듈에 영향 주는지) — 실물 조립 후 이 서비스 구현 담당자가 직접 판단 (시스템_구성도_초안.md §5)
 - [ ] RPi5 ↔ RPi4B Wi-Fi IP 구성(고정 IP/mDNS)
 
