@@ -37,11 +37,13 @@ FINGER_STATE = {
     "정지": [True, True, True, True, True],
     "서행": [False, True, True, False, False],
     "좌회전_유도": [True, True, False, False, False],
-    "우회전_유도": [True, False, False, True, False],
-    "확인_완료": [True, False, False, False, False],
+    "우회전_유도": [True, False, False, False, True],   # 2026-09-20 약지→소지 변경
+    "확인_완료": [False, False, False, False, False],    # 2026-09-20 따봉→주먹 변경
     "후진": [False, True, False, False, False],
     "주의": [False, False, False, False, True],
-    "negative": [False, False, False, False, False],  # 주먹(애매한 자세 대용)
+    # negative는 "손은 있으나 7종이 아닌 자세"다(04_데이터셋명세서_v2 §1). 확인_완료가 주먹이 되면서
+    # 겹치지 않도록 엄지+중지라는 7종에 없는 조합을 쓴다.
+    "negative": [True, False, True, False, False],
 }
 
 # MediaPipe 손 랜드마크 인덱스: 각 손가락의 [MCP, PIP, DIP, TIP]

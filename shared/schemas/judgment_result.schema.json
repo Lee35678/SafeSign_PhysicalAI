@@ -25,3 +25,4 @@
     "consecutive": { "type": "integer", "minimum": 0, "description": "현재까지 연속으로 같은 클래스가 나온 프레임 수 (N프레임 판정 안정화 진행도, 05_모델카드_v3 §3-6)" }
   }
 }
+
