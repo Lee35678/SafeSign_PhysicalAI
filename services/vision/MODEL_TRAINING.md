@@ -16,7 +16,7 @@
 | 입력 | MediaPipe Hand Landmarker의 21개 `hand_world_landmarks` | 픽셀이 아닌 좌표라 조명·배경 변화에 강하다 |
 | 특징 | 정규화 후 **63차원 벡터** | 위치·크기·회전·좌우손 차이를 제거해 "손 모양"만 남긴다 |
 | 분류기 | **SVM (RBF 커널)** + StandardScaler | 63차원·클래스당 300장 규모에서 과적합 위험이 낮고 튜닝 파라미터가 2개뿐 |
-| 확률 | `SVC(probability=True)` (Platt scaling) | τ(미판정 임계값) 판정에 확률이 필요하다 |
+| 확률 | `CalibratedClassifierCV(SVC(), ensemble=False)` (Platt scaling) | τ 판정에 확률이 필요. `SVC(probability=True)`는 sklearn 1.9에서 deprecated |
 | 분할 | **인물 단위(subject-wise)** GroupKFold | 같은 사람이 train/test에 섞이면 정답률이 부풀려진다 |
 | 평가 | Macro F1은 **신호 7종만**(negative 제외) + 치명 오분류 0건 | 학습자가 실제로 시도하는 대상만 체감 성능으로 본다 |
 | 학습 장소 | **Google Colab** | 로컬 GPU 성능 한계. 단 SVM은 CPU로 충분해 GPU 런타임은 선택 사항 |
@@ -211,7 +211,19 @@ webcam_check는 운영과 **같은 `cognition/` 코드**를 쓰므로, 여기서
 
 ---
 
-## 8. 지금 상태 (2026-09-18)
+## 8. 지금 상태 (2026-09-19 기준)
+
+### 8-0. 확인된 라이브러리 버전
+
+실제로 설치해 검증한 현재 버전대: **mediapipe 1.0.1 / scikit-learn 1.9.1 / numpy 2.5.x / opencv 5.0**.
+
+- mediapipe 1.x에서도 Tasks API(`HandLandmarker`, `RunningMode.LIVE_STREAM`, `mp.Image`)는 그대로라
+  코드 수정이 필요 없었다. 다만 **레거시 `mediapipe.solutions` 모듈은 제거**되어, 모델카드에 있던
+  "느리면 `solutions.hands`로 교체" 폴백은 폐기하고 다른 대안으로 바꿨다 (05_모델카드_v3 §3-1).
+- **scikit-learn 버전은 Colab과 이 서비스가 맞아야 한다** — 어긋나면 joblib 로드가 깨지거나 조용히
+  다르게 동작한다. 번들 metadata의 `sklearn_version`과 실제 설치 버전을 `model_store`가 비교해
+  경고를 띄우도록 해뒀다. 경고가 보이면 재학습하거나 서비스 쪽 버전을 맞출 것.
+
 
 - ⏳ **실제 수신호 데이터는 아직 없다** — 데이터 담당(김지훈)이 수집 중. 그래서 이 파이프라인은
   아직 실제 학습을 돌린 적이 없고, 05_모델카드_v3 §7-3 실측 표도 비어 있다.
