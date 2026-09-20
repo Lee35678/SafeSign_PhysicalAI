@@ -17,6 +17,11 @@ services/data/datasets/raw/*
 !services/data/datasets/raw/.gitkeep
 services/data/datasets/processed/*
 !services/data/datasets/processed/.gitkeep
+# 공개 데이터셋(Kaggle) 원본 사진 — 각자 내려받아 사용 (services/data/README.md §5)
+services/data/datasets/raw_public/
+
+# MediaPipe 모델 번들 (7.8MB, 실행 시 자동 다운로드)
+services/data/models/*.task
 
 # DB 파일
 *.sqlite3
