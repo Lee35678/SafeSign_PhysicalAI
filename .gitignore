@@ -45,3 +45,4 @@ services/vision/models/*.task
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+.claude/

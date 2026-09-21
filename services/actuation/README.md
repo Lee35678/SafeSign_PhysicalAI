@@ -53,7 +53,8 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
 - [x] ~~AI Hand GPIO 핀 배정 및 연결 방식~~ → RPi5가 서보를 직접 구동하지 않음. micro:bit 펌웨어가
   서보를 직접 제어하고 RPi5는 BLE로 `G{n}` 제스처만 지시
 - [x] ~~서보 각도 초기값(170/10/90)의 실물 캘리브레이션~~ → 손가락별 안전 가동범위 실측 완료(아래 표).
-  엄지 서보는 **교체하지 않고 엄지 없이(4손가락) 진행하기로 확정**(2026-09-21)
+  엄지 서보는 **교체하지 않기로 확정**했지만, **엄지 동작은 설계·시현에 그대로 유지**한다(2026-09-21)
+  — 펌웨어의 엄지 각도는 손대지 않고 물리적으로만 움직이지 않는 상태로 진행
 - [x] ~~micro:bit 실제 시리얼 코드로 프로토콜 동작 검증~~ → bluetooth 방식으로 전환 완료
 - [ ] `docker compose up actuation`으로 RPi5 실물 환경에서 BLE(BlueZ/D-Bus) 접근 검증 (컨테이너
   네트워킹, docker-compose.yml 주석 참고)
@@ -67,13 +68,13 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
   결정 — 진행 표시는 web 화면 쪽 담당, micro:bit는 수신 확인만). `ble_bridge.send_progress()` +
   `/progress` 엔드포인트 연동까지 완료
 - [x] ~~`shared/schemas/microbit_protocol.md`를 BLE 프로토콜 기준으로 갱신~~ → `document/03_인터페이스계약서_v2.md` §5-3과 함께 갱신 완료(2026-09-21)
-- [ ] `document/10_PRD_v2.md` §3.2 표의 우회전_유도(G4) 설명을 "엄지+소지"로 정정 (현재 "엄지+약지"로
-  펌웨어와 불일치)
-- [ ] **엄지 제외 확정에 따른 제스처 구별성 재검토 (팀 실물 테스트로 결정, 아직 미착수)** — 현재
-  `G1`~`G7`은 엄지값만 다르고 검지/중지/약지/소지 조합이 동일한 쌍이 있다: `G3`(좌회전_유도)↔`G6`(후진),
-  `G4`(우회전_유도)↔`G7`(주의). 엄지가 고정되면 이 두 쌍이 AI Hand 상에서 시각적으로 구별되지 않는다.
-  4손가락만으로도 2⁴=16가지 조합이 가능해 재설계는 가능하지만, 어떤 조합으로 바꿀지는 팀이 실물로
-  직접 돌려보고 정하기로 함 — 코드는 아직 변경하지 않음
+- [x] ~~`document/10_PRD_v2.md` §3.2 표의 우회전_유도(G4) 설명을 "엄지+소지"로 정정~~ → 정정 완료.
+  PRD 표가 펌웨어와 일치함(2026-09-21 확인)
+- [x] ~~엄지 제외 확정에 따른 제스처 구별성 재검토(4손가락 재설계)~~ → **재설계하지 않기로 확정**
+  (2026-09-21). `G1`~`G7`은 엄지값만 다르고 나머지 4손가락 조합이 같은 쌍이 있어(`G3`(좌회전_유도)↔
+  `G6`(후진), `G4`(우회전_유도)↔`G7`(주의)) 엄지가 멈춰 있으면 AI Hand 상에서 구별되지 않지만,
+  손모양을 바꾸면 PRD §3.2·vision 학습 클래스·공개 데이터까지 연쇄 수정이 필요해 비용이 더 크다.
+  **시현상의 제약으로 감수**하고 펌웨어 제스처 정의는 현행 유지 — 필요하면 web 화면 안내로 보완한다
 
 # AiHand + micro:bit BLE 연동 코드
 
@@ -142,9 +143,10 @@ AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모�
 
 **이동 방식**: 손가락 간 텀 200ms 완전 순차 이동 (초기화 시 주먹 자세 포함) — 두 모드 공통.
 
-**현재 제약**: 엄지 서보 하드웨어 고장으로 **교체하지 않고 엄지 없이(4손가락) 영구 진행하기로 확정**
-(2026-09-21) — `G3`↔`G6`, `G4`↔`G7`이 엄지 없이는 구별되지 않는 문제가 남아있음(위 "아직 확정 안
-된 것" 참고).
+**현재 제약**: 엄지 서보 하드웨어 고장 — **교체하지 않기로 확정**(2026-09-21). 다만 **엄지 동작은
+설계·시현에 그대로 유지**하므로 펌웨어의 `G1`~`G7` 엄지 각도는 변경하지 않는다. 실물에서는 엄지가
+움직이지 않아 `G3`↔`G6`, `G4`↔`G7`이 시각적으로 구별되지 않지만, 제스처 재설계는 하지 않고 감수한다
+(위 "아직 확정 안 된 것" 참고).
 
 **PC 쪽 (`tests/aihand_control_pc.py`)**: micro:bit 쪽과 동일하게 최상단 `TEST_MODE` 한 줄로 운영
 (숫자 입력 → `G1`~`G7`, `loop` 내구성 테스트, `progress <current> <total>`)/테스트(`idx`/`g`/`hand`
@@ -183,16 +185,15 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
 
 ## 다음 단계
 
-1. 엄지 서보(Hiwonder LFD-01) 교체 → `aihand_control.ts`(`TEST_MODE = true`)로 엄지 min/max 재검증
-2. `aihand_control.ts`의 `fingerMinAngle`/`fingerMaxAngle`에 검증된 값 반영 (`TEST_MODE = false`로
-   되돌려 운영 모드로 배포)
-3. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
+1. ~~엄지 서보(Hiwonder LFD-01) 교체 → 엄지 min/max 재검증~~ → **교체하지 않기로 확정**(2026-09-21).
+   엄지 각도 상수는 현행 유지하고 엄지 동작은 설계·시현에 그대로 둔다
+2. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
    검증 (`tests/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
-4. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
+3. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
    연동~~ → `state_machine.py`에 구현 완료(2026-09-21, `services/web/README.md` 참고)
-5. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
+4. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
    완료(2026-09-21, LED 표시 없이 수신 확인만)
-6. BTN(버튼 입력) 프로토콜 필요 여부 검토 — 아직 펌웨어에 없고 사용 계획도 불명확
+5. BTN(버튼 입력) 프로토콜 필요 여부 검토 — 아직 펌웨어에 없고 사용 계획도 불명확
 
 ## 로컬 실행
 
