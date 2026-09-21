@@ -1,8 +1,18 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-mediapipe==0.10.14
-numpy==1.26.4
-scikit-learn==1.5.1
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+mediapipe>=1.0,<2.0
+numpy>=2.0,<3.0
+scikit-learn>=1.9,<2.0
+joblib>=1.4,<2.0
+
+# ⚠️ scikit-learn 버전은 **학습(Colab)과 추론(여기)이 맞아야 한다.**
+#    joblib로 직렬화한 모델은 버전이 크게 다르면 로드 시 경고/오류가 난다.
+#    학습 노트북이 번들 metadata에 sklearn_version을 기록하고, model_store가 기동 시 현재 설치
+#    버전과 비교해 다르면 경고를 띄운다 — 경고가 보이면 둘 중 하나를 맞춰서 재학습/재설치할 것.
+#
+# 정확한 핀(==) 대신 범위(>=,<)를 쓰는 이유: 이 서비스는 x86 Docker(개발)와 RPi5 arm64(배포)
+# 양쪽에서 돌아야 하는데, 두 플랫폼에 같은 패치 버전 휠이 항상 있지는 않다.
+# 시연 직전에 환경을 굳혀야 하면 `pip freeze > requirements.lock.txt`로 잠글 것.
 
 # picamera2는 여기 포함하지 않습니다: Raspberry Pi OS apt 패키지(python3-picamera2)로 설치되며
 # libcamera 시스템 라이브러리에 의존해 일반 pip/Docker(x86)에서 설치되지 않습니다.
