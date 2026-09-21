@@ -160,6 +160,40 @@ def get_match_score_calibration() -> Optional[dict]:
     return (bundle or {}).get("match_score_calibration")
 
 
+_gate_cache: Optional[dict] = None
+_gate_cache_key: Optional[int] = None
+
+
+def get_open_set_gate() -> Optional[dict]:
+    """1단계 소속 게이트 파라미터. 없으면(구버전 번들/게이트 끔) None.
+
+    반환: {"thresholds": {클래스: float}, "centroids": {클래스: np.ndarray}, ...}
+    번들에는 centroid가 list로 들어 있으므로 여기서 한 번만 ndarray로 바꿔 캐시한다
+    (프레임마다 변환하면 30fps에서 낭비가 크다).
+    """
+    global _gate_cache, _gate_cache_key
+
+    bundle = load_bundle()
+    raw = (bundle or {}).get("open_set_gate")
+    if not raw:
+        return None
+    if _gate_cache is not None and _gate_cache_key == id(bundle):
+        return _gate_cache
+
+    import numpy as np
+
+    _gate_cache = {
+        "kind": raw.get("kind", "centroid_cosine"),
+        "percentile": raw.get("percentile"),
+        "thresholds": {str(k): float(v) for k, v in (raw.get("thresholds") or {}).items()},
+        "centroids": {
+            str(k): np.asarray(v, dtype=float) for k, v in (raw.get("centroids") or {}).items()
+        },
+    }
+    _gate_cache_key = id(bundle)
+    return _gate_cache
+
+
 def get_feature_mode(default: str) -> str:
     """학습 때 쓴 특징 모드. 추론은 반드시 이 값을 따라야 한다.
 
@@ -182,5 +216,13 @@ def describe() -> dict:
         "classes": bundle.get("classes"),
         "tau": bundle.get("tau"),
         "feature_mode": (bundle.get("metadata") or {}).get("feature_mode"),
+        "open_set_gate": (
+            None if not bundle.get("open_set_gate")
+            else {
+                "kind": bundle["open_set_gate"].get("kind"),
+                "percentile": bundle["open_set_gate"].get("percentile"),
+                "thresholds": bundle["open_set_gate"].get("thresholds"),
+            }
+        ),
         "metadata": bundle.get("metadata", {}),
     }

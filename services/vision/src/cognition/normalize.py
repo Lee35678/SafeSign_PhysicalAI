@@ -28,10 +28,20 @@ document/05_모델카드_v3.md §3-5 "정규화 절차"의 구현체다. **학�
   지점이 생기며, 쿼터니언은 부호 모호성이 있다. 앞 두 열만 쓰면 z축은 외적으로 복원되므로
   정보 손실 없이 연속적이다.
 
-  **기본값은 False다.** 공개 데이터는 클래스마다 출처 데이터셋이 달라 촬영 각도가 클래스와
-  상관되어 있을 수 있고(04_데이터셋명세서_v2 §3), 그 상태로 방향 축을 켜면 모델이 수신호가
-  아니라 "어느 데이터셋 사진인가"를 학습한다. 자체 촬영 데이터로 효과가 확인된 뒤에 켠다
+  **기본값은 사용하지 않음이다.** 공개 데이터는 클래스마다 출처 데이터셋이 달라 촬영 각도가
+  클래스와 상관되어 있을 수 있고(04_데이터셋명세서_v2 §3), 그 상태로 방향 축을 켜면 모델이
+  수신호가 아니라 "어느 데이터셋 사진인가"를 학습한다. 자체 촬영 데이터로 효과가 확인된 뒤에 켠다
   (회의안건_2026-09-21 안건 3 / 안건 1).
+
+**특징 모드 (2026-09-22)**
+  세 가지를 지원하고, 어느 것을 썼는지는 번들 metadata["feature_mode"]에 기록된다.
+
+      joint23             (기본·권장) 관절 각도·거리 23차원 — joint_features 참고
+      landmark63          canonical 좌표 그대로
+      landmark63+orient6  위 + 손 방향 6차원
+
+  실측(27,735건, 세션 단위 5겹): joint23 **88.71%** > landmark63+orient6 77.11% >
+  landmark63 77.57%. 좌표를 그대로 쓰는 것보다 관절 관계량으로 바꾸는 쪽이 11%p 이상 낫다.
 
   주의: MediaPipe world landmark의 z는 단안 추정이라 x·y보다 부정확하다. 방향 6차원 중 z가
   섞인 성분은 상대적으로 노이즈가 크다.
@@ -43,13 +53,22 @@ from typing import Iterable, Sequence
 import numpy as np
 
 LANDMARK_COUNT = 21
-FEATURE_DIM = LANDMARK_COUNT * 3  # 63 (기본: 방향 축 미사용)
+FEATURE_DIM = LANDMARK_COUNT * 3  # 63 (canonical 좌표를 그대로 평탄화)
 ORIENTATION_DIM = 6               # 회전행렬 앞 두 열
-FEATURE_DIM_ORIENTED = FEATURE_DIM + ORIENTATION_DIM  # 69 (with_orientation=True)
+FEATURE_DIM_ORIENTED = FEATURE_DIM + ORIENTATION_DIM  # 69
+JOINT_DIM = 23                    # 관절 각도·거리 특징 (아래 joint_features 참고)
 
 # 번들 metadata["feature_mode"]에 기록되는 값. 학습과 추론이 반드시 같아야 한다.
 FEATURE_MODE_BASE = "landmark63"
 FEATURE_MODE_ORIENTED = "landmark63+orient6"
+FEATURE_MODE_JOINT = "joint23"
+
+FEATURE_DIMS = {
+    FEATURE_MODE_BASE: FEATURE_DIM,
+    FEATURE_MODE_ORIENTED: FEATURE_DIM_ORIENTED,
+    FEATURE_MODE_JOINT: JOINT_DIM,
+}
+DEFAULT_FEATURE_MODE = FEATURE_MODE_JOINT
 
 # MediaPipe Hand Landmarker 인덱스 (고정)
 WRIST = 0
@@ -61,14 +80,14 @@ PINKY_MCP = 17
 _EPS = 1e-6
 
 
-def feature_mode(with_orientation: bool) -> str:
-    """번들 metadata에 기록할 특징 모드 이름."""
-    return FEATURE_MODE_ORIENTED if with_orientation else FEATURE_MODE_BASE
-
-
-def feature_dim(with_orientation: bool) -> int:
+def feature_dim(mode: str) -> int:
     """해당 모드의 특징 차원 수."""
-    return FEATURE_DIM_ORIENTED if with_orientation else FEATURE_DIM
+    try:
+        return FEATURE_DIMS[mode]
+    except KeyError:
+        raise NormalizationError(
+            f"알 수 없는 feature_mode: {mode!r} (가능: {sorted(FEATURE_DIMS)})"
+        ) from None
 
 
 class NormalizationError(ValueError):
@@ -169,36 +188,99 @@ def orientation_features(rotation: np.ndarray) -> np.ndarray:
     return np.asarray(rotation, dtype=np.float64)[:, :2].T.reshape(-1)
 
 
-def to_feature_vector(
-    landmarks: Sequence[dict], handedness: str = "Right", with_orientation: bool = False
-) -> np.ndarray:
-    """landmark_frame의 `landmarks`(+handedness) -> (63,) 또는 (69,) 특징벡터.
+# 손가락별 (MCP, PIP, DIP, TIP) 인덱스. 엄지는 (CMC, MCP, IP, TIP).
+_FINGER_JOINTS = (
+    (1, 2, 3, 4),      # 엄지
+    (5, 6, 7, 8),      # 검지
+    (9, 10, 11, 12),   # 중지
+    (13, 14, 15, 16),  # 약지
+    (17, 18, 19, 20),  # 소지
+)
+_TIPS = (4, 8, 12, 16, 20)
 
-    분류기 입력과 match_score(cosine similarity) 계산에 공통으로 쓴다 (05_모델카드_v3 §3-5 5번).
+
+def _cos(u: np.ndarray, v: np.ndarray) -> float:
+    denom = float(np.linalg.norm(u) * np.linalg.norm(v))
+    return 0.0 if denom < _EPS else float(np.dot(u, v) / denom)
+
+
+def joint_features(canonical: np.ndarray) -> np.ndarray:
+    """canonical (21, 3) -> 관절 각도·거리 특징 (23,).
+
+    **왜 좌표 대신 이것인가.** canonical 좌표 63차원에는 "엄지가 펴졌나"가 암묵적으로만 들어
+    있다. 손모양 차이가 21개 점에 흩어져 있어서, 손가락 하나 차이는 63차원 중 12개 성분이
+    조금씩 움직이는 형태로만 나타난다. 그래서 RBF 커널이 그 방향을 잘 못 잡는다.
+
+    관절 각도·거리로 바꾸면 "손가락 f가 펴졌는가"가 **한 축**이 된다. 실측(27,735건, 세션 단위
+    5겹): 63차원 77.57% -> 이 23차원 **88.71%** (+11.14%p), 주의↔우회전 유도 쌍은
+    68.0% -> **90.0%**. 둘을 합친 86차원은 82.99%로 오히려 낮아, 원좌표는 잡음으로 작용한다.
+    근거 논문: Aiman & Ahmad (2023) — 관절 각도·거리 기반 특징 설계.
+    (document/제스처_오분류_해경방안_논문편.md, 05_모델카드_v3 §3-5)
+
+    구성 (총 23개):
+      5  손가락별 굽힘   — (MCP->DIP)와 (DIP->TIP) 사이 코사인. 펴면 1에 가깝다
+      5  손가락별 폄방향 — (손목->MCP)와 (MCP->TIP) 사이 코사인
+      5  손끝~손목 거리  — canonical은 스케일 정규화돼 있어 그대로 비교 가능
+      4  인접 손끝 간격  — 손가락 벌어짐
+      4  엄지끝~나머지 손끝 거리 — "엄지 하나 차이"를 직접 겨냥한 축
+    """
+    pts = np.asarray(canonical, dtype=np.float64).reshape(LANDMARK_COUNT, 3)
+    wrist = pts[WRIST]
+    feats: list[float] = []
+    for mcp, _pip, dip, tip in _FINGER_JOINTS:
+        feats.append(_cos(pts[dip] - pts[mcp], pts[tip] - pts[dip]))
+    for mcp, _pip, _dip, tip in _FINGER_JOINTS:
+        feats.append(_cos(pts[mcp] - wrist, pts[tip] - pts[mcp]))
+    for tip in _TIPS:
+        feats.append(float(np.linalg.norm(pts[tip] - wrist)))
+    for a, b in zip(_TIPS[:-1], _TIPS[1:]):
+        feats.append(float(np.linalg.norm(pts[a] - pts[b])))
+    for tip in _TIPS[1:]:
+        feats.append(float(np.linalg.norm(pts[_TIPS[0]] - pts[tip])))
+    return np.asarray(feats, dtype=np.float64)
+
+
+def to_feature_vector(
+    landmarks: Sequence[dict],
+    handedness: str = "Right",
+    mode: str = DEFAULT_FEATURE_MODE,
+) -> np.ndarray:
+    """landmark_frame의 `landmarks`(+handedness) -> 특징벡터.
+
+    분류기 입력과 match_score(cosine similarity) 계산에 공통으로 쓴다 (05_모델카드_v3 §3-5).
 
     Args:
-        with_orientation: True면 손 방향 6차원을 덧붙여 69차원을 돌려준다. **학습 때 쓴 값과
-            추론 때 쓴 값이 반드시 같아야 한다** — 번들 metadata["feature_mode"]에 기록되고
-            classify.py가 그 값을 따른다.
+        mode: `joint23`(기본, 권장) / `landmark63` / `landmark63+orient6`.
+            **학습 때 쓴 값과 추론 때 쓴 값이 반드시 같아야 한다** — 번들
+            metadata["feature_mode"]에 기록되고 classify.py가 그 값을 따른다.
 
-    참고: 정규화 결과상 손목(0)은 항상 (0,0,0), 중지 MCP(9)는 항상 (0,1,0)이라 6개 차원은 상수다.
-    정보량은 없지만 문서가 정의한 "63차원"을 그대로 유지하기 위해 제거하지 않는다.
+    참고(landmark63): 정규화 결과상 손목(0)은 항상 (0,0,0), 중지 MCP(9)는 항상 (0,1,0)이라
+    6개 차원은 상수다. 정보량은 없지만 문서가 정의한 "63차원"을 유지하려고 제거하지 않는다.
     """
+    if mode not in FEATURE_DIMS:
+        raise NormalizationError(
+            f"알 수 없는 feature_mode: {mode!r} (가능: {sorted(FEATURE_DIMS)})"
+        )
     points = landmarks_to_array(landmarks)
-    if not with_orientation:
-        canonical = normalize_landmarks(points, handedness=handedness)
-        return canonical.reshape(-1).astype(np.float64)
 
-    canonical, rotation = normalize_landmarks(points, handedness=handedness, return_rotation=True)
-    return np.concatenate(
-        [canonical.reshape(-1), orientation_features(rotation)]
-    ).astype(np.float64)
+    if mode == FEATURE_MODE_ORIENTED:
+        canonical, rotation = normalize_landmarks(
+            points, handedness=handedness, return_rotation=True
+        )
+        return np.concatenate(
+            [canonical.reshape(-1), orientation_features(rotation)]
+        ).astype(np.float64)
+
+    canonical = normalize_landmarks(points, handedness=handedness)
+    if mode == FEATURE_MODE_JOINT:
+        return joint_features(canonical)
+    return canonical.reshape(-1).astype(np.float64)
 
 
 def frame_to_feature_vector(
-    landmark_frame: dict, with_orientation: bool = False
+    landmark_frame: dict, mode: str = DEFAULT_FEATURE_MODE
 ) -> np.ndarray:
-    """landmark_frame.schema.json 형식 전체 -> (63,) 또는 (69,) 특징벡터.
+    """landmark_frame.schema.json 형식 전체 -> 특징벡터.
 
     `hand_detected`가 false면 NormalizationError를 던진다(호출 측에서 negative/reject 처리).
     """
@@ -207,14 +289,12 @@ def frame_to_feature_vector(
     return to_feature_vector(
         landmark_frame.get("landmarks"),
         handedness=landmark_frame.get("handedness", "Right"),
-        with_orientation=with_orientation,
+        mode=mode,
     )
 
 
 def batch_to_feature_matrix(
-    frames: Iterable[dict], with_orientation: bool = False
+    frames: Iterable[dict], mode: str = DEFAULT_FEATURE_MODE
 ) -> np.ndarray:
     """여러 프레임을 (N, D) 행렬로. 학습 데이터 적재용(정규화 실패 프레임은 호출 측에서 걸러낼 것)."""
-    return np.stack(
-        [frame_to_feature_vector(f, with_orientation=with_orientation) for f in frames], axis=0
-    )
+    return np.stack([frame_to_feature_vector(f, mode=mode) for f in frames], axis=0)
