@@ -58,7 +58,10 @@ def test_malformed_landmarks_are_rejected_not_crash():
 
 
 def test_classes_match_documents():
-    """02_설계문서_v2 §4 확정 7종 + negative 와 순서까지 동일해야 한다."""
+    """02_설계문서_v2 §4 확정 7종과 순서까지 동일해야 한다.
+
+    negative는 **학습 클래스가 아니다** (2026-09-21 회의 안건 2 A) — τ 미달 시 출력 라벨로만 쓴다.
+    """
     assert classify.SIGN_CLASSES == [
         "정지",
         "서행",
@@ -67,8 +70,8 @@ def test_classes_match_documents():
         "확인_완료",
         "후진",
         "주의",
-        "negative",
     ]
+    assert classify.NEGATIVE_CLASS not in classify.SIGN_CLASSES
 
 
 def test_tau_default():

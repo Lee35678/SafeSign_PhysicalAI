@@ -16,9 +16,13 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
 
 ## 1. 지금 바로 알아야 할 것
 
-- **학습은 Colab에서, 추론은 여기서.** 로컬 GPU 한계로 분류기 학습은
-  [`training/train_svm_colab.ipynb`](training/train_svm_colab.ipynb)에서 돌리고, 결과 파일
-  `svm_classifier.joblib` 하나만 [`models/`](models/README.md)에 넣으면 서비스가 바로 쓴다.
+- **학습도 추론도 로컬에서 한다** (2026-09-21 정정). 전체 27,735건 학습이 16초라 Colab이 필요
+  없었다. `python training/train_svm.py` 한 줄이면 [`models/`](models/README.md)에 번들이 생긴다.
+  Colab 노트북은 대체 경로로만 남겨둔다.
+- **학습 클래스는 7종이다.** `negative`는 학습하지 않고, τ 미달을 미판정으로 처리해 그 출력 라벨로만
+  쓴다 (2026-09-21 회의 안건 2 A).
+- **손 방향 축(63→69차원)은 구현돼 있지만 꺼져 있다.** 공개 데이터로는 검증할 수 없어서다
+  (안건 3 A, [`MODEL_TRAINING.md`](MODEL_TRAINING.md) §2-1).
 - **모델이 없어도 서비스는 뜬다.** 데이터·카메라가 아직 없으므로 기본 동작은 "항상 미판정"이다
   (`reason: model_not_loaded`). 배선·통합 검증을 먼저 하라는 PRD 우선순위(10_PRD_v2 §11)에 맞춘 설계.
 - **왜 이런 알고리즘/전처리인지**는 [`MODEL_TRAINING.md`](MODEL_TRAINING.md)에 정리했다.
@@ -30,12 +34,14 @@ src/
 ├── app.py                    FastAPI 진입점 (/health, /latest, /predict, /reset)
 ├── perception/capture.py     Pi Camera Module 3 + MediaPipe LIVE_STREAM 콜백 → landmark_frame
 └── cognition/
-    ├── normalize.py          21 keypoints → 63차원 특징벡터 (학습·추론 공용, 05_모델카드_v3 §3-5)
+    ├── normalize.py          21 keypoints → 63차원(+방향 6) 특징벡터 (학습·추론 공용, 05 §3-5)
     ├── classify.py           SVM 추론 + τ 판정 + match_score → judgment_result
-    ├── model_store.py        Colab 산출 번들(joblib) 로드 (없으면 안전하게 미판정)
+    ├── model_store.py        학습 번들(joblib) 로드 + feature_mode 확인 (없으면 안전하게 미판정)
     ├── templates.py          템플릿 DB 조회 + cosine similarity → 0~100 매핑
     └── smoothing.py          N프레임 연속 동일 클래스 확인 (§3-6)
-training/train_svm_colab.ipynb   Colab 학습 노트북
+training/
+├── train_svm.py                 로컬 학습 스크립트 (기본 경로)
+└── train_svm_colab.ipynb        Colab 노트북 (대체 경로)
 scripts/
 ├── webcam_check.py              노트북 웹캠으로 학습된 모델을 눈으로 확인 (사람이 판단)
 └── make_dummy_dataset.py        (데이터 오기 전) 예행연습용 더미 데이터 생성기
@@ -86,7 +92,7 @@ curl http://localhost:8001/latest
 
 ```bash
 cd services/vision
-python tests/test_normalize.py      # 정규화 불변성(위치/크기/회전/좌우손) 10개
+python tests/test_normalize.py      # 정규화 불변성 + 방향 축 15개
 python tests/test_classify.py       # 모델 없이도 안전하게 미판정하는지 4개
 # pytest가 있으면: python -m pytest tests -q
 ```
@@ -112,18 +118,38 @@ python scripts/webcam_check.py --no-window --max-frames 60   # 창 없이 콘솔
 - **분류기가 아직 없어도 실행된다** — 랜드마크는 그려지고 판정만 `model_not_loaded`로 나오므로,
   데이터·모델이 오기 전에도 카메라·MediaPipe 배선을 확인할 수 있다.
 
-### 데이터 오기 전에 학습 파이프라인 예행연습
+### ③ 분류기 학습 (로컬)
 
 ```bash
-python scripts/make_dummy_dataset.py          # training/_dummy_dataset/ 에 합성 데이터 생성
-# 노트북의 PROCESSED_DIR을 이 경로로 바꿔 한 바퀴 돌려보면 형식/배선을 미리 확인할 수 있다
+cd services/vision
+pip install -r requirements.txt
+python training/train_svm.py --dry-run     # 데이터 분포만 확인
+python training/train_svm.py               # 학습 → models/ 에 번들 + 템플릿 생성
+```
+
+처음 한 번만 JSON 적재에 100초쯤 걸리고, 이후엔 캐시로 0.7초다. 주요 옵션은
+[`MODEL_TRAINING.md`](MODEL_TRAINING.md) §6-0 참고.
+
+**공개 데이터 기준 현재 성적** (세션 단위 5겹): 정답률 77.57% / Macro F1 0.784 / 치명 오분류 3건.
+🔴 이 수치는 **KPI 근거가 아니다** — 촬영자 정보가 없어 인물 단위 분할이 불가능하다.
+KPI는 자체 촬영(외부인) 데이터로만 측정한다.
+
+### 데이터 없이 파이프라인만 돌려보기
+
+```bash
+python scripts/make_dummy_dataset.py                          # 합성 데이터 생성
+python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 바퀴
 ```
 
 > 합성 좌표라 정확도 수치는 아무 의미가 없다. **형식과 배선 확인용**이다.
 
 ## 6. 남은 일
 
-- [ ] 실제 수신호 데이터 확보 후 Colab 학습 → `models/svm_classifier.joblib` 배치 (데이터 담당과 형식 합의 필요)
+- [x] ~~실제 수신호 데이터 확보 후 학습 → `models/svm_classifier.joblib` 배치~~ (2026-09-21 완료)
+- [ ] **자체 촬영 데이터 확보** (외부인 1~2명) — KPI 측정의 유일한 경로. 회의 안건 1
+- [ ] `webcam_check.py`에 촬영·저장 기능 추가 (위 촬영용)
+- [ ] 자체 촬영 후 **손 방향 축 A/B** 판단 (`--with-orientation`) — 회의 안건 3 A
+- [ ] 자체 촬영 후 **τ 재결정** — 지금은 KPI를 만족하는 τ가 없어 기본값 0.75를 쓰는 중
 - [ ] `perception/capture.py`의 picamera2 연동 (카메라 도착 후)
 - [ ] `hand_landmarker.task` 모델 번들 다운로드 → `models/` (05_모델카드_v3 §1 URL)
 - [ ] 실측 후 τ·N프레임 재검증, 05_모델카드_v3 §7-3 실측 표 채우기

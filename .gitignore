@@ -26,8 +26,13 @@ services/data/models/*.task
 # 학습 파이프라인 예행연습용 더미 데이터 (scripts/make_dummy_dataset.py가 언제든 재생성)
 services/vision/training/_dummy_dataset/
 
-# 학습된 모델 가중치: Colab 산출물이라 각자 내려받아 넣는다.
+# 학습 특징벡터 캐시 (train_svm.py가 언제든 재생성. JSON 27,735건 적재 5분을 아끼는 용도)
+services/vision/training/.feature_cache.npz
+
+# 학습된 모델 가중치: 2026-09-21부터 **로컬 학습이 기본**이라 각자 만들 수 있다.
+#   cd services/vision && python training/train_svm.py
 # 팀 전체가 같은 모델을 공유해야 할 시점(시연 직전 등)이 오면 아래 두 줄을 지우고 커밋할 것.
+# (라이선스상 외부 공개는 하지 않는다 — 회의안건_2026-09-21 안건 5)
 services/vision/models/*.joblib
 services/vision/models/*.task
 

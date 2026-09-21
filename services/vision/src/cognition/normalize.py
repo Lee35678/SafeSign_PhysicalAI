@@ -15,6 +15,26 @@ document/05_모델카드_v3.md §3-5 "정규화 절차"의 구현체다. **학�
 4번은 문서가 "손목→중지 MCP 벡터를 기준 축에 정렬"이라고만 정하고 있다. 축 하나만 맞추면 그 축을
 중심으로 도는 회전(roll)이 남으므로, 여기서는 손바닥 가로 방향(검지 MCP(5)→새끼 MCP(17))을 두 번째
 기준으로 써서 3축을 모두 고정한다 — 남는 자유도 없이 완전한 canonical 자세가 된다.
+
+**손 방향(orientation) 축** (2026-09-21 회의 안건 3 A안 채택)
+  4번 회전 정렬은 손 기울임에 강해지는 대신 "같은 손모양을 다른 방향으로 든다"는 축을 통째로
+  버린다. 손가락 5개 이진 조합(32자리)만으로는 7종을 충분히 떼어놓을 수 없다는 계산 결과
+  (document/회의자료_안건3_손모양거리계산표.md §5)에 따라, 버려지던 회전 정보를 **선택적으로**
+  특징에 되살릴 수 있게 했다:
+
+      to_feature_vector(..., with_orientation=True) -> 63 + 6 = 69차원
+
+  추가 6차원은 회전행렬의 앞 두 열(x축·y축)이다. 9개를 다 넣으면 중복이고, 오일러각은 불연속
+  지점이 생기며, 쿼터니언은 부호 모호성이 있다. 앞 두 열만 쓰면 z축은 외적으로 복원되므로
+  정보 손실 없이 연속적이다.
+
+  **기본값은 False다.** 공개 데이터는 클래스마다 출처 데이터셋이 달라 촬영 각도가 클래스와
+  상관되어 있을 수 있고(04_데이터셋명세서_v2 §3), 그 상태로 방향 축을 켜면 모델이 수신호가
+  아니라 "어느 데이터셋 사진인가"를 학습한다. 자체 촬영 데이터로 효과가 확인된 뒤에 켠다
+  (회의안건_2026-09-21 안건 3 / 안건 1).
+
+  주의: MediaPipe world landmark의 z는 단안 추정이라 x·y보다 부정확하다. 방향 6차원 중 z가
+  섞인 성분은 상대적으로 노이즈가 크다.
 """
 from __future__ import annotations
 
@@ -23,7 +43,13 @@ from typing import Iterable, Sequence
 import numpy as np
 
 LANDMARK_COUNT = 21
-FEATURE_DIM = LANDMARK_COUNT * 3  # 63
+FEATURE_DIM = LANDMARK_COUNT * 3  # 63 (기본: 방향 축 미사용)
+ORIENTATION_DIM = 6               # 회전행렬 앞 두 열
+FEATURE_DIM_ORIENTED = FEATURE_DIM + ORIENTATION_DIM  # 69 (with_orientation=True)
+
+# 번들 metadata["feature_mode"]에 기록되는 값. 학습과 추론이 반드시 같아야 한다.
+FEATURE_MODE_BASE = "landmark63"
+FEATURE_MODE_ORIENTED = "landmark63+orient6"
 
 # MediaPipe Hand Landmarker 인덱스 (고정)
 WRIST = 0
@@ -33,6 +59,16 @@ PINKY_MCP = 17
 
 # 스케일/축 계산이 수치적으로 무의미해지는 하한 (world landmark 단위: 미터)
 _EPS = 1e-6
+
+
+def feature_mode(with_orientation: bool) -> str:
+    """번들 metadata에 기록할 특징 모드 이름."""
+    return FEATURE_MODE_ORIENTED if with_orientation else FEATURE_MODE_BASE
+
+
+def feature_dim(with_orientation: bool) -> int:
+    """해당 모드의 특징 차원 수."""
+    return FEATURE_DIM_ORIENTED if with_orientation else FEATURE_DIM
 
 
 class NormalizationError(ValueError):
@@ -62,12 +98,17 @@ def landmarks_to_array(landmarks: Sequence[dict]) -> np.ndarray:
     return points
 
 
-def normalize_landmarks(points: np.ndarray, handedness: str = "Right") -> np.ndarray:
+def normalize_landmarks(
+    points: np.ndarray, handedness: str = "Right", return_rotation: bool = False
+):
     """(21, 3) 원본 좌표 -> (21, 3) canonical 좌표.
 
     Args:
         points: hand_world_landmarks 기준 (21, 3). 단위는 미터지만 스케일 정규화로 상쇄된다.
         handedness: "Right" | "Left" (MediaPipe Handedness). Left면 x를 반전해 Right로 통일.
+        return_rotation: True면 `(canonical, rotation)`을 돌려준다. `rotation`은 손의 고유 축을
+            입력 좌표계(= 카메라 기준)로 표현한 (3, 3) 행렬로, **canonical에서 제거된 손 방향
+            정보 그 자체**다. 방향 축 특징(ORIENTATION_DIM)을 만들 때 쓴다.
     """
     pts = np.asarray(points, dtype=np.float64)
     if pts.shape != (LANDMARK_COUNT, 3):
@@ -109,24 +150,55 @@ def normalize_landmarks(points: np.ndarray, handedness: str = "Right") -> np.nda
     rotation = np.stack([x_axis, y_axis, z_axis], axis=1)  # 열이 각 축인 (3, 3)
     canonical = pts @ rotation  # == (R^T @ p) 를 행벡터로 쓴 것
 
+    if return_rotation:
+        return canonical, rotation
     return canonical
 
 
-def to_feature_vector(landmarks: Sequence[dict], handedness: str = "Right") -> np.ndarray:
-    """landmark_frame의 `landmarks`(+handedness) -> (63,) 특징벡터.
+def orientation_features(rotation: np.ndarray) -> np.ndarray:
+    """회전행렬 (3, 3) -> 방향 특징 (6,).
+
+    앞 두 열(x축·y축)만 쓴다. z축 = cross(x, y)로 복원되므로 정보 손실이 없고,
+    오일러각(불연속)·쿼터니언(부호 모호)과 달리 연속적이라 학습에 안전하다.
+    두 축 모두 단위벡터이므로 성분은 [-1, 1] 범위이고, canonical 좌표(스케일 1 기준)와
+    크기가 비슷해 StandardScaler 이전 단계에서도 한쪽이 지배하지 않는다.
+
+    반환 순서는 `[x축 3개, y축 3개]`다 (열 -> 행으로 전치 후 평탄화). 분류기 입장에서는 순서가
+    무의미하지만, 디버깅·시각화 때 축 단위로 끊어 보려면 이 순서여야 한다.
+    """
+    return np.asarray(rotation, dtype=np.float64)[:, :2].T.reshape(-1)
+
+
+def to_feature_vector(
+    landmarks: Sequence[dict], handedness: str = "Right", with_orientation: bool = False
+) -> np.ndarray:
+    """landmark_frame의 `landmarks`(+handedness) -> (63,) 또는 (69,) 특징벡터.
 
     분류기 입력과 match_score(cosine similarity) 계산에 공통으로 쓴다 (05_모델카드_v3 §3-5 5번).
+
+    Args:
+        with_orientation: True면 손 방향 6차원을 덧붙여 69차원을 돌려준다. **학습 때 쓴 값과
+            추론 때 쓴 값이 반드시 같아야 한다** — 번들 metadata["feature_mode"]에 기록되고
+            classify.py가 그 값을 따른다.
 
     참고: 정규화 결과상 손목(0)은 항상 (0,0,0), 중지 MCP(9)는 항상 (0,1,0)이라 6개 차원은 상수다.
     정보량은 없지만 문서가 정의한 "63차원"을 그대로 유지하기 위해 제거하지 않는다.
     """
     points = landmarks_to_array(landmarks)
-    canonical = normalize_landmarks(points, handedness=handedness)
-    return canonical.reshape(-1).astype(np.float64)
+    if not with_orientation:
+        canonical = normalize_landmarks(points, handedness=handedness)
+        return canonical.reshape(-1).astype(np.float64)
+
+    canonical, rotation = normalize_landmarks(points, handedness=handedness, return_rotation=True)
+    return np.concatenate(
+        [canonical.reshape(-1), orientation_features(rotation)]
+    ).astype(np.float64)
 
 
-def frame_to_feature_vector(landmark_frame: dict) -> np.ndarray:
-    """landmark_frame.schema.json 형식 전체 -> (63,) 특징벡터.
+def frame_to_feature_vector(
+    landmark_frame: dict, with_orientation: bool = False
+) -> np.ndarray:
+    """landmark_frame.schema.json 형식 전체 -> (63,) 또는 (69,) 특징벡터.
 
     `hand_detected`가 false면 NormalizationError를 던진다(호출 측에서 negative/reject 처리).
     """
@@ -135,9 +207,14 @@ def frame_to_feature_vector(landmark_frame: dict) -> np.ndarray:
     return to_feature_vector(
         landmark_frame.get("landmarks"),
         handedness=landmark_frame.get("handedness", "Right"),
+        with_orientation=with_orientation,
     )
 
 
-def batch_to_feature_matrix(frames: Iterable[dict]) -> np.ndarray:
-    """여러 프레임을 (N, 63) 행렬로. 학습 데이터 적재용(정규화 실패 프레임은 호출 측에서 걸러낼 것)."""
-    return np.stack([frame_to_feature_vector(f) for f in frames], axis=0)
+def batch_to_feature_matrix(
+    frames: Iterable[dict], with_orientation: bool = False
+) -> np.ndarray:
+    """여러 프레임을 (N, D) 행렬로. 학습 데이터 적재용(정규화 실패 프레임은 호출 측에서 걸러낼 것)."""
+    return np.stack(
+        [frame_to_feature_vector(f, with_orientation=with_orientation) for f in frames], axis=0
+    )

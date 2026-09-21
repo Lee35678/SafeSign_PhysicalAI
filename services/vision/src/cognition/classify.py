@@ -1,12 +1,17 @@
-"""정규화된 63차원 특징벡터 -> SVM 분류(8클래스) + 템플릿 대비 cosine similarity -> judgment_result.
+"""정규화된 특징벡터 -> SVM 분류(7클래스) + 템플릿 대비 cosine similarity -> judgment_result.
 
 문서 근거:
 - 분류기/특징: document/05_모델카드_v3.md §3-5(정규화), §5(SVM 채택 근거), §6(학습 방법)
 - τ(신뢰도 임계값): §8-0 초기 기본값 0.75, §8-1 실측 확정 절차
 - 출력 스키마: document/03_인터페이스계약서_v2.md §4 / shared/schemas/judgment_result.schema.json
 
-모델 파일이 없으면(데이터 수집·Colab 학습 전) 항상 negative/reject를 반환한다 — 카메라~Actuation
-배선 검증은 모델 없이도 진행할 수 있어야 하기 때문.
+**negative는 학습 클래스가 아니다** (2026-09-21 회의 안건 2 A안).
+"손은 있는데 7종 중 아무것도 아닌 자세"는 종류가 무한해서 하나의 클래스로 학습시킬 수 없고,
+실제로 공개 데이터의 negative는 0건이었다. 대신 τ(신뢰도 임계값) 미달을 미판정으로 처리하고,
+그 출력 라벨로만 "negative"를 쓴다. 미판정률 KPI(≤5%)는 τ로 조절한다.
+
+모델 파일이 없으면(학습 전) 항상 negative/reject를 반환한다 — 카메라~Actuation 배선 검증은
+모델 없이도 진행할 수 있어야 하기 때문.
 """
 from __future__ import annotations
 
@@ -18,11 +23,17 @@ from typing import Optional
 import numpy as np
 
 from cognition import model_store, templates
-from cognition.normalize import NormalizationError, frame_to_feature_vector
+from cognition.normalize import (
+    FEATURE_MODE_BASE,
+    FEATURE_MODE_ORIENTED,
+    NormalizationError,
+    frame_to_feature_vector,
+)
 
 logger = logging.getLogger(__name__)
 
-# document/02_설계문서_v2 §4 확정 7종 + negative (04_데이터셋명세서_v2 §1과 동일 순서 유지)
+# document/02_설계문서_v2 §4 확정 7종 (04_데이터셋명세서_v2 §1과 동일 순서 유지).
+# 분류기가 실제로 학습하는 클래스 목록이다 — negative는 여기 없다 (안건 2 A).
 SIGN_CLASSES = [
     "정지",
     "서행",
@@ -31,10 +42,10 @@ SIGN_CLASSES = [
     "확인_완료",
     "후진",
     "주의",
-    "negative",
 ]
 
-# 학습자가 직접 "시도"하는 대상이 아닌 클래스 (Macro F1 계산에서 제외 — 05_모델카드_v3 §7-1)
+# 미판정(reject) 시 predicted_class에 넣는 라벨. 학습 클래스가 아니라 **출력 전용 값**이다.
+# Macro F1 계산에서도 제외된다 (05_모델카드_v3 §7-1).
 NEGATIVE_CLASS = "negative"
 
 # judgment_result.reason 코드 (03_인터페이스계약서_v2 §4).
@@ -98,7 +109,12 @@ def predict(landmark_frame: dict) -> dict:
     if not landmark_frame.get("hand_detected"):
         return _reject_result(_elapsed_ms(started, landmark_frame), REASON_NO_HAND)
     try:
-        feature = frame_to_feature_vector(landmark_frame)
+        # 학습 때 쓴 특징 모드를 그대로 따라간다 (train-serve skew 방지).
+        # 번들이 없으면 기본 63차원 — 어차피 아래에서 model_not_loaded로 빠진다.
+        with_orientation = (
+            model_store.get_feature_mode(FEATURE_MODE_BASE) == FEATURE_MODE_ORIENTED
+        )
+        feature = frame_to_feature_vector(landmark_frame, with_orientation=with_orientation)
     except NormalizationError as exc:
         logger.debug("정규화 실패: %s", exc)
         return _reject_result(_elapsed_ms(started, landmark_frame), REASON_NORMALIZE_FAILED)

@@ -1,21 +1,31 @@
-"""Colab에서 학습해 내려받은 경량 분류기(SVM) 번들을 로드한다.
+"""학습된 경량 분류기(SVM) 번들을 로드한다.
 
-학습은 로컬 GPU 한계로 Colab에서 수행하고(services/vision/training/train_svm_colab.ipynb),
-거기서 나온 `svm_classifier.joblib` 하나만 `services/vision/models/`에 넣으면 이 서비스가 바로
-사용한다. 모델 파일이 아직 없으면(=데이터 수집/학습 전) **서비스는 죽지 않고** "모델 없음" 상태로
-동작한다 — 이 경우 classify는 항상 negative/reject를 돌려주므로 카메라·Actuation 배선 검증은
-모델 없이도 계속할 수 있다.
+학습은 **로컬에서 수행하는 것이 기본**이다(`training/train_svm.py`). 전체 27,735건 기준 단일
+학습이 13초 정도라 GPU가 필요 없다 — 처음에 Colab을 전제했으나 실측 후 로컬로 되돌렸다
+(2026-09-21). Colab 노트북(`training/train_svm_colab.ipynb`)은 같은 파이프라인의 대체 경로로
+남겨둔다. 어느 쪽에서 만들든 `svm_classifier.joblib` 하나를 `services/vision/models/`에 두면 된다.
 
-번들 형식 (train_svm_colab.ipynb가 저장하는 dict):
+모델 파일이 아직 없으면 **서비스는 죽지 않고** "모델 없음" 상태로 동작한다 — 이 경우 classify는
+항상 negative/reject를 돌려주므로 카메라·Actuation 배선 검증은 모델 없이도 계속할 수 있다.
+
+번들 형식:
     {
-      "format_version": 1,
-      "model": sklearn Pipeline(StandardScaler + SVC(probability=True)),
-      "classes": ["정지", ..., "negative"],
+      "format_version": 2,
+      "model": sklearn Pipeline(StandardScaler + CalibratedClassifierCV(SVC)),
+      "classes": ["정지", ..., "주의"],   # 7종. negative는 학습 클래스가 아니다 (안건 2 A)
       "tau": 0.75,                      # 05_모델카드_v3 §8-1 절차로 고른 값
       "n_frames": 3,                    # §3-6 판정 안정화 기본값
       "match_score_calibration": {"sim_min": 0.x, "sim_max": 0.y},
-      "metadata": {...}                 # 학습 일시, 하이퍼파라미터, 데이터 규모 등
+      "metadata": {
+        "feature_mode": "landmark63" | "landmark63+orient6",   # 추론이 반드시 따라야 하는 값
+        "sklearn_version": "...", "trained_at": "...", ...
+      }
     }
+
+format_version 2에서 바뀐 것 (2026-09-21 회의 결정 반영):
+  - classes가 8종 -> **7종**. negative는 학습하지 않고 τ 미달 시 판정 결과로만 쓴다 (안건 2 A).
+  - metadata에 **feature_mode** 추가. 손 방향 축 도입(안건 3 A)으로 특징 차원이 63/69 두 가지가
+    되었으므로, 학습 때 쓴 모드를 번들이 들고 다녀야 추론이 어긋나지 않는다.
 """
 from __future__ import annotations
 
@@ -80,7 +90,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
             if not _loaded:
                 logger.warning(
                     "분류기 모델이 없습니다: %s — negative/reject만 반환합니다. "
-                    "Colab 학습 결과(svm_classifier.joblib)를 이 경로에 넣으세요.",
+                    "services/vision에서 `python training/train_svm.py`로 학습하면 이 경로에 생성됩니다.",
                     MODEL_PATH,
                 )
                 _loaded = True
@@ -91,9 +101,29 @@ def load_bundle(force: bool = False) -> Optional[dict]:
         if _bundle is not None and not force and mtime == _loaded_mtime:
             return _bundle
 
-        import joblib  # 지연 import: 모델이 없는 환경에서도 서비스가 뜨도록
+        # 지연 import + 실패 흡수: 모델 파일이 있어도 joblib 미설치·번들 손상으로 서비스가
+        # 죽으면 안 된다. 이 경우 "모델 없음"으로 떨어뜨려 classify가 미판정을 돌려주게 한다.
+        try:
+            import joblib
 
-        _bundle = _normalize_bundle(joblib.load(MODEL_PATH))
+            _bundle = _normalize_bundle(joblib.load(MODEL_PATH))
+        except ImportError:
+            logger.error(
+                "joblib이 설치되어 있지 않아 모델(%s)을 읽을 수 없습니다 — negative/reject만 "
+                "반환합니다. `pip install -r requirements.txt`",
+                MODEL_PATH,
+            )
+            _bundle, _loaded, _loaded_mtime = None, True, None
+            return None
+        except Exception:
+            logger.exception(
+                "모델 번들을 읽지 못했습니다: %s — negative/reject만 반환합니다. "
+                "`python training/train_svm.py`로 다시 만드세요.",
+                MODEL_PATH,
+            )
+            _bundle, _loaded, _loaded_mtime = None, True, None
+            return None
+
         _loaded = True
         _loaded_mtime = mtime
         _warn_if_sklearn_mismatch(_bundle)
@@ -130,6 +160,17 @@ def get_match_score_calibration() -> Optional[dict]:
     return (bundle or {}).get("match_score_calibration")
 
 
+def get_feature_mode(default: str) -> str:
+    """학습 때 쓴 특징 모드. 추론은 반드시 이 값을 따라야 한다.
+
+    번들에 없으면(format_version 1 이하) 방향 축 도입 이전이므로 63차원으로 간주한다.
+    """
+    bundle = load_bundle()
+    if not bundle:
+        return default
+    return str((bundle.get("metadata") or {}).get("feature_mode") or default)
+
+
 def describe() -> dict:
     """/health 등에서 모델 적재 상태를 노출하기 위한 요약."""
     bundle = load_bundle()
@@ -140,5 +181,6 @@ def describe() -> dict:
         "path": str(MODEL_PATH),
         "classes": bundle.get("classes"),
         "tau": bundle.get("tau"),
+        "feature_mode": (bundle.get("metadata") or {}).get("feature_mode"),
         "metadata": bundle.get("metadata", {}),
     }

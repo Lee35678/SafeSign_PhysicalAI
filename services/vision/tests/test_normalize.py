@@ -23,9 +23,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from cognition.normalize import (  # noqa: E402
     FEATURE_DIM,
+    FEATURE_DIM_ORIENTED,
+    ORIENTATION_DIM,
     NormalizationError,
     landmarks_to_array,
     normalize_landmarks,
+    orientation_features,
     to_feature_vector,
 )
 
@@ -130,6 +133,58 @@ def test_rejects_degenerate_hand():
     except NormalizationError:
         return
     raise AssertionError("퇴화 입력은 NormalizationError여야 함")
+
+
+# --------------------------------------------------------------------------
+# 손 방향(orientation) 축 — 2026-09-21 회의 안건 3 A안
+#
+# 손모양 63차원은 회전 불변을 **유지하면서**, 추가 6차원이 회전을 **담아야** 한다.
+# 둘 중 하나라도 깨지면 방향 축을 도입한 의미가 없다.
+# --------------------------------------------------------------------------
+
+def test_orientation_dim():
+    lms = _as_landmarks(_sample_hand())
+    assert to_feature_vector(lms).shape == (FEATURE_DIM,)
+    assert to_feature_vector(lms, with_orientation=True).shape == (FEATURE_DIM_ORIENTED,)
+
+
+def test_orientation_is_appended_not_mixed():
+    """앞 63차원은 방향 축을 켜도 그대로여야 한다(기존 모델과 해석이 어긋나지 않게)."""
+    lms = _as_landmarks(_sample_hand())
+    base = to_feature_vector(lms)
+    oriented = to_feature_vector(lms, with_orientation=True)
+    assert np.allclose(base, oriented[:FEATURE_DIM])
+
+
+def test_orientation_axes_are_orthonormal():
+    """추가 6차원 = 회전행렬의 x축·y축. 각각 단위벡터이고 서로 직교해야 한다."""
+    feat = to_feature_vector(_as_landmarks(_sample_hand()), with_orientation=True)
+    x_axis, y_axis = feat[FEATURE_DIM:FEATURE_DIM + 3], feat[FEATURE_DIM + 3:]
+    assert len(x_axis) + len(y_axis) == ORIENTATION_DIM
+    assert math.isclose(float(np.linalg.norm(x_axis)), 1.0, abs_tol=1e-9)
+    assert math.isclose(float(np.linalg.norm(y_axis)), 1.0, abs_tol=1e-9)
+    assert abs(float(np.dot(x_axis, y_axis))) < 1e-9
+
+
+def test_orientation_captures_rotation():
+    """손을 돌리면 손모양 63차원은 그대로, 방향 6차원만 바뀌어야 한다."""
+    pts = _sample_hand()
+    rotated = pts @ _rotation(0.6, -0.4).T
+    a = to_feature_vector(_as_landmarks(pts), with_orientation=True)
+    b = to_feature_vector(_as_landmarks(rotated), with_orientation=True)
+    assert np.allclose(a[:FEATURE_DIM], b[:FEATURE_DIM], atol=1e-9), "손모양이 회전에 흔들렸다"
+    assert not np.allclose(a[FEATURE_DIM:], b[FEATURE_DIM:], atol=1e-3), "방향이 회전을 못 담았다"
+
+
+def test_orientation_features_from_rotation_matrix():
+    """normalize_landmarks(return_rotation=True)가 돌려준 행렬과 일관되어야 한다."""
+    pts = _sample_hand()
+    _, rotation = normalize_landmarks(pts, return_rotation=True)
+    feat = to_feature_vector(_as_landmarks(pts), with_orientation=True)
+    assert np.allclose(orientation_features(rotation), feat[FEATURE_DIM:])
+    # z축은 외적으로 복원 가능 -> 6개만 실어도 정보 손실이 없다
+    x_axis, y_axis = rotation[:, 0], rotation[:, 1]
+    assert np.allclose(np.cross(x_axis, y_axis), rotation[:, 2], atol=1e-9)
 
 
 if __name__ == "__main__":
