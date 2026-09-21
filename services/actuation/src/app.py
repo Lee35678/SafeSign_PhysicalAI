@@ -4,8 +4,8 @@
 역할: 상태머신(web)으로부터 AiHandCommand를 받아 micro:bit에 BLE로 전달, AiHand 서보 구동.
 micro:bit 하드웨어 UART가 1개뿐이라 서보 초기화 시 USB 시리얼이 죽는 제약이 실측으로 확인되어
 (doc/aihand_gesture_checklist_final.md 세션 1), RPi5 <-> micro:bit 통신은 USB 시리얼이 아니라
-BLE(Nordic UART Service)로 이루어진다(2026-09-21, shared/schemas/microbit_protocol.md는 아직
-USB 시리얼 기준으로 남아있어 갱신이 필요하다).
+BLE(Nordic UART Service)로 이루어진다(2026-09-21, shared/schemas/microbit_protocol.md·
+document/03_인터페이스계약서_v2.md §5-3에 갱신 반영됨).
 
 picar는 이 서비스가 아니라 **별도 서비스(services/picar, Raspberry Pi 4B 8GB)** 에서 담당한다 —
 picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에 컴퓨트 보드를 분리했다
@@ -54,28 +54,24 @@ async def command(aihand_command: dict):
 
 
 @app.post("/result")
-def result(payload: dict):
-    """판정 결과(OK/NG + match_score)를 micro:bit LED로 전달.
+async def result(payload: dict):
+    """판정 결과(OK/NG)를 micro:bit LED로 전달 — "correct"/"incorrect" 전송 시 LED에 O/X를 2초간 표시.
 
     payload 예: {"is_correct": true, "match_score": 87}
 
-    TODO(송승호): 현재 운영 펌웨어(aihand_production.ts)는 "G1"~"G7" 제스처 명령만 처리하며
-    RESULT 프로토콜은 아직 구현되어 있지 않다. 펌웨어에 RESULT 처리가 추가되면 ble_bridge를 통해
-    실제로 전송하도록 연결한다.
+    match_score는 펌웨어가 쓰지 않는다(LED 표시는 정오답 여부만 반영) — 응답 로그·화면 표시용으로는
+    web 쪽에서 별도로 활용한다.
     """
-    if MOCK_HARDWARE:
-        return {"status": "mocked", "received": payload}
-    return {"status": "unsupported", "reason": "microbit firmware does not implement RESULT yet"}
+    return await ble_bridge.send_result(payload.get("is_correct", False), mock=MOCK_HARDWARE)
 
 
 @app.post("/progress")
-def progress(payload: dict):
-    """진행 표시(현재/전체 수신호 번호)를 micro:bit로 전달.
+async def progress(payload: dict):
+    """진행 표시(현재/전체 수신호 번호)를 micro:bit로 전달 — LED 표시는 하지 않고 수신 확인만 받는다
+    (진행 표시 자체는 web 화면 쪽 담당, 2026-09-21 결정).
 
     payload 예: {"current": 3, "total": 7}
-
-    TODO(송승호): /result와 동일한 이유로 PROGRESS 프로토콜도 펌웨어에 아직 없다.
     """
-    if MOCK_HARDWARE:
-        return {"status": "mocked", "received": payload}
-    return {"status": "unsupported", "reason": "microbit firmware does not implement PROGRESS yet"}
+    return await ble_bridge.send_progress(
+        payload.get("current", 0), payload.get("total", 7), mock=MOCK_HARDWARE
+    )

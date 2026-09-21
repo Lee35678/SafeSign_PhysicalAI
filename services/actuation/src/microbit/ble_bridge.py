@@ -4,8 +4,10 @@
   실측으로 확인했다 (doc/aihand_gesture_checklist_final.md 세션 1). RPi5와의 통신은 BLE로 한다.
 - 이 micro:bit 펌웨어는 표준 Nordic UART Service와 달리 RX/TX UUID가 반대로 배정되어 있다
   (`6e400003`=쓰기용 RX, `6e400002`=indicate용 TX, 세션 4 실측 — 다른 프로젝트 값을 그대로 쓰면 안 됨).
-- 운영 펌웨어(aihand_production.ts)는 "G1"~"G7" 명령만 처리하고 완료 시 "OK{n}\n"을 회신한다.
-  RESULT/PROGRESS(LED 매트릭스) 프로토콜은 아직 펌웨어에 구현되어 있지 않다.
+- 펌웨어(aihand_control.ts)는 TEST_MODE와 무관하게 "G1"~"G7"(제스처 실행, 완료 시 "OK{n}\n" 회신),
+  "correct"/"incorrect"(판정 결과, LED에 O/X 2초 표시 후 "OK:CORRECT\n"/"OK:INCORRECT\n" 회신),
+  "P<current><total>"(진행 표시, 둘 다 한 자리 숫자, LED 표시 없이 "OKP<current><total>\n"만 회신 —
+  진행 표시는 web 화면 쪽 담당)을 처리한다. BTN(버튼 입력)은 아직 펌웨어에 구현되어 있지 않다.
 - 손가락 서보 동시 구동 시 전류 급증으로 BLE 연결이 끊길 수 있어(세션 6), 쓰기 실패 시 재연결 후
   1회 재시도한다 (03_인터페이스계약서_v2 §7의 "타임아웃+1회 재시도" 정책과 동일 기조).
   이 현상은 스펙 수치로도 설명된다(doc/hardware_spec.md) — micro:bit v2 보드가 공급 가능한 최대
@@ -81,19 +83,14 @@ def is_connected(mock: bool = True) -> bool:
     return _client is not None and _client.is_connected
 
 
-async def send_gesture(gesture_num: int, mock: bool = True) -> dict:
-    """"G{n}\\n" 전송 후 "OK{n}"/"ERR..." 응답을 ACK_TIMEOUT_S 동안 대기."""
-    if mock:
-        return {"status": "mocked", "sent": f"G{gesture_num}"}
-
+async def _send_line(line: str) -> dict:
+    """실물 연결 상태에서 한 줄을 전송하고 응답을 ACK_TIMEOUT_S 동안 대기 (mock 처리는 호출부 담당)."""
     if not is_connected(mock=False) and not await connect(mock=False):
         return {"status": "error", "reason": "microbit_unreachable"}
 
-    message = f"G{gesture_num}\n"
-
     async def _write() -> bool:
         try:
-            await _client.write_gatt_char(UART_RX_UUID, message.encode())
+            await _client.write_gatt_char(UART_RX_UUID, line.encode())
             return True
         except BleakError:
             return False
@@ -109,6 +106,29 @@ async def send_gesture(gesture_num: int, mock: bool = True) -> dict:
 
     try:
         await asyncio.wait_for(_reply_event.wait(), timeout=ACK_TIMEOUT_S)
-        return {"status": "ok", "sent": f"G{gesture_num}", "reply": _last_reply}
+        return {"status": "ok", "sent": line.strip(), "reply": _last_reply}
     except asyncio.TimeoutError:
-        return {"status": "timeout", "sent": f"G{gesture_num}"}
+        return {"status": "timeout", "sent": line.strip()}
+
+
+async def send_gesture(gesture_num: int, mock: bool = True) -> dict:
+    """"G{n}\\n" 전송 후 "OK{n}" 응답을 ACK_TIMEOUT_S 동안 대기."""
+    if mock:
+        return {"status": "mocked", "sent": f"G{gesture_num}"}
+    return await _send_line(f"G{gesture_num}\n")
+
+
+async def send_result(is_correct: bool, mock: bool = True) -> dict:
+    """"correct\\n"/"incorrect\\n" 전송 -> LED에 O/X 2초 표시. "OK:CORRECT"/"OK:INCORRECT" 응답 대기."""
+    line = "correct\n" if is_correct else "incorrect\n"
+    if mock:
+        return {"status": "mocked", "sent": line.strip()}
+    return await _send_line(line)
+
+
+async def send_progress(current: int, total: int, mock: bool = True) -> dict:
+    """"P<current><total>\\n" 전송 (둘 다 한 자리 숫자 가정, 7종 고정). LED 표시 없음 — 회신만 대기."""
+    line = f"P{current}{total}\n"
+    if mock:
+        return {"status": "mocked", "sent": line.strip()}
+    return await _send_line(line)
