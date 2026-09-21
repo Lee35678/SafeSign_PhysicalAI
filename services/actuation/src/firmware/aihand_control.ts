@@ -4,9 +4,17 @@
 //  - production(false): "G1"~"G7" 경량 명령만 처리 (실전 배포용)
 //  - test(true): "IDX:", "HAND:", "G:" 명령까지 지원 (캘리브레이션/디버깅용)
 //  - "correct"/"incorrect"(판정 결과)와 "P<current><total>"(진행 표시)는 TEST_MODE와 무관하게 항상 처리
+//  - BUZZER_ENABLED: 부저는 BLE SoftDevice와 충돌해 패닉 070을 일으키므로 기본 꺼짐 (아래 주석 참고)
 // =========================================================
 
 const TEST_MODE = false;
+
+// 부저 사용 여부. **기본값 false를 유지할 것.**
+// music.playTone()은 micro:bit v2에서 BLE SoftDevice와 충돌해 패닉 070(SD_ASSERT)을 일으킨다 —
+// 같은 이유로 StartbitV2_patched.ts:324에서도 music.playTone()을 LED 표시로 대체해 둔 전례가 있다.
+// 2026-09-21 `/result` 실물 테스트에서 "부저 울리는 순간 슬픈 얼굴 + 070" 으로 재현 확인됨.
+// 켜려면 패닉 없이 소리를 내는 방법(비블로킹 재생, 볼륨/전류 저감 등)을 먼저 검증할 것.
+const BUZZER_ENABLED = false;
 
 const THUMB = 1;
 const INDEX = 2;
@@ -67,13 +75,19 @@ function showResult(isCorrect: boolean) {
             # . . . #
         `);
     }
-    playResultTone(isCorrect);
-    basic.pause(1000);
+    if (BUZZER_ENABLED) {
+        playResultTone(isCorrect);  // 약 1초 블로킹
+        basic.pause(1000);
+    } else {
+        basic.pause(2000);          // 부저 없이도 LED 표시 시간 2초를 동일하게 유지
+    }
     basic.clearScreen();
 }
 
 // 부저 출력 (1초): correct -> 모스 '-'(단일 톤 1초), incorrect -> 모스 '..'(짧은 톤 2번)
+// BUZZER_ENABLED=false면 아무것도 하지 않는다 (패닉 070 회피, 위 상수 주석 참고).
 function playResultTone(isCorrect: boolean) {
+    if (!BUZZER_ENABLED) return;
     if (isCorrect) {
         music.playTone(880, 1000);
     } else {
