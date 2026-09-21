@@ -13,9 +13,10 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
   `TEST_MODE` 한 줄로 운영(`false`, `G1`~`G7` 제스처 명령만 처리)/테스트(`true`, `IDX:`/`HAND:`/`G:`
   캘리브레이션 명령까지 처리) 모드를 전환한다 — micro:bit가 하드웨어 UART를 1개만 갖고 있어 서보 초기화 시
   USB 시리얼이 죽는 제약 때문에 애초 계획이던 USB 시리얼(`shared/schemas/microbit_protocol.md`에
-  BLE 기준으로 갱신됨)에서 BLE로 전환했다. LED 매트릭스+부저로 판정 결과(`correct`/`incorrect` →
-  LED O/X 2초 표시 + 부저 모스 `-`/`..` 1초)를 표시하고, 진행 표시(`P<current><total>`)는 LED 없이
-  수신 확인만 회신한다(두 모드 공통). 버튼 입력(테스트 모드 제외)은 아직 펌웨어에 없음.
+  BLE 기준으로 갱신됨)에서 BLE로 전환했다. LED 매트릭스로 판정 결과(`correct`/`incorrect` →
+  LED O/X 2초 표시)를 표시하고, 진행 표시(`P<current><total>`)는 LED 없이 수신 확인만 회신한다
+  (두 모드 공통). **부저는 BLE SoftDevice 충돌(패닉 070)로 비활성화**되어 있다(2026-09-21 실측 확정).
+  버튼 입력(테스트 모드 제외)은 아직 펌웨어에 없음.
 
 ## 디렉터리
 
@@ -58,9 +59,13 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
 - [x] ~~micro:bit 실제 시리얼 코드로 프로토콜 동작 검증~~ → bluetooth 방식으로 전환 완료
 - [ ] `docker compose up actuation`으로 RPi5 실물 환경에서 BLE(BlueZ/D-Bus) 접근 검증 (컨테이너
   네트워킹, docker-compose.yml 주석 참고)
-- [x] ~~RESULT(micro:bit LED 매트릭스+부저) 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"correct"`/
-  `"incorrect"` 문자열을 받으면 LED에 O/X를 2초간 표시하면서 동시에 부저로 모스 `-`/`..`(1초)를
-  재생하고 이후 꺼지도록 구현 완료(TEST_MODE와 무관하게 항상 처리)
+- [x] ~~RESULT(micro:bit LED 매트릭스) 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"correct"`/
+  `"incorrect"` 문자열을 받으면 LED에 O/X를 2초간 표시하고 꺼지도록 구현 완료(TEST_MODE와 무관하게
+  항상 처리). **부저는 비활성화**(`BUZZER_ENABLED = false`) — 아래 "부저 비활성화" 참고
+- [x] ~~실물 micro:bit로 `MOCK_HARDWARE=false` BLE 검증~~ → 2026-09-21 완료. 스캔·UUID 대조·
+  `/health`(`microbit_connected: true`)·`/command` 7종·`/result`(LED O/X)·`/progress`(`OKP37`/`OKP17`
+  회신)까지 전부 확인. 손모양 육안 대조도 완료 — 엄지 미동작으로 `G3`↔`G6`, `G4`↔`G7`이 실제로
+  구별되지 않음을 확인했다(아래 "현재 제약" 참고). 남은 것은 RPi5 컨테이너 BLE 접근 검증뿐
 - [x] ~~`ble_bridge.py`/`app.py`의 `/result`를 펌웨어의 `correct`/`incorrect` 명령과 연동~~ →
   `ble_bridge.send_result()` 추가, `/result`가 `is_correct` 값을 그대로 BLE로 전송(2026-09-21)
 - [x] ~~PROGRESS 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"P<current><total>"`(둘 다 한 자리
@@ -105,13 +110,21 @@ AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모�
 합친 펌웨어. 최상단 `const TEST_MODE = false;` **한 줄만 바꿔서** 운영/테스트 모드를 전환합니다.
 
 **판정 결과 표시 (RESULT, 모드 공통)**: `TEST_MODE` 값과 무관하게 항상 처리됩니다.
-- `"correct"` 수신 → LED에 O 모양 2초간 표시 + 부저로 모스 `-`(880Hz 단일 톤 1초) 재생, `OK:CORRECT\n` 회신
-- `"incorrect"` 수신 → LED에 X 모양 2초간 표시 + 부저로 모스 `..`(880Hz 짧은 톤 2번, 1초 안에) 재생,
-  `OK:INCORRECT\n` 회신
-- 부저는 LED 표시 시작과 동시에 재생되며(첫 1초), 이후 LED만 1초 더 유지되다 꺼짐(`showResult()`/
-  `playResultTone()`, `services/actuation/src/firmware/aihand_control.ts`)
-- `showResult()` 실행 중(2초, 부저 재생 포함) `music.playTone`/`basic.pause()`로 블로킹되므로 그 사이
-  다른 BLE 명령은 처리되지 않음
+- `"correct"` 수신 → LED에 O 모양 2초간 표시 후 소등, `OK:CORRECT\n` 회신
+- `"incorrect"` 수신 → LED에 X 모양 2초간 표시 후 소등, `OK:INCORRECT\n` 회신
+- `showResult()` 실행 중(2초) `basic.pause()`로 블로킹되므로 그 사이 다른 BLE 명령은 처리되지 않음
+
+> ⚠️ **부저 비활성화 (2026-09-21 실측 확정)**
+>
+> `music.playTone()`은 micro:bit v2의 **BLE SoftDevice와 충돌해 패닉 070(SD_ASSERT)** 을 일으킵니다 —
+> `/result` 실물 테스트에서 "부저가 울리는 순간 micro:bit에 슬픈 얼굴 + 070 표시, BLE 끊김"으로
+> 재현됐습니다. 이미 알려진 문제로, 같은 이유로 `StartbitV2_patched.ts:324`도 `music.playTone()`을
+> LED 표시로 대체해 두었는데 RESULT 기능을 추가하면서 같은 호출이 다시 들어갔던 것입니다(회귀).
+>
+> 조치: `aihand_control.ts` 최상단에 `const BUZZER_ENABLED = false;`를 두고 `playResultTone()`
+> 최상단에서 가드합니다. 부저가 꺼져 있으면 `showResult()`가 `basic.pause(2000)`으로 LED 표시
+> 시간 2초를 그대로 유지합니다. **기본값 false를 유지하세요** — 되살리려면 패닉 없이 소리를 내는
+> 방법(비블로킹 재생, 볼륨/전류 저감 등)을 먼저 검증해야 합니다.
 
 **진행 표시 (PROGRESS, 모드 공통)**: `TEST_MODE` 값과 무관하게 항상 처리됩니다.
 - `"P<current><total>"` 수신 (예: `"P37"` = 3/7번째) → **LED 표시는 하지 않고** `"OKP<current><total>\n"`만
@@ -144,14 +157,18 @@ AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모�
 **이동 방식**: 손가락 간 텀 200ms 완전 순차 이동 (초기화 시 주먹 자세 포함) — 두 모드 공통.
 
 **현재 제약**: 엄지 서보 하드웨어 고장 — **교체하지 않기로 확정**(2026-09-21). 다만 **엄지 동작은
-설계·시현에 그대로 유지**하므로 펌웨어의 `G1`~`G7` 엄지 각도는 변경하지 않는다. 실물에서는 엄지가
-움직이지 않아 `G3`↔`G6`, `G4`↔`G7`이 시각적으로 구별되지 않지만, 제스처 재설계는 하지 않고 감수한다
-(위 "아직 확정 안 된 것" 참고).
+설계·시현에 그대로 유지**하므로 펌웨어의 `G1`~`G7` 엄지 각도는 변경하지 않는다.
+
+**2026-09-21 실물 육안 대조 결과**: 엄지가 움직이지 않아 `G3`(좌회전_유도)↔`G6`(후진),
+`G4`(우회전_유도)↔`G7`(주의)이 **실제로 구별되지 않음을 확인**했다. 즉 AI Hand 시범 단계에서 7종 중
+4종이 2쌍으로 겹친다. 제스처 재설계는 하지 않기로 확정했으므로(위 "아직 확정 안 된 것"),
+시현에서는 web 화면이 표시하는 목표 수신호 이름(`GET /api/state`의 `target_signal`)으로 학습자가
+구분하고 AI Hand는 보조 시범 역할을 한다. 인식·판정 경로는 로봇손과 무관하므로 KPI에는 영향이 없다.
 
 **PC 쪽 (`tests/aihand_control_pc.py`)**: micro:bit 쪽과 동일하게 최상단 `TEST_MODE` 한 줄로 운영
 (숫자 입력 → `G1`~`G7`, `loop` 내구성 테스트, `progress <current> <total>`)/테스트(`idx`/`g`/`hand`
 명령 → `IDX:`/`G:`/`HAND:`) 모드를 전환합니다. micro:bit 펌웨어의 `TEST_MODE` 값과 반드시 맞춰서
-실행하세요. 두 모드 모두 `correct`/`incorrect`(LED O/X + 부저 모스 `-`/`..`), `progress`(수신
+실행하세요. 두 모드 모두 `correct`/`incorrect`(LED O/X, 부저 없음), `progress`(수신
 확인만) 입력을 테스트할 수 있습니다. `bleak` 사용, RX/TX UUID는 위 "공통 전제" 참고.
 
 ---
@@ -176,7 +193,7 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
 | --- | --- |
 | `GET /health` | `mock_hardware`, `microbit_connected` 상태 확인 |
 | `POST /command` | `aihand_command.schema.json` 형식 입력 → `target_signal`을 `G{n}`으로 변환해 BLE 전송 |
-| `POST /result` | 판정 결과 LED+부저 표시 — `is_correct`를 `correct`/`incorrect`로 변환해 BLE 전송
+| `POST /result` | 판정 결과 LED 표시(O/X) — `is_correct`를 `correct`/`incorrect`로 변환해 BLE 전송
   (`match_score`는 펌웨어가 쓰지 않아 전달하지 않음) |
 | `POST /progress` | 진행 표시 — `current`/`total`을 `P<current><total>`로 변환해 BLE 전송 (LED 표시는
   펌웨어가 하지 않음, 수신 확인만) |

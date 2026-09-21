@@ -20,14 +20,16 @@
 
 ```
 G1\n ~ G7\n          예) G3\n        (수신호 7종에 대응하는 제스처 실행)
-correct\n            판정 결과 LED에 O 표시(2초) + 부저 모스 '-'(1초) 후 소등
-incorrect\n          판정 결과 LED에 X 표시(2초) + 부저 모스 '..'(1초) 후 소등
+correct\n            판정 결과 LED에 O 표시(2초) 후 소등 (부저 없음)
+incorrect\n          판정 결과 LED에 X 표시(2초) 후 소등 (부저 없음)
 P<current><total>\n  예) P37\n       (3/7번째. 둘 다 한 자리 숫자, LED 표시 없음 — 회신만)
 ```
 
 - `G{n}`: `target_signal` <-> `G{n}` 매핑은 `services/actuation/src/aihand/controller.py`의
   `GESTURE_MAP` 참고
-- `correct`/`incorrect`: match_score는 전달하지 않음(펌웨어가 쓰지 않음) — is_correct만 반영
+- `correct`/`incorrect`: match_score는 전달하지 않음(펌웨어가 쓰지 않음) — is_correct만 반영.
+  **부저는 사용하지 않음**(2026-09-21 실측 확정) — `music.playTone()`이 BLE SoftDevice와 충돌해
+  패닉 070(SD_ASSERT)을 일으킨다. 펌웨어의 `BUZZER_ENABLED = false`로 비활성, LED O/X만 사용
 - `P<current><total>`: 진행 표시는 LED로 하지 않음(2026-09-21 결정, web 화면 쪽 담당) — 수신
   확인만 목적
 
