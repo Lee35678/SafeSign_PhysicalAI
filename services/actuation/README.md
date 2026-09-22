@@ -136,17 +136,27 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 - `"incorrect"` 수신 → LED에 X 모양 2초간 표시 후 소등, `OK:INCORRECT\n` 회신
 - `showResult()` 실행 중(2초) `basic.pause()`로 블로킹되므로 그 사이 다른 BLE 명령은 처리되지 않음
 
-> ⚠️ **부저 비활성화 (2026-09-21 실측 확정)**
+> 🔴 **절대 규칙 — BLE 시작 후 `music.*` 호출 금지 (2026-09-22 확정)**
 >
-> `music.playTone()`은 micro:bit v2의 **BLE SoftDevice와 충돌해 패닉 070(SD_ASSERT)** 을 일으킵니다 —
-> `/result` 실물 테스트에서 "부저가 울리는 순간 micro:bit에 슬픈 얼굴 + 070 표시, BLE 끊김"으로
-> 재현됐습니다. 이미 알려진 문제로, 같은 이유로 `StartbitV2_patched.ts:324`도 `music.playTone()`을
-> LED 표시로 대체해 두었는데 RESULT 기능을 추가하면서 같은 호출이 다시 들어갔던 것입니다(회귀).
+> micro:bit v2에서 **BLE SoftDevice와 `music` 라이브러리는 같은 하드웨어 타이머/PWM 자원을 공유**해
+> 함께 쓸 수 없습니다. `bluetooth.startUartService()` 이후 `music.*`를 호출하면 **소리가 나야 할
+> 바로 그 시점에 패닉 070(SD_ASSERT)** 이 발생하고 BLE가 끊깁니다.
 >
-> 조치: `aihand_control.ts` 최상단에 `const BUZZER_ENABLED = false;`를 두고 `playResultTone()`
-> 최상단에서 가드합니다. 부저가 꺼져 있으면 `showResult()`가 `basic.pause(2000)`으로 LED 표시
-> 시간 2초를 그대로 유지합니다. **기본값 false를 유지하세요** — 되살리려면 패닉 없이 소리를 내는
-> 방법(비블로킹 재생, 볼륨/전류 저감 등)을 먼저 검증해야 합니다.
+> - 2026-09-21 `/result` 실물 테스트에서 최초 재현("부저 울리는 순간 슬픈 얼굴 + 070, BLE 끊김"),
+>   이후 부저 코드를 직접 넣어 실행하는 전용 검증으로 **확정**했습니다.
+> - **타이밍 튜닝으로 우회할 수 있는 버그가 아닙니다.** 종전 README에 있던 "비블로킹 재생·볼륨
+>   저감 등을 검증하면 되살릴 수 있다"는 단서는 **철회합니다.**
+> - 전례: `StartbitV2_patched.ts:324`도 같은 이유로 `music.playTone()`을 LED로 대체해 두었는데,
+>   RESULT 기능을 추가하면서 같은 호출이 다시 들어갔던 적이 있습니다(회귀).
+>
+> **지켜야 할 것**
+> 1. `bluetooth.startUartService()` 이후 `music.*`를 호출하지 않습니다.
+> 2. 소리 피드백이 필요하면 `basic.showIcon()` / `basic.showLeds()` / `basic.showString()` 등
+>    **LED로 대체**합니다.
+>
+> 조치: 2026-09-22 `aihand_control.ts`에서 `playResultTone()`과 `BUZZER_ENABLED` 플래그를
+> **삭제**했습니다. 꺼둔 채로 남겨두면 플래그 한 줄로 패닉을 부를 수 있기 때문입니다.
+> `showResult()`는 `basic.pause(2000)`으로 LED 표시 시간 2초를 유지합니다.
 
 **진행 표시 (PROGRESS, 모드 공통)**: `TEST_MODE` 값과 무관하게 항상 처리됩니다.
 - `"P<current><total>"` 수신 (예: `"P37"` = 3/7번째) → **LED 표시는 하지 않고** `"OKP<current><total>\n"`만

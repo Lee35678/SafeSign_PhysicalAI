@@ -4,17 +4,27 @@
 //  - production(false): "G1"~"G7" 경량 명령만 처리 (실전 배포용)
 //  - test(true): "IDX:", "HAND:", "G:" 명령까지 지원 (캘리브레이션/디버깅용)
 //  - "correct"/"incorrect"(판정 결과)와 "P<current><total>"(진행 표시)는 TEST_MODE와 무관하게 항상 처리
-//  - BUZZER_ENABLED: 부저는 BLE SoftDevice와 충돌해 패닉 070을 일으키므로 기본 꺼짐 (아래 주석 참고)
+// =========================================================
+
+// =========================================================
+// 🔴 절대 규칙 — bluetooth.startUartService() 이후 music.* 를 호출하지 않는다
+//
+// micro:bit v2에서 BLE SoftDevice와 music 라이브러리는 **같은 하드웨어 타이머/PWM 자원을
+// 공유**하므로 함께 쓸 수 없다. music.playTone() 등을 호출하면 소리가 나야 할 바로 그 시점에
+// 패닉 070(SD_ASSERT)이 발생하고 BLE가 끊긴다.
+//
+//   - 튜닝으로 우회할 수 있는 타이밍 버그가 **아니다.** 하드웨어 자원 충돌이라 조건을 바꿔도
+//     재현된다 (2026-09-21 재현 + 이후 전용 검증으로 확정).
+//   - 전례: StartbitV2_patched.ts:324 도 같은 이유로 music.playTone()을 LED 표시로 대체했다.
+//   - 한때 이 파일에 BUZZER_ENABLED 플래그로 꺼둔 playResultTone()이 있었으나, **되살릴 수 없는
+//     코드를 남겨두면 플래그 한 줄로 패닉을 부르게 되므로 삭제**했다.
+//     (원래 의도: correct = 880Hz 1초 / incorrect = 880Hz 200ms 2회. 되살리지 말 것.)
+//
+// 소리 피드백이 필요하면 basic.showIcon() / basic.showLeds() / basic.showString() 등
+// **LED 기반으로 대체**한다.
 // =========================================================
 
 const TEST_MODE = false;
-
-// 부저 사용 여부. **기본값 false를 유지할 것.**
-// music.playTone()은 micro:bit v2에서 BLE SoftDevice와 충돌해 패닉 070(SD_ASSERT)을 일으킨다 —
-// 같은 이유로 StartbitV2_patched.ts:324에서도 music.playTone()을 LED 표시로 대체해 둔 전례가 있다.
-// 2026-09-21 `/result` 실물 테스트에서 "부저 울리는 순간 슬픈 얼굴 + 070" 으로 재현 확인됨.
-// 켜려면 패닉 없이 소리를 내는 방법(비블로킹 재생, 볼륨/전류 저감 등)을 먼저 검증할 것.
-const BUZZER_ENABLED = false;
 
 const THUMB = 1;
 const INDEX = 2;
@@ -75,27 +85,8 @@ function showResult(isCorrect: boolean) {
             # . . . #
         `);
     }
-    if (BUZZER_ENABLED) {
-        playResultTone(isCorrect);  // 약 1초 블로킹
-        basic.pause(1000);
-    } else {
-        basic.pause(2000);          // 부저 없이도 LED 표시 시간 2초를 동일하게 유지
-    }
+    basic.pause(2000);   // 판정 결과 LED 표시 시간. 소리는 쓰지 않는다 (최상단 절대 규칙 참고)
     basic.clearScreen();
-}
-
-// 부저 출력 (1초): correct -> 모스 '-'(단일 톤 1초), incorrect -> 모스 '..'(짧은 톤 2번)
-// BUZZER_ENABLED=false면 아무것도 하지 않는다 (패닉 070 회피, 위 상수 주석 참고).
-function playResultTone(isCorrect: boolean) {
-    if (!BUZZER_ENABLED) return;
-    if (isCorrect) {
-        music.playTone(880, 1000);
-    } else {
-        music.playTone(880, 200);
-        music.rest(200);
-        music.playTone(880, 200);
-        music.rest(400);
-    }
 }
 
 // ---- 체크리스트 7가지 손동작 ----

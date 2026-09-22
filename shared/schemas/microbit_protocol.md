@@ -28,8 +28,10 @@ P<current><total>\n  예) P37\n       (3/7번째. 둘 다 한 자리 숫자, LED
 - `G{n}`: `target_signal` <-> `G{n}` 매핑은 `services/actuation/src/aihand/controller.py`의
   `GESTURE_MAP` 참고
 - `correct`/`incorrect`: match_score는 전달하지 않음(펌웨어가 쓰지 않음) — is_correct만 반영.
-  **부저는 사용하지 않음**(2026-09-21 실측 확정) — `music.playTone()`이 BLE SoftDevice와 충돌해
-  패닉 070(SD_ASSERT)을 일으킨다. 펌웨어의 `BUZZER_ENABLED = false`로 비활성, LED O/X만 사용
+  🔴 **소리는 쓰지 않는다 — 하드웨어 제약(확정).** micro:bit v2에서 BLE SoftDevice와 `music`
+  라이브러리는 **같은 타이머/PWM 자원을 공유**해 함께 쓸 수 없다. `music.*` 호출 시 소리가 나야 할
+  시점에 패닉 070(SD_ASSERT)이 나고 BLE가 끊긴다. **우회 방법은 없으며**, 펌웨어에서 해당 호출을
+  전부 제거했다. 판정 피드백은 **LED O/X만** 사용한다
 - `P<current><total>`: 진행 표시는 LED로 하지 않음(2026-09-21 결정, web 화면 쪽 담당) — 수신
   확인만 목적
 
