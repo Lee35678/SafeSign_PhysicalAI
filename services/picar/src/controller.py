@@ -125,6 +125,30 @@ def _write_stop() -> None:
         _get_bus().write_byte_data(I2C_ADDR, REG_STOP, 0x00)
 
 
+# 정지 쓰기 재시도 횟수. **정지는 실패하면 안 되는 명령**이다 — 모터 전류가 클수록 I2C에 노이즈가
+# 실릴 수 있어(2026-09-23 부하 테스트 #10, speed 50), 한 번 실패로 차를 놓치지 않게 재시도한다.
+STOP_RETRY = max(1, int(os.getenv("PICAR_STOP_RETRY", "3")))
+
+# 마지막 정지 실패 사유. 자동 정지는 타이머 스레드에서 돌아 호출부가 결과를 볼 수 없으므로,
+# 여기에 남겨 /health(diagnose)로 드러낸다 — "조용한 실패"를 없애기 위함.
+_last_stop_error: "str | None" = None
+
+
+def _write_stop_retrying() -> None:
+    """정지를 재시도하며 쓴다. 전부 실패하면 마지막 예외를 그대로 올린다."""
+    global _last_stop_error
+    last: "Exception | None" = None
+    for _ in range(STOP_RETRY):
+        try:
+            _write_stop()
+            _last_stop_error = None
+            return
+        except Exception as exc:  # noqa: BLE001 — 재시도 후 아래에서 다시 올린다
+            last = exc
+    _last_stop_error = f"{type(last).__name__}: {last}"
+    raise last
+
+
 # ── 모터 ──────────────────────────────────────────────────────────────────────
 def _cancel_auto_stop() -> None:
     global _auto_stop_timer
@@ -143,10 +167,14 @@ def _schedule_auto_stop() -> None:
 
 
 def _safe_stop() -> None:
-    """타이머 스레드에서 호출 — 실패해도 서비스를 죽이지 않는다."""
+    """타이머 스레드에서 호출 — 실패해도 서비스를 죽이지 않는다.
+
+    예외를 삼키지만 **조용히 삼키지는 않는다** — 사유를 `_last_stop_error`에 남겨
+    `/health`로 드러낸다. 여기서 실패하면 차가 계속 달리므로 반드시 눈에 띄어야 한다.
+    """
     try:
-        _write_stop()
-    except Exception:  # noqa: BLE001 — I2C 실패로 타이머 스레드가 죽지 않게만 한다
+        _write_stop_retrying()
+    except Exception:  # noqa: BLE001 — 타이머 스레드가 죽지 않게만 한다(사유는 위에서 기록됨)
         pass
 
 
@@ -184,8 +212,13 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
         }
 
     if kind == "stop":
+        # 🔴 순서가 중요하다 — **정지 쓰기가 성공한 뒤에** 자동 정지 타이머를 걷는다.
+        # 먼저 취소하면 _write_stop()이 실패했을 때 **안전망까지 사라져 차가 계속 달린다.**
+        # 2026-09-23 부하 테스트 #10(speed 50)에서 "끝날 때 정지 안 됨"으로 실제 관측됐다.
+        # 실패하면 예외가 execute()로 올라가 i2c_failed로 응답되고, 타이머는 살아 있어
+        # 늦어도 MOTION_DURATION_S 안에 차가 멈춘다.
+        _write_stop_retrying()
         _cancel_auto_stop()
-        _write_stop()
         return {"status": "ok", "action": "stop"}
 
     _write_motor(*payload)
@@ -269,6 +302,10 @@ def diagnose(mock: bool = True) -> dict:
         "leds_unassigned": [n for n, pins in PIN_MAP.items() if not pins],
         "motion_duration_s": MOTION_DURATION_S,
         "motion_active": _auto_stop_timer is not None and _auto_stop_timer.is_alive(),
+        # 🔴 정지 실패는 "차가 계속 달린다"는 뜻이다. None이 아니면 즉시 확인할 것.
+        # 주의: motion_active는 **타이머 상태**일 뿐 바퀴가 실제로 도는지가 아니다 —
+        # 정지 쓰기가 실패한 상태에서도 타이머가 없으면 False가 나온다. 아래 값을 함께 봐야 한다.
+        "last_stop_error": _last_stop_error,
     }
 
 

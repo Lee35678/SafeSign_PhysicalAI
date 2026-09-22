@@ -245,3 +245,68 @@ if __name__ == "__main__":  # pytest 없이도 돌려볼 수 있게
                 print(f"FAIL {name}")
                 traceback.print_exc()
     print(f"\n{'FAILED ' + str(failed) if failed else 'ALL PASSED'}")
+
+
+# ── 정지 경로 (2026-09-23 부하 테스트 #10 회귀 방지) ──────────────────────────
+def test_stop_writes_before_cancelling_the_safety_timer(monkeypatch):
+    """정지 쓰기가 **성공한 뒤에** 자동 정지 타이머를 걷어야 한다.
+
+    먼저 취소해 버리면 `_write_stop()` 실패 시 안전망까지 사라져 차가 계속 달린다.
+    2026-09-23 부하 테스트 #10(speed 50)에서 실제로 "끝날 때 정지 안 됨"이 관측된 결함이다.
+    """
+    order = []
+    monkeypatch.setattr(controller, "_write_stop_retrying", lambda: order.append("write"))
+    monkeypatch.setattr(controller, "_cancel_auto_stop", lambda: order.append("cancel"))
+
+    controller._apply_motor("stop", 0, mock=False)
+
+    assert order == ["write", "cancel"], f"순서가 뒤집혔다: {order}"
+
+
+def test_failed_stop_leaves_the_auto_stop_timer_armed(monkeypatch):
+    """정지 쓰기가 실패하면 타이머를 걷지 않고 예외를 올린다 — 늦어도 2초 안에 멈추도록."""
+    cancelled = []
+    monkeypatch.setattr(controller, "_cancel_auto_stop", lambda: cancelled.append(True))
+
+    def _boom():
+        raise OSError("i2c nack")
+
+    monkeypatch.setattr(controller, "_write_stop_retrying", _boom)
+
+    try:
+        controller._apply_motor("stop", 0, mock=False)
+    except OSError:
+        pass
+    else:
+        raise AssertionError("정지 실패가 예외로 올라오지 않았다")
+
+    assert cancelled == [], "정지에 실패했는데 안전망(자동 정지 타이머)을 걷어냈다"
+
+
+def test_stop_retries_before_giving_up(monkeypatch):
+    """I2C 노이즈로 한 번 실패해도 재시도로 살아나야 한다."""
+    attempts = []
+
+    def _flaky():
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise OSError("i2c nack")
+
+    monkeypatch.setattr(controller, "_write_stop", _flaky)
+    controller._write_stop_retrying()
+
+    assert len(attempts) == 2
+    assert controller._last_stop_error is None
+
+
+def test_stop_failure_is_recorded_for_health(monkeypatch):
+    """자동 정지는 타이머 스레드에서 돌아 호출부가 결과를 못 본다 —
+    실패 사유가 /health에 드러나지 않으면 '조용한 실패'가 된다."""
+    monkeypatch.setattr(controller, "_write_stop", lambda: (_ for _ in ()).throw(OSError("nack")))
+    controller._last_stop_error = None
+
+    controller._safe_stop()          # 예외를 삼키되 사유는 남긴다
+
+    assert controller._last_stop_error is not None
+    assert "OSError" in controller._last_stop_error
+    controller._last_stop_error = None   # 다른 테스트에 새지 않게 되돌린다
