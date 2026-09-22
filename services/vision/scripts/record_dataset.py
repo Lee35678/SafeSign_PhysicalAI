@@ -20,6 +20,17 @@
 (`정면 / 좌기울임 / 우기울임`), 나중에 `train_svm.py --with-orientation`으로 A/B 비교한다.
 방향이 필요 없으면 `--orientations 정면`.
 
+**카메라는 노트북 웹캠이 기본이고, RPi5의 Camera Module 3(CSI)로도 찍을 수 있다.**
+
+    python scripts/record_dataset.py --subject-id ext01                # 노트북/USB 웹캠 (기본)
+    python scripts/record_dataset.py --subject-id ext01 --source csi   # RPi5 + Camera Module 3
+    python scripts/record_dataset.py --list-cameras                    # 뭐가 잡히는지 확인
+
+  CSI는 libcamera 스택이라 `cv2.VideoCapture`로 못 읽는다 — `camera_source.py`가 picamera2로
+  받아 준다(RPi5 준비 절차도 그 파일 참고). 어느 쪽으로 찍었는지는 저장 파일의
+  `source.device`에 남으므로 나중에 카메라별로 갈라 볼 수 있다.
+  **조작이 키 입력이라 창이 필요하다** — Pi에서는 데스크톱에서 직접 실행할 것(SSH면 VNC/`ssh -X`).
+
 조작:
     SPACE  이번 테이크 촬영 (카운트다운 후 연속 캡처)
     U      직전 테이크 취소(파일 삭제)
@@ -44,6 +55,14 @@ sys.path.insert(0, str(SERVICE_ROOT / "scripts"))
 
 from cognition.normalize import NormalizationError, to_feature_vector  # noqa: E402
 
+# 노트북 웹캠(OpenCV)과 RPi5 Camera Module 3(picamera2)을 같은 얼굴로 감싼 캡처 계층
+from camera_source import (  # noqa: E402
+    add_camera_args,
+    has_display,
+    list_cameras,
+    open_camera,
+)
+
 # 02_설계문서_v2 §4 확정 7종 + 손가락 패턴(엄지·검지·중지·약지·소지, ● 폄 / ○ 접음).
 # 외부인은 수신호를 모르므로 화면에 이 패턴을 같이 띄워 준다.
 SIGN_SHAPES = [
@@ -67,7 +86,7 @@ def _now_iso() -> str:
 
 
 def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
-                take: int, seq: int, orientation: str) -> Path:
+                take: int, seq: int, orientation: str, device: str = "laptop_webcam") -> Path:
     """공개 데이터와 같은 형식으로 1건 저장 (04_데이터셋명세서_v2 §6)."""
     folder = out_dir / class_name
     folder.mkdir(parents=True, exist_ok=True)
@@ -86,7 +105,7 @@ def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
                     "recorded_at": _now_iso(),
                     "orientation": orientation,   # 안건 3 A안 A/B용
                     "take": take,                 # 같은 테이크 = 한 번의 "시도"
-                    "device": "laptop_webcam",
+                    "device": device,             # laptop_webcam / rpi5_csi_module3
                 },
             },
             ensure_ascii=False,
@@ -134,7 +153,8 @@ def draw_prompt(image, class_name: str, shape: str, hint: str, orientation: str,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="자체 촬영: KPI 측정용 평가 데이터 수집")
-    ap.add_argument("--subject-id", required=True,
+    # --list-cameras 만 볼 때는 촬영자 ID가 필요 없으므로 required 대신 아래에서 직접 확인한다
+    ap.add_argument("--subject-id",
                     help="촬영자 식별자. 사람마다 다르게 (예: ext01). 실명 대신 익명 ID 권장")
     ap.add_argument("--out", type=Path,
                     default=SERVICE_ROOT.parent / "data" / "datasets" / "self_recorded")
@@ -144,10 +164,23 @@ def main() -> int:
     ap.add_argument("--orientations", default="정면,좌기울임,우기울임",
                     help="테이크마다 돌아가며 요청할 손 방향. 쉼표 구분. 안 쓰려면 '정면'")
     ap.add_argument("--classes", default="", help="쉼표로 지정하면 그 클래스만 촬영")
-    ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--landmarker", default=str(SERVICE_ROOT / "models" / "hand_landmarker.task"))
     ap.add_argument("--no-mirror", action="store_true")
+    add_camera_args(ap, default_source="usb")   # --source/--camera/--size/--fps/--list-cameras 등
     args = ap.parse_args()
+
+    if args.list_cameras:
+        list_cameras()
+        return 0
+    if not args.subject_id:
+        ap.error("--subject-id 는 필수입니다 (예: --subject-id ext01)")
+
+    if not has_display():
+        # 이 도구는 SPACE/U/N 키로 조작하므로 창이 없으면 아예 쓸 수 없다.
+        raise SystemExit(
+            "창을 띄울 수 없는 환경입니다(DISPLAY 없음). 이 도구는 키 조작이 필요합니다.\n"
+            "  Pi 데스크톱에서 직접 실행하거나 VNC / `ssh -X` 로 접속해서 실행하세요."
+        )
 
     import cv2
     import mediapipe as mp
@@ -214,11 +247,8 @@ def main() -> int:
         result_callback=on_result,
     )
 
-    backend = cv2.CAP_DSHOW if sys.platform == "win32" else 0
-    cap = cv2.VideoCapture(args.camera, backend)
-    if not cap.isOpened():
-        raise SystemExit(f"카메라 {args.camera}번을 열 수 없습니다. "
-                         f"webcam_check.py --list-cameras 로 인덱스를 확인하세요.")
+    camera = open_camera(args)          # CSI(picamera2) / USB(OpenCV) — read()는 둘 다 BGR
+    print(f"  카메라: {camera.description}  (source.device = {camera.device_tag})\n")
 
     font = _load_korean_font(28)
     saved_total = 0
@@ -237,8 +267,8 @@ def main() -> int:
                 class_name, shape, hint = shapes[cls_idx]
                 orientation = orientations[(take - 1) % len(orientations)]
 
-                ok, frame_bgr = cap.read()
-                if not ok:
+                frame_bgr = camera.read()
+                if frame_bgr is None:
                     print("카메라 프레임을 읽지 못했습니다.")
                     break
                 if not args.no_mirror:
@@ -268,7 +298,7 @@ def main() -> int:
                     if usable:
                         burst_seq += 1
                         p = save_sample(args.out, class_name, args.subject_id, lm_frame,
-                                        take, burst_seq, orientation)
+                                        take, burst_seq, orientation, camera.device_tag)
                         last_take_files.append(p)
                         saved_total += 1
                         per_class[class_name] = per_class.get(class_name, 0) + 1
@@ -314,7 +344,7 @@ def main() -> int:
                     last_take_files = []
                     take = max(1, take - 1)
     finally:
-        cap.release()
+        camera.close()
         cv2.destroyAllWindows()
 
     print("\n" + "=" * 70)

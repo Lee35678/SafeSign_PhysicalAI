@@ -106,7 +106,7 @@ python -m pytest tests -q        # 18개
 - `PIN_MAP`에 채운 핀이 `USED_BCM_PINS`와 충돌하지 않는지 — **황색 LED 핀을 정할 때 자동 검증됨**
 - mock 경로가 `smbus2`/`gpiozero`를 임포트하지 않는지 (개발 PC에서 깨지지 않게)
 
-## 실물 검증 절차 (RPi4B 도착 후)
+## 실물 검증 절차 (RPi4B 보유 — 2026-09-22 입수)
 
 아직 실물이 없어 아래는 **미검증**입니다. 보드가 오면 이 순서대로 확인하세요.
 
@@ -140,7 +140,7 @@ curl -s -X POST http://localhost:8000/picar -H "Content-Type: application/json" 
   `i2cdetect`로 확인 필요
 - [ ] 주행 지속 시간 확정 (현재 자동 정지 2초 잠정값, 스키마에 `duration_ms` 추가 여부 포함)
 - [x] ~~황색 LED 2개 배선 및 최종 BCM 핀 번호 확정~~ → **핀 확정(2026-09-21)**: 황색 좌 BCM5 /
-  황색 우 BCM6 / 적색 2개 공통 BCM13. `PIN_MAP` 반영 완료, 물리 배선은 실물 도착 후
+  황색 우 BCM6 / 적색 2개 공통 BCM13. `PIN_MAP` 반영 완료, **부품 보유 — 물리 배선만 남음**
 - [ ] picar 전원 계통 분리 여부(모터 노이즈가 RPi4B 자체 Wi-Fi 모듈에 영향 주는지) — 실물 조립 후 이 서비스 구현 담당자가 직접 판단 (시스템_구성도_초안.md §5)
 - [ ] RPi5 ↔ RPi4B Wi-Fi IP 구성(고정 IP/mDNS)
 
