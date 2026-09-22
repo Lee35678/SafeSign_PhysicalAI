@@ -144,8 +144,11 @@ def main() -> int:
     per_cls = collections.Counter(s["cls"] for s in samples)
     print(f"  클래스별: {dict(per_cls)}")
     if len(subs) < 2:
-        print("\n  [주의] 촬영자가 1명뿐입니다. 인물 단위 분할이 불가능해 '처음 보는 사람'")
-        print("         기준 KPI로는 쓸 수 없습니다 (04_데이터셋명세서_v2 §4). 최소 2명 필요.")
+        print("\n  [주의] 촬영자가 1명뿐입니다. 사람이 바뀌어도 통하는지 확인할 수 없습니다")
+        print("         (04_데이터셋명세서_v2 §4). 최소 2명 필요.")
+    else:
+        print(f"\n  촬영자 {len(subs)}명 — 모델은 공개 데이터로만 학습했으므로 이 데이터는")
+        print("  전부 처음 보는 입력이다. 촬영자별 분해는 아래 참고.")
 
     candidates = [("현재 모델", None)] + [
         (p.name, p) for p in sorted((SERVICE_ROOT / "models").glob("cmp_*.joblib"))
@@ -177,6 +180,81 @@ def main() -> int:
     mode, rows, k = results.get("현재 모델", (None, [], {}))
     if not rows:
         return 0
+
+    # ---- 촬영자별 ----
+    if len(subs) >= 2:
+        print()
+        print("=" * 78)
+        print("촬영자별 (사람이 바뀌어도 통하는가)")
+        print("=" * 78)
+        print(f"  {'촬영자':<10}{'시도':>6}{'정답률':>9}{'오분류':>8}{'미판정':>8}{'치명':>6}")
+        print("  " + "-" * 50)
+        for s in sorted(subs):
+            k2 = kpi_table([r for r in rows if r["subject"] == s])
+            if not k2:
+                continue
+            print(f"  {s:<10}{k2['n']:>6}{k2['accuracy']:>8.1f}%{k2['misclass']:>7.1f}%"
+                  f"{k2['reject']:>7.1f}%{k2['critical']:>6}")
+        print("\n  ※ 모델은 공개 데이터로만 학습했다. 자체 촬영분은 학습에 쓰이지 않았으므로")
+        print("     모든 촬영자가 '처음 보는 사람'이다.")
+
+    # ---- 통계적 신뢰도 ----
+    print()
+    print("=" * 78)
+    print("통계적 신뢰도 — 이 표본으로 KPI를 확정할 수 있나")
+    print("=" * 78)
+    n = k["n"]
+    wrong = round(k["misclass"] / 100 * n)
+    # Wilson 상한 (95%)
+    z = 1.96
+    ph = wrong / n
+    denom = 1 + z * z / n
+    centre = (ph + z * z / (2 * n)) / denom
+    half = z * ((ph * (1 - ph) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    upper = (centre + half) * 100
+    print(f"  시도 {n}회 중 오분류 {wrong}회  ->  오분류율 95% 신뢰 상한 {upper:.1f}%")
+    verdict = ("확정 가능 — 상한이 KPI(3%) 안에 든다" if upper <= KPI["misclass"]
+               else f"아직 확정 불가 — 상한 {upper:.1f}% > KPI 3%. 시도 수를 더 늘려야 한다")
+    print(f"  => {verdict}")
+    if upper > KPI["misclass"]:
+        need = int(3 / 0.03) if wrong == 0 else None
+        if need:
+            print(f"     오분류 0회를 유지한다면 약 {need}시도에서 상한이 3%로 내려간다")
+
+    # ---- 소속 게이트 (애매한 자세) ----
+    amb = [s for s in samples if s["cls"] == AMBIGUOUS]
+    if amb:
+        print()
+        print("=" * 78)
+        print("소속 게이트 — 7종이 아닌 자세를 막는가 (미판정이 정답)")
+        print("=" * 78)
+        model_store.load_bundle(force=True)
+        takes = collections.defaultdict(list)
+        for s in amb:
+            takes[(s["subject"], s["take"])].append(s)
+        blocked_f = leaked = 0
+        reasons = collections.Counter()
+        leak_to = collections.Counter()
+        full_takes = 0
+        for _, fs in takes.items():
+            bl = 0
+            for f in fs:
+                r = classify.predict({"hand_detected": True, "handedness": f["handedness"],
+                                      "landmarks": f["landmarks"]})
+                if r["is_reject"]:
+                    bl += 1; blocked_f += 1; reasons[r.get("reason")] += 1
+                else:
+                    leaked += 1; leak_to[r["predicted_class"]] += 1
+            full_takes += int(bl == len(fs))
+        nf = blocked_f + leaked
+        print(f"  프레임 {nf}개 중 차단 {blocked_f} ({blocked_f / nf * 100:.0f}%)")
+        print(f"  테이크 {len(takes)}개 중 전부 차단 {full_takes} "
+              f"({full_takes / len(takes) * 100:.0f}%)")
+        print(f"  차단 사유: {dict(reasons)}")
+        if leak_to:
+            print(f"  새어나간 것: {dict(leak_to)}")
+            print("  ※ 새어나간 자세는 그 클래스와 기하학적으로 매우 닮은 경우다 —")
+            print("     거리 기반 게이트의 원리적 한계다 (05_모델카드_v3 §3-7).")
 
     print()
     print("=" * 78)
@@ -239,6 +317,28 @@ def main() -> int:
             print(f"  {c:<12}{cells}")
         print("\n  * = 0.5 이상 차이. 학습 데이터(ASL 사진)보다 덜 편다는 뜻이고,")
         print("    그 손가락으로 구분하는 클래스가 무너진다.")
+    # ---- 경계사례 (KPI 제외, 참고용) ----
+    bl_dir = args.data.parent / f"{args.data.name}_borderline"
+    if bl_dir.exists():
+        bl = load(bl_dir)
+        if bl:
+            print()
+            print("=" * 78)
+            print("참고: 경계사례 (일부러 살짝 어긋낸 자세) — KPI 계산에서 제외")
+            print("=" * 78)
+            res = evaluate(bl, None)
+            if res:
+                _, brows = res
+                ok = sum(1 for r in brows if not r["reject"] and r["pred"] == r["cls"])
+                rej = sum(1 for r in brows if r["reject"])
+                bad = len(brows) - ok - rej
+                print(f"  {len(brows)}시도  ->  의도한 클래스로 판정 {ok}, 다른 클래스 {bad}, "
+                      f"미판정 {rej}")
+                print("\n  이 숫자는 정답/오답이 아니다. **'어디까지 정답으로 볼 것인가'가")
+                print("  아직 정해지지 않았기 때문**이다(제품 결정 사항). 채점을 엄격하게 하려면")
+                print("  이들이 미판정/오답으로 가야 하고, 관대하게 하려면 정답으로 가야 한다.")
+                print("  τ와 게이트 퍼센타일로 그 지점을 조절한다.")
+
     return 0
 
 
