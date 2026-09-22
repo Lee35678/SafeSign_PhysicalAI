@@ -46,7 +46,9 @@ OKP<current><total>\n예) OKP37\n        (P<current><total> 처리 완료)
 
 ## 손가락 서보 동시 구동 금지
 
-micro:bit v2 보드 최대 공급 전류(~300mA) < 손가락 서보(LFD-01) 구속 전류(최대 700mA, 6V) —
+7.5V 3A 어댑터 하나가 확장보드를 거쳐 micro:bit와 서보를 같은 레일에서 먹이는데, 손가락 서보
+(LFD-01) 구속 전류가 개당 700mA라 5개 동시 기동 시 3.5A로 어댑터 용량을 넘긴다 (2026-09-21 정정:
+이전의 "micro:bit 300mA" 근거는 틀렸다 — 서보는 micro:bit를 거치지 않는다) —
 서보 1개만 구동해도 보드 공급 한계를 넘어서 2개 이상 동시 구동 시 전압 강하로 BLE 연결이 끊긴다.
 모든 코드는 손가락 간 200ms 텀을 둔 완전 순차 이동만 사용한다 (`services/actuation/doc/hardware_spec.md`).
 
