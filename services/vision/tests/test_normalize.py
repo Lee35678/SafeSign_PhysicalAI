@@ -22,10 +22,18 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from cognition.normalize import (  # noqa: E402
+    DEFAULT_FEATURE_MODE,
     FEATURE_DIM,
     FEATURE_DIM_ORIENTED,
+    FEATURE_DIMS,
+    FEATURE_MODE_BASE,
+    FEATURE_MODE_JOINT,
+    FEATURE_MODE_ORIENTED,
+    JOINT_DIM,
     ORIENTATION_DIM,
     NormalizationError,
+    feature_dim,
+    joint_features,
     landmarks_to_array,
     normalize_landmarks,
     orientation_features,
@@ -58,7 +66,7 @@ def _rotation(yaw: float, pitch: float) -> np.ndarray:
 
 
 def test_feature_dim():
-    feat = to_feature_vector(_as_landmarks(_sample_hand()))
+    feat = to_feature_vector(_as_landmarks(_sample_hand()), mode=FEATURE_MODE_BASE)
     assert feat.shape == (FEATURE_DIM,), feat.shape
 
 
@@ -136,6 +144,69 @@ def test_rejects_degenerate_hand():
 
 
 # --------------------------------------------------------------------------
+# 관절 특징 (joint23) — 2026-09-22
+#
+# canonical 좌표 63차원은 "엄지가 펴졌나"를 암묵적으로만 담는다. 관절 각도·거리로 바꾸면
+# 그것이 한 축이 된다. 실측 77.57% -> 88.71%, 주의↔우회전 68.0% -> 90.0%.
+# --------------------------------------------------------------------------
+
+def test_joint_dim_and_default_mode():
+    lms = _as_landmarks(_sample_hand())
+    assert to_feature_vector(lms, mode=FEATURE_MODE_JOINT).shape == (JOINT_DIM,)
+    assert DEFAULT_FEATURE_MODE == FEATURE_MODE_JOINT, "기본 모드는 joint23이어야 한다"
+    assert to_feature_vector(lms).shape == (JOINT_DIM,), "인자 없이 부르면 기본 모드"
+
+
+def test_feature_dim_table_matches_actual():
+    """FEATURE_DIMS 표와 실제 출력 길이가 어긋나면 번들·스키마 검증이 조용히 깨진다."""
+    lms = _as_landmarks(_sample_hand())
+    for mode, dim in FEATURE_DIMS.items():
+        assert to_feature_vector(lms, mode=mode).shape == (dim,), mode
+        assert feature_dim(mode) == dim
+
+
+def test_unknown_mode_raises():
+    with np.errstate(all="ignore"):
+        try:
+            to_feature_vector(_as_landmarks(_sample_hand()), mode="없는모드")
+        except NormalizationError:
+            return
+    raise AssertionError("알 수 없는 모드인데 예외가 안 났다")
+
+
+def test_joint_features_invariant_like_canonical():
+    """관절 특징도 위치·크기·회전에 불변이어야 한다(canonical 좌표에서 계산하므로)."""
+    pts = _sample_hand()
+    variants = {
+        "이동": pts + np.array([0.3, -0.2, 0.1]),
+        "확대": pts * 2.5,
+        "회전": pts @ _rotation(0.7, 0.3).T,
+    }
+    base = to_feature_vector(_as_landmarks(pts), mode=FEATURE_MODE_JOINT)
+    for name, v in variants.items():
+        got = to_feature_vector(_as_landmarks(v), mode=FEATURE_MODE_JOINT)
+        assert np.allclose(base, got, atol=1e-9), f"{name}에 불변이 아니다"
+
+
+def test_joint_features_separate_finger_states():
+    """손가락 하나를 접으면 그 손가락 관련 성분이 움직여야 한다 — 이 특징의 존재 이유."""
+    pts = _sample_hand()
+    pts[8] = (-0.02, 0.16, 0.0)        # 검지 TIP을 쭉 편 위치로
+    extended = to_feature_vector(_as_landmarks(pts), mode=FEATURE_MODE_JOINT)
+    pts[8] = (-0.02, 0.05, 0.03)       # 접은 위치로
+    folded = to_feature_vector(_as_landmarks(pts), mode=FEATURE_MODE_JOINT)
+    assert not np.allclose(extended, folded, atol=1e-3)
+
+
+def test_joint_features_all_finite():
+    """퇴화 입력(손끝이 겹침 등)에서도 NaN이 나오면 안 된다 — 분류기가 통째로 죽는다."""
+    pts = _sample_hand()
+    pts[4] = pts[8] = pts[0]           # 엄지·검지 끝이 손목과 같은 위치
+    feat = joint_features(normalize_landmarks(pts))
+    assert np.all(np.isfinite(feat)), feat
+
+
+# --------------------------------------------------------------------------
 # 손 방향(orientation) 축 — 2026-09-21 회의 안건 3 A안
 #
 # 손모양 63차원은 회전 불변을 **유지하면서**, 추가 6차원이 회전을 **담아야** 한다.
@@ -144,21 +215,21 @@ def test_rejects_degenerate_hand():
 
 def test_orientation_dim():
     lms = _as_landmarks(_sample_hand())
-    assert to_feature_vector(lms).shape == (FEATURE_DIM,)
-    assert to_feature_vector(lms, with_orientation=True).shape == (FEATURE_DIM_ORIENTED,)
+    assert to_feature_vector(lms, mode=FEATURE_MODE_BASE).shape == (FEATURE_DIM,)
+    assert to_feature_vector(lms, mode=FEATURE_MODE_ORIENTED).shape == (FEATURE_DIM_ORIENTED,)
 
 
 def test_orientation_is_appended_not_mixed():
     """앞 63차원은 방향 축을 켜도 그대로여야 한다(기존 모델과 해석이 어긋나지 않게)."""
     lms = _as_landmarks(_sample_hand())
-    base = to_feature_vector(lms)
-    oriented = to_feature_vector(lms, with_orientation=True)
+    base = to_feature_vector(lms, mode=FEATURE_MODE_BASE)
+    oriented = to_feature_vector(lms, mode=FEATURE_MODE_ORIENTED)
     assert np.allclose(base, oriented[:FEATURE_DIM])
 
 
 def test_orientation_axes_are_orthonormal():
     """추가 6차원 = 회전행렬의 x축·y축. 각각 단위벡터이고 서로 직교해야 한다."""
-    feat = to_feature_vector(_as_landmarks(_sample_hand()), with_orientation=True)
+    feat = to_feature_vector(_as_landmarks(_sample_hand()), mode=FEATURE_MODE_ORIENTED)
     x_axis, y_axis = feat[FEATURE_DIM:FEATURE_DIM + 3], feat[FEATURE_DIM + 3:]
     assert len(x_axis) + len(y_axis) == ORIENTATION_DIM
     assert math.isclose(float(np.linalg.norm(x_axis)), 1.0, abs_tol=1e-9)
@@ -170,8 +241,8 @@ def test_orientation_captures_rotation():
     """손을 돌리면 손모양 63차원은 그대로, 방향 6차원만 바뀌어야 한다."""
     pts = _sample_hand()
     rotated = pts @ _rotation(0.6, -0.4).T
-    a = to_feature_vector(_as_landmarks(pts), with_orientation=True)
-    b = to_feature_vector(_as_landmarks(rotated), with_orientation=True)
+    a = to_feature_vector(_as_landmarks(pts), mode=FEATURE_MODE_ORIENTED)
+    b = to_feature_vector(_as_landmarks(rotated), mode=FEATURE_MODE_ORIENTED)
     assert np.allclose(a[:FEATURE_DIM], b[:FEATURE_DIM], atol=1e-9), "손모양이 회전에 흔들렸다"
     assert not np.allclose(a[FEATURE_DIM:], b[FEATURE_DIM:], atol=1e-3), "방향이 회전을 못 담았다"
 
@@ -180,7 +251,7 @@ def test_orientation_features_from_rotation_matrix():
     """normalize_landmarks(return_rotation=True)가 돌려준 행렬과 일관되어야 한다."""
     pts = _sample_hand()
     _, rotation = normalize_landmarks(pts, return_rotation=True)
-    feat = to_feature_vector(_as_landmarks(pts), with_orientation=True)
+    feat = to_feature_vector(_as_landmarks(pts), mode=FEATURE_MODE_ORIENTED)
     assert np.allclose(orientation_features(rotation), feat[FEATURE_DIM:])
     # z축은 외적으로 복원 가능 -> 6개만 실어도 정보 손실이 없다
     x_axis, y_axis = rotation[:, 0], rotation[:, 1]

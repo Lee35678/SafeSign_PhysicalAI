@@ -26,8 +26,14 @@ services/data/models/*.task
 # 학습 파이프라인 예행연습용 더미 데이터 (scripts/make_dummy_dataset.py가 언제든 재생성)
 services/vision/training/_dummy_dataset/
 
+# 웹캠 진단 로그 (원본 랜드마크 포함 — 용량이 크고 일회성이라 공유하지 않는다)
+services/vision/logs/
+
+# 비교용 모델 (train_svm.py --out models/cmp_*.joblib)
+services/vision/models/cmp_*
+
 # 학습 특징벡터 캐시 (train_svm.py가 언제든 재생성. JSON 27,735건 적재 5분을 아끼는 용도)
-services/vision/training/.feature_cache.npz
+services/vision/training/.feature_cache*.npz
 
 # 학습된 모델 가중치: 2026-09-21부터 **로컬 학습이 기본**이라 각자 만들 수 있다.
 #   cd services/vision && python training/train_svm.py

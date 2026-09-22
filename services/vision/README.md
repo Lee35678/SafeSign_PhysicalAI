@@ -19,10 +19,13 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
 - **학습도 추론도 로컬에서 한다** (2026-09-21 정정). 전체 27,735건 학습이 16초라 Colab이 필요
   없었다. `python training/train_svm.py` 한 줄이면 [`models/`](models/README.md)에 번들이 생긴다.
   Colab 노트북은 대체 경로로만 남겨둔다.
-- **학습 클래스는 7종이다.** `negative`는 학습하지 않고, τ 미달을 미판정으로 처리해 그 출력 라벨로만
-  쓴다 (2026-09-21 회의 안건 2 A).
-- **손 방향 축(63→69차원)은 구현돼 있지만 꺼져 있다.** 공개 데이터로는 검증할 수 없어서다
-  (안건 3 A, [`MODEL_TRAINING.md`](MODEL_TRAINING.md) §2-1).
+- **학습 클래스는 7종이다.** `negative`는 학습하지 않고, τ 미달·소속 게이트 차단을 미판정으로
+  처리해 그 출력 라벨로만 쓴다 (2026-09-21 회의 안건 2 A).
+- **특징은 관절 각도·거리 23차원**(`joint23`)이다. 좌표 63차원보다 +11.1%p 낫다
+  ([`MODEL_TRAINING.md`](MODEL_TRAINING.md) §2-2).
+- **소속 게이트**가 "7종이 아닌 손모양"을 막는다. τ만으로는 못 막는 구조적 한계가 있어서다
+  (같은 문서 §2-3).
+- **손 방향 축(69차원)은 구현돼 있지만 꺼져 있다.** 손을 기울여도 100%가 나와 켤 근거가 없다.
 - **모델이 없어도 서비스는 뜬다.** 데이터·카메라가 아직 없으므로 기본 동작은 "항상 미판정"이다
   (`reason: model_not_loaded`). 배선·통합 검증을 먼저 하라는 PRD 우선순위(10_PRD_v2 §11)에 맞춘 설계.
 - **왜 이런 알고리즘/전처리인지**는 [`MODEL_TRAINING.md`](MODEL_TRAINING.md)에 정리했다.
@@ -43,7 +46,10 @@ training/
 ├── train_svm.py                 로컬 학습 스크립트 (기본 경로)
 └── train_svm_colab.ipynb        Colab 노트북 (대체 경로)
 scripts/
-├── webcam_check.py              노트북 웹캠으로 학습된 모델을 눈으로 확인 (사람이 판단)
+├── webcam_check.py              노트북 웹캠으로 학습된 모델을 눈으로 확인 (--log 로 진단 로그)
+├── record_dataset.py            KPI 측정용 평가 데이터 촬영 (카운트다운 + 테이크 관리)
+├── evaluate_kpi.py              자체 촬영 데이터로 KPI 5개 지표 계산
+├── analyze_log.py               webcam_check 로그 분석 (오판정 원인 추적)
 └── make_dummy_dataset.py        (데이터 오기 전) 예행연습용 더미 데이터 생성기
 models/                          학습된 번들을 넣는 자리
 tests/                           카메라 없이 도는 단위 테스트 (정규화 불변성 + 분류 경로)
@@ -92,8 +98,9 @@ curl http://localhost:8001/latest
 
 ```bash
 cd services/vision
-python tests/test_normalize.py      # 정규화 불변성 + 방향 축 15개
+python tests/test_normalize.py      # 정규화 불변성 + 방향 축 + 관절 특징 21개
 python tests/test_classify.py       # 모델 없이도 안전하게 미판정하는지 4개
+python tests/test_gate.py           # 소속 게이트 분기 7개
 # pytest가 있으면: python -m pytest tests -q
 ```
 
@@ -130,9 +137,19 @@ python training/train_svm.py               # 학습 → models/ 에 번들 + 템
 처음 한 번만 JSON 적재에 100초쯤 걸리고, 이후엔 캐시로 0.7초다. 주요 옵션은
 [`MODEL_TRAINING.md`](MODEL_TRAINING.md) §6-0 참고.
 
-**공개 데이터 기준 현재 성적** (세션 단위 5겹): 정답률 77.57% / Macro F1 0.784 / 치명 오분류 3건.
+**공개 데이터 기준** (세션 단위 5겹): 정답률 88.68% / Macro F1 0.879 / 치명 오분류 4건.
 🔴 이 수치는 **KPI 근거가 아니다** — 촬영자 정보가 없어 인물 단위 분할이 불가능하다.
-KPI는 자체 촬영(외부인) 데이터로만 측정한다.
+
+### ④ KPI 측정 (자체 촬영 데이터)
+
+```bash
+python scripts/record_dataset.py --subject-id ext01     # 촬영 (팀원 안내: document/촬영안내_KPI데이터.md)
+python scripts/evaluate_kpi.py                          # KPI 5개 지표 계산
+```
+
+**현재 실측** (촬영자 1명 · 35시도): 정답률 100%, 오분류 0, 미판정 0, 치명 0.
+🔴 표본이 작고 촬영자가 1명이라 **아직 KPI 달성으로 볼 수 없다**(95% 신뢰 상한 8.6%).
+팀원 촬영분이 들어오면 같은 명령으로 다시 계산한다.
 
 ### 데이터 없이 파이프라인만 돌려보기
 
@@ -146,10 +163,11 @@ python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 �
 ## 6. 남은 일
 
 - [x] ~~실제 수신호 데이터 확보 후 학습 → `models/svm_classifier.joblib` 배치~~ (2026-09-21 완료)
-- [ ] **자체 촬영 데이터 확보** (외부인 1~2명) — KPI 측정의 유일한 경로. 회의 안건 1
-- [ ] `webcam_check.py`에 촬영·저장 기능 추가 (위 촬영용)
-- [ ] 자체 촬영 후 **손 방향 축 A/B** 판단 (`--with-orientation`) — 회의 안건 3 A
-- [ ] 자체 촬영 후 **τ 재결정** — 지금은 KPI를 만족하는 τ가 없어 기본값 0.75를 쓰는 중
+- [x] ~~촬영 도구~~ → `scripts/record_dataset.py` (2026-09-22)
+- [x] ~~손 방향 축 A/B 판단~~ → **보류 확정**. 기울여도 100%라 켤 근거 없음 (2026-09-22)
+- [ ] **팀원 촬영분 확보** (2명) — KPI 측정의 유일한 경로. 회의 안건 1
+- [ ] 팀원 데이터 확보 후 **τ 재결정** — 지금은 잠정값 0.75
+- [ ] 게이트가 못 막는 25%(정지와 매우 닮은 자세) — negative 학습(안건 2 B) 전환 검토
 - [ ] `perception/capture.py`의 picamera2 연동 (카메라 도착 후)
 - [ ] `hand_landmarker.task` 모델 번들 다운로드 → `models/` (05_모델카드_v3 §1 URL)
 - [ ] 실측 후 τ·N프레임 재검증, 05_모델카드_v3 §7-3 실측 표 채우기

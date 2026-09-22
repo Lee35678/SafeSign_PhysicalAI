@@ -24,8 +24,7 @@ import numpy as np
 
 from cognition import model_store, templates
 from cognition.normalize import (
-    FEATURE_MODE_BASE,
-    FEATURE_MODE_ORIENTED,
+    DEFAULT_FEATURE_MODE,
     NormalizationError,
     frame_to_feature_vector,
 )
@@ -55,12 +54,45 @@ REASON_NORMALIZE_FAILED = "normalize_failed"  # 랜드마크는 왔지만 정규
 REASON_MODEL_NOT_LOADED = "model_not_loaded"  # 분류기 미배치(학습 전)
 REASON_INFERENCE_ERROR = "inference_error"
 REASON_BELOW_TAU = "below_tau"             # 신뢰도 부족 -> 재시도 유도(SC-03b)
+REASON_OUT_OF_DISTRIBUTION = "out_of_distribution"  # 7종 어디에도 속하지 않는 손모양 -> 1단계 게이트
 
 # 05_모델카드_v3 §8-0 초기 기본값. 환경변수 > 모델 번들 > 이 기본값 순으로 우선한다.
 _DEFAULT_TAU = 0.75
 _ENV_TAU: Optional[float] = (
     float(os.environ["CONFIDENCE_THRESHOLD"]) if os.getenv("CONFIDENCE_THRESHOLD") else None
 )
+
+
+# 소속 게이트를 끄는 비상 스위치. 게이트가 정상 자세를 과도하게 튕길 때 재학습 없이 끌 수 있다.
+_GATE_DISABLED = os.getenv("OPEN_SET_GATE", "").strip().lower() in ("0", "off", "false", "no")
+
+
+def gate_check(feature: np.ndarray, predicted_class: str) -> tuple[bool, float]:
+    """1단계 소속 게이트 — "이 손모양이 예측된 클래스에 속하기는 하는가".
+
+    분류기의 확률은 7종 안에서 정규화되므로(합=1) 7종이 아닌 손모양도 "그나마 가장 비슷한"
+    클래스에서 높은 confidence를 받는다. 실측상 학습에 없던 손모양의 83%가 τ를 통과했고
+    그중 77%는 confidence 0.90 이상이었다 — τ로는 막을 수 없는 구조적 한계다
+    (05_모델카드_v3 §3-7).
+
+    그래서 예측 클래스 중심과의 코사인 유사도를 클래스별 임계값과 비교한다. 임계값이
+    클래스마다 다른 이유는 절대값 범위가 클래스별로 다르기 때문이다(주의의 이상치 중앙값
+    0.9746 > 정지의 정상 p5 0.9513 — 전역 임계값 하나로는 못 쓴다).
+
+    Returns:
+        (통과 여부, 유사도). 게이트가 없거나 꺼져 있으면 (True, 0.0).
+    """
+    if _GATE_DISABLED:
+        return True, 0.0
+    gate = model_store.get_open_set_gate()
+    if not gate:
+        return True, 0.0
+    centroid = gate["centroids"].get(predicted_class)
+    threshold = gate["thresholds"].get(predicted_class)
+    if centroid is None or threshold is None or centroid.shape != feature.shape:
+        return True, 0.0
+    similarity = templates.cosine_similarity(feature, centroid)
+    return similarity >= threshold, similarity
 
 
 def effective_tau() -> float:
@@ -110,11 +142,10 @@ def predict(landmark_frame: dict) -> dict:
         return _reject_result(_elapsed_ms(started, landmark_frame), REASON_NO_HAND)
     try:
         # 학습 때 쓴 특징 모드를 그대로 따라간다 (train-serve skew 방지).
-        # 번들이 없으면 기본 63차원 — 어차피 아래에서 model_not_loaded로 빠진다.
-        with_orientation = (
-            model_store.get_feature_mode(FEATURE_MODE_BASE) == FEATURE_MODE_ORIENTED
+        # 번들이 없으면 기본값 — 어차피 아래에서 model_not_loaded로 빠진다.
+        feature = frame_to_feature_vector(
+            landmark_frame, mode=model_store.get_feature_mode(DEFAULT_FEATURE_MODE)
         )
-        feature = frame_to_feature_vector(landmark_frame, with_orientation=with_orientation)
     except NormalizationError as exc:
         logger.debug("정규화 실패: %s", exc)
         return _reject_result(_elapsed_ms(started, landmark_frame), REASON_NORMALIZE_FAILED)
@@ -135,10 +166,18 @@ def predict(landmark_frame: dict) -> dict:
     predicted_class = str(classes[best_idx])
     confidence = float(proba[best_idx])
 
-    # 3) τ 미달이면 미판정(is_reject) — 미판정률 KPI(≤5%)의 분자가 되는 지점
+    # 3) 1단계 소속 게이트 — "7종 중 하나이긴 한가". τ보다 먼저 본다.
+    #    τ가 잡지 못하는 "모르는 손모양"을 여기서 걸러 negative로 보낸다.
+    in_distribution, _similarity = gate_check(feature, predicted_class)
+    if not in_distribution:
+        return _reject_result(
+            _elapsed_ms(started, landmark_frame), REASON_OUT_OF_DISTRIBUTION
+        )
+
+    # 4) τ 미달이면 미판정(is_reject) — 미판정률 KPI(≤5%)의 분자가 되는 지점
     is_reject = confidence < effective_tau()
 
-    # 4) 일치율: 예측 클래스 템플릿과의 코사인 유사도 (분류와 별개 지표)
+    # 5) 일치율: 예측 클래스 템플릿과의 코사인 유사도 (분류와 별개 지표)
     score = templates.match_score(
         feature, predicted_class, model_store.get_match_score_calibration()
     )

@@ -11,8 +11,9 @@ python training/train_svm.py      # svm_classifier.joblib + sign_templates.json 
 | 파일 | 어디서 나오나 | 없으면 어떻게 되나 |
 | --- | --- | --- |
 | `svm_classifier.joblib` | [`../training/train_svm.py`](../training/train_svm.py) (또는 Colab 노트북) | vision 서비스는 뜨지만 항상 `negative`/`is_reject=true` (reason=`model_not_loaded`) |
-| `sign_templates.json` | 같은 스크립트 | `match_score`가 항상 0. 데이터 담당의 `seed_templates.py` 입력용 |
+| `sign_templates.json` | 같은 스크립트 | 데이터 담당의 `seed_templates.py` 입력용. 없어도 `match_score`는 번들 centroid로 폴백된다 |
 | `hand_landmarker.task` | MediaPipe 공식 모델 번들 (05_모델카드_v3 §1의 다운로드 URL) | 카메라 실물 연동 시 Perception이 기동 실패 — `MOCK_CAMERA=true`로는 무관 |
+| `cmp_*.joblib` | `train_svm.py --out models/cmp_....joblib` | 없어도 무방. 있으면 `evaluate_kpi.py`·`analyze_log.py`가 자동으로 함께 평가해 비교표를 낸다 |
 
 ## 넣은 뒤 확인
 

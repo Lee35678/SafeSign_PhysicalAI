@@ -93,9 +93,28 @@ def similarity_to_score(similarity: float, calibration: Optional[dict] = None) -
     return int(round(float(np.clip(similarity, 0.0, 1.0)) * 100))
 
 
+def get_template(sign_name: str) -> Optional[np.ndarray]:
+    """클래스 대표 벡터. DB가 우선이고, 없으면 **모델 번들의 centroid**로 폴백한다.
+
+    번들 폴백을 두는 이유: 템플릿 DB 시드(services/data의 seed_templates.py)는 데이터 담당 몫인데,
+    그게 비어 있으면 match_score가 계속 0으로 나오고 1단계 소속 게이트도 동작하지 못한다.
+    학습 스크립트가 어차피 같은 centroid를 번들에 실어 보내므로, 그것을 쓰면 vision 단독으로도
+    완결된다. DB가 채워지면 DB 값이 우선이다.
+    """
+    template = _load_templates().get(sign_name)
+    if template is not None:
+        return template
+    from cognition import model_store  # 지연 import (순환 방지)
+
+    gate = model_store.get_open_set_gate()
+    if gate:
+        return gate["centroids"].get(sign_name)
+    return None
+
+
 def match_score(feature: np.ndarray, sign_name: str, calibration: Optional[dict] = None) -> int:
     """특징벡터와 해당 클래스 템플릿의 유사도를 0~100으로. 템플릿이 없으면 0."""
-    template = _load_templates().get(sign_name)
+    template = get_template(sign_name)
     if template is None or template.shape != feature.shape:
         return 0
     return similarity_to_score(cosine_similarity(feature, template), calibration)
