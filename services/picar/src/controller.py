@@ -29,24 +29,30 @@ SDA=BCM2)로 그 코프로세서에 명령만 보낸다. 그 명령 프로토콜
 올 때까지 차가 계속 달린다(벽으로 돌진). 그래서 이 구현은 주행 명령 후 `MOTION_DURATION_S`(기본 2초)
 뒤에 자동 정지시킨다 — 안전을 위한 잠정 기본값이며, 실물 주행 후 팀이 확정해야 한다.
 
-## LED (2026-09-21 배선 확정)
+## LED (2026-09-21 배선 확정 → 2026-09-22 적색 핀 분리)
 
 보드 내장 LED는 적색(BCM21)·청색(BCM20) 2개뿐이라 설계가 요구하는 적색×2 + 황색×2(총 4개)를
-채울 수 없다. **외부 LED 4개를 GPIO 3핀으로 구동**하기로 확정했다.
+채울 수 없다. **외부 LED 4개를 GPIO 4핀으로 구동**한다.
 
 | 채널 | BCM | 물리 핀 | 외부 LED | 비고 |
 | --- | --- | --- | --- | --- |
-| `led_red` | 13 | 33 | **적색 2개 (병렬)** | 항상 양쪽 동조라 개별 제어 불필요 → 1핀 공통 |
+| `led_red` | **13, 19** | 33, 35 | 적색 2개 — **각각 전용 핀** | 논리적으로는 1채널, 항상 함께 구동 |
 | `led_yellow_left` | 5 | 29 | 황색 1개 | 좌회전 시 단독 점멸해야 해서 개별 핀 필수 |
 | `led_yellow_right` | 6 | 31 | 황색 1개 | 우회전 시 단독 점멸 |
 
-- **적색이 1핀인 근거**: 수신호 7종에서 적색이 쓰이는 경우는 정지(양쪽 점등)와 확인_완료(양쪽 점멸)
-  뿐이고, **한쪽만 켜지는 경우가 없다.** 그래서 `picar_command.schema.json`도 `red` 단일 채널이다.
-- **내장 적색(BCM21)은 쓰지 않는다.** 내장 LED의 직렬저항 값을 알 수 없어, 그 핀에 외부 2개를 더
-  물리면 핀 전류 한도(기본 8mA / 최대 16mA)를 넘길 위험이 있다. 부하가 예측 가능한 여유 핀을 쓴다.
-- **저항**: LED마다 개별 직렬저항을 달 것(공통 저항 금지 — 밝기 불균일·전류 쏠림). 적색 Vf≈2.0V
-  기준 330Ω이면 개당 약 3.9mA, 적색 2개 합쳐 약 7.9mA로 핀 기본 구동 한도(8mA) 안에 들어온다.
-- 위 3개 핀은 `USED_BCM_PINS`(Raspbot 점유)와 충돌하지 않는다 —
+- **적색을 2핀으로 나눈 이유(2026-09-22)**: 처음에는 BCM13 하나에 2개를 병렬로 물렸다. 그러면
+  330Ω 기준 그 핀에만 약 7.9mA가 흘러 **핀 기본 구동 한도 8mA에 붙어버려**, 5mm LED를 밝게 쓸
+  여유가 없었다(저항을 낮추면 한도 초과). 핀을 나누면 **개당 8mA까지 쓸 수 있다.**
+- **스키마는 그대로다.** 수신호 7종에서 적색은 정지(양쪽 점등)·확인_완료(양쪽 점멸)에만 쓰이고
+  **한쪽만 켜지는 경우가 없어서**, `picar_command.schema.json`은 `red` 단일 채널을 유지한다.
+  핀이 2개가 된 것은 전류 문제일 뿐 제어 의미는 1채널 그대로다.
+- **점멸 동조는 `LEDBoard`로 보장한다.** `LED` 객체 2개를 따로 `blink()`시키면 각자 스레드를 돌려
+  위상이 어긋날 수 있다. `LEDBoard`는 한 스레드로 묶어 구동하므로 두 적색이 항상 같이 깜빡인다.
+- **내장 적색(BCM21)은 쓰지 않는다.** 내장 LED의 직렬저항 값을 알 수 없어 부하를 예측할 수 없다.
+- **저항**: LED마다 개별 **220Ω**(공통 저항 금지 — 밝기 불균일·전류 쏠림). Vf≈2.0V 기준 개당 약
+  5.9mA(황색 5.5mA)로 핀 기본 구동 한도 8mA 안. 330Ω(약 3.9mA)은 5mm LED 정격 20mA의 20%라
+  어두워서 2026-09-22 교체했다. **150Ω 이하로는 내리지 말 것** — 8.7mA로 한도를 넘는다.
+- 위 4개 핀은 `USED_BCM_PINS`(Raspbot 점유)와 충돌하지 않는다 —
   `tests/test_controller.py`가 이를 자동 검사한다.
 """
 from __future__ import annotations
@@ -77,12 +83,13 @@ DIR_FORWARD = 1
 # 실물 주행 후 팀이 확정할 잠정값이다(위 docstring 참고).
 MOTION_DURATION_S = float(os.getenv("PICAR_MOTION_DURATION_S", "2.0"))
 
-# 외부 LED 4개 -> GPIO 3핀 (2026-09-21 확정, 위 docstring "LED" 절 참고).
+# 외부 LED 4개 -> GPIO 4핀 (2026-09-22 확정, 위 docstring "LED" 절 참고).
+# 값은 **핀 튜플**이다 — 한 채널이 여러 핀을 함께 구동할 수 있다(적색 2개).
 # 내장 적색(BCM21)·청색(BCM20)은 사용하지 않는다.
 PIN_MAP = {
-    "led_red": 13,             # 물리 33 — 외부 적색 2개를 병렬로 구동(항상 동조)
-    "led_yellow_left": 5,      # 물리 29 — 좌회전 시 단독 점멸
-    "led_yellow_right": 6,     # 물리 31 — 우회전 시 단독 점멸
+    "led_red": (13, 19),         # 물리 33·35 — 적색 2개를 각각 전용 핀으로(핀당 전류 확보)
+    "led_yellow_left": (5,),     # 물리 29 — 좌회전 시 단독 점멸
+    "led_yellow_right": (6,),    # 물리 31 — 우회전 시 단독 점멸
 }
 
 _i2c_lock = threading.Lock()
@@ -188,10 +195,16 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
 
 
 # ── LED ───────────────────────────────────────────────────────────────────────
-def _get_led(name: str, pin: int):
+def _get_led(name: str, pins: tuple):
+    """채널 하나를 `LEDBoard`로 묶어 돌려준다.
+
+    핀이 1개여도 LEDBoard를 쓴다 — 타입을 통일해야 아래 분기가 단순해진다. 핀이 여러 개일 때
+    `LED` 객체를 따로 만들어 각각 blink()하면 **스레드가 따로 돌아 위상이 어긋날 수 있는데**,
+    LEDBoard는 한 스레드로 묶어 구동하므로 적색 2개가 항상 같이 깜빡인다.
+    """
     if name not in _leds:
-        from gpiozero import LED  # noqa: PLC0415 — 실물 경로에서만 임포트
-        _leds[name] = LED(pin)
+        from gpiozero import LEDBoard  # noqa: PLC0415 — 실물 경로에서만 임포트
+        _leds[name] = LEDBoard(*pins)
     return _leds[name]
 
 
@@ -204,22 +217,22 @@ def _apply_led(name: str, state: str, mock: bool) -> dict:
     검증은 mock 분기보다 **먼저** 한다 — mock 응답이 실물과 같은 판정을 내려야 보드 없이 하는
     테스트에 의미가 있다(`_apply_motor`도 같은 순서).
     """
-    pin = PIN_MAP.get(name)
-    if pin is None:
+    pins = PIN_MAP.get(name)
+    if not pins:
         return {"status": "unsupported", "led": name, "reason": "pin_not_assigned"}
     if state not in LED_STATES:
         return {"status": "error", "led": name, "reason": "unknown_led_state", "state": state}
     if mock:
-        return {"status": "mocked", "led": name, "pin": pin, "state": state}
+        return {"status": "mocked", "led": name, "pins": list(pins), "state": state}
 
-    led = _get_led(name, pin)
+    led = _get_led(name, pins)
     if state == "on":
         led.on()
     elif state == "off":
         led.off()
     else:  # blink
         led.blink(on_time=0.3, off_time=0.3)  # 비블로킹 — 다음 명령이 오면 덮어쓴다
-    return {"status": "ok", "led": name, "pin": pin, "state": state}
+    return {"status": "ok", "led": name, "pins": list(pins), "state": state}
 
 
 # ── 진단 (GET /health 용) ─────────────────────────────────────────────────────
@@ -252,8 +265,8 @@ def diagnose(mock: bool = True) -> dict:
 
     return {
         "i2c": i2c,
-        "leds": dict(PIN_MAP),
-        "leds_unassigned": [n for n, pin in PIN_MAP.items() if pin is None],
+        "leds": {n: list(pins) for n, pins in PIN_MAP.items()},
+        "leds_unassigned": [n for n, pins in PIN_MAP.items() if not pins],
         "motion_duration_s": MOTION_DURATION_S,
         "motion_active": _auto_stop_timer is not None and _auto_stop_timer.is_alive(),
     }

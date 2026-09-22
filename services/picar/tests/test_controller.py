@@ -112,9 +112,20 @@ def test_stop_command_does_not_schedule_auto_stop():
 
 # ── LED ───────────────────────────────────────────────────────────────────────
 def test_all_led_channels_have_a_pin_assigned():
-    """3채널 모두 배선 확정됨(2026-09-21) — None이 남아 있으면 그 LED는 동작하지 않는다."""
-    for name, pin in controller.PIN_MAP.items():
-        assert pin is not None, f"{name} 핀 미배정"
+    """3채널 모두 배선 확정됨 — 빈 튜플이 남아 있으면 그 LED는 동작하지 않는다."""
+    for name, pins in controller.PIN_MAP.items():
+        assert pins, f"{name} 핀 미배정"
+
+
+def test_red_channel_drives_two_dedicated_pins():
+    """적색 2개는 2026-09-22부터 핀을 나눠 쓴다.
+
+    한 핀에 병렬로 물리면 330Ω 기준 약 7.9mA로 핀 기본 구동 한도(8mA)에 붙어버려 5mm LED를
+    밝게 쓸 여유가 없다. 다시 1핀으로 합치면 이 테스트가 막는다.
+    """
+    assert len(controller.PIN_MAP["led_red"]) == 2, controller.PIN_MAP["led_red"]
+    assert len(controller.PIN_MAP["led_yellow_left"]) == 1
+    assert len(controller.PIN_MAP["led_yellow_right"]) == 1
 
 
 def test_every_led_channel_responds_in_mock_mode():
@@ -125,8 +136,11 @@ def test_every_led_channel_responds_in_mock_mode():
 
 
 def test_led_channels_use_distinct_pins():
-    """황색 좌/우가 같은 핀이면 좌회전 유도에서 양쪽이 같이 켜져 의미가 사라진다."""
-    pins = [p for p in controller.PIN_MAP.values() if p is not None]
+    """황색 좌/우가 같은 핀이면 좌회전 유도에서 양쪽이 같이 켜져 의미가 사라진다.
+
+    적색 2핀끼리의 중복도 함께 잡는다 — 같은 핀을 두 번 적으면 LED 하나가 안 켜진다.
+    """
+    pins = [p for pins in controller.PIN_MAP.values() for p in pins]
     assert len(pins) == len(set(pins)), f"핀 중복: {controller.PIN_MAP}"
 
 
@@ -150,10 +164,9 @@ def test_board_pins_do_not_collide_with_raspbot_reserved_pins():
     내장 적색(BCM21)·청색(BCM20)은 쓰지 않고 외부 LED만 사용하므로 예외가 없다
     (근거는 controller.py docstring "LED" 절).
     """
-    for name, pin in controller.PIN_MAP.items():
-        if pin is None:
-            continue
-        assert pin not in controller.USED_BCM_PINS, f"{name}(BCM{pin})이 이미 점유된 핀"
+    for name, pins in controller.PIN_MAP.items():
+        for pin in pins:
+            assert pin not in controller.USED_BCM_PINS, f"{name}(BCM{pin})이 이미 점유된 핀"
 
 
 # ── diagnose() — /health가 "조용한 실패"를 드러내는지 ─────────────────────────
@@ -170,8 +183,8 @@ def test_diagnose_does_not_claim_reachable_in_mock():
 
 def test_diagnose_lists_led_pins_and_unassigned():
     d = controller.diagnose(mock=True)
-    assert d["leds"] == controller.PIN_MAP
-    assert d["leds_unassigned"] == []  # 2026-09-21 배선 확정으로 전부 배정됨
+    assert d["leds"] == {n: list(p) for n, p in controller.PIN_MAP.items()}
+    assert d["leds_unassigned"] == []  # 배선 확정으로 전부 배정됨
 
 
 def test_diagnose_exposes_motion_duration():

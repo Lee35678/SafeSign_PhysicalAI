@@ -65,8 +65,8 @@ function setHand(thumb: number, index: number, middle: number, ring: number, pin
 }
 
 // ==== 판정 결과 표시 (RESULT, 테스트/시연 공통) ====
-// "correct" -> LED에 O 모양 + 부저 모스 '-'(1초 단일 톤), "incorrect" -> LED에 X 모양 + 부저 모스 '..'
-// (1초 안에 짧은 두 번). LED는 2초간 표시 후 꺼짐 (부저 1초 재생 + 나머지 1초 LED만 유지)
+// "correct" -> LED에 O 모양, "incorrect" -> LED에 X 모양. 둘 다 2초간 표시 후 꺼진다.
+// 소리는 쓰지 않는다 (최상단 절대 규칙) — 피드백은 LED 단독이다.
 function showResult(isCorrect: boolean) {
     if (isCorrect) {
         basic.showLeds(`

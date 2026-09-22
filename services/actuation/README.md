@@ -61,7 +61,7 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
   네트워킹, docker-compose.yml 주석 참고)
 - [x] ~~RESULT(micro:bit LED 매트릭스) 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"correct"`/
   `"incorrect"` 문자열을 받으면 LED에 O/X를 2초간 표시하고 꺼지도록 구현 완료(TEST_MODE와 무관하게
-  항상 처리). **부저는 비활성화**(`BUZZER_ENABLED = false`) — 아래 "부저 비활성화" 참고
+  항상 처리). **소리는 쓰지 않는다**(부저 코드 삭제, 2026-09-22) — 아래 "절대 규칙" 참고
 - [x] ~~실물 micro:bit로 `MOCK_HARDWARE=false` BLE 검증~~ → 2026-09-21 완료. 스캔·UUID 대조·
   `/health`(`microbit_connected: true`)·`/command` 7종·`/result`(LED O/X)·`/progress`(`OKP37`/`OKP17`
   회신)까지 전부 확인. 손모양 육안 대조도 완료 — 엄지 미동작으로 `G3`↔`G6`, `G4`↔`G7`이 실제로
