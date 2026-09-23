@@ -201,8 +201,8 @@ class _ScriptedClient:
     """connect/start_notify에서 지정한 예외를 던지고, disconnect 호출 여부를 기록한다."""
     instances: list = []
 
-    def __init__(self, address, fail_at=None, exc=None):
-        self.address = address
+    def __init__(self, device, fail_at=None, exc=None):
+        self.device = device
         self.fail_at = fail_at
         self.exc = exc
         self.disconnected = False
@@ -227,7 +227,7 @@ def _patch_ble(monkeypatch, devices, fail_at=None, exc=None):
     _ScriptedClient.instances = []
     monkeypatch.setattr(ble_bridge.BleakScanner, "discover", staticmethod(_discover))
     monkeypatch.setattr(ble_bridge, "BleakClient",
-                        lambda address: _ScriptedClient(address, fail_at, exc))
+                        lambda device: _ScriptedClient(device, fail_at, exc))
     monkeypatch.setattr(ble_bridge, "_client", None)
     monkeypatch.setattr(ble_bridge, "_reply_event", None)
 
@@ -255,3 +255,12 @@ def test_not_found_logs_what_the_scan_did_see(monkeypatch, caplog):
     with caplog.at_level("WARNING", logger="uvicorn.error"):
         assert asyncio.run(ble_bridge.connect(mock=False)) is False
     assert "Galaxy Buds" in caplog.text
+
+
+def test_connect_passes_the_scanned_device_not_the_address(monkeypatch):
+    """주소 문자열을 넘기면 bleak BlueZ 백엔드가 connect() 안에서 **스캔을 한 번 더** 돈다
+    (find_device_by_address) — 연결 시간 예산을 잡아먹어 RPi5에서 시간 초과를 키운다."""
+    dev = _Dev("BBC micro:bit [zezuz]")
+    _patch_ble(monkeypatch, [dev])
+    assert asyncio.run(ble_bridge.connect(mock=False)) is True
+    assert _ScriptedClient.instances[0].device is dev

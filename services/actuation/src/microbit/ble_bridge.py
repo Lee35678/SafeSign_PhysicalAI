@@ -62,7 +62,9 @@ async def _connect_once() -> bool:
                     DEVICE_NAME, SCAN_TIMEOUT_S, len(devices), seen[:10])
         return False
 
-    client = BleakClient(target.address)
+    # 주소 문자열이 아니라 **스캔에서 찾은 BLEDevice**를 넘긴다. 문자열을 주면 BlueZ 백엔드가 connect()
+    # 안에서 find_device_by_address로 스캔을 한 번 더 돌려 연결 시간 예산을 잡아먹는다.
+    client = BleakClient(target)
     try:
         await client.connect()
         await client.start_notify(UART_TX_UUID, _on_notify)
@@ -90,7 +92,13 @@ async def connect(mock: bool = True) -> bool:
         return await _connect_once()
     except (BleakError, asyncio.TimeoutError, OSError) as exc:
         # asyncio.TimeoutError(연결 시간 초과)는 BleakError가 아니다 — 안 잡으면 서버 기동 자체가 죽는다
-        log.warning("micro:bit BLE 연결 실패: %s: %s", type(exc).__name__, exc)
+        hint = ""
+        if isinstance(exc, asyncio.TimeoutError):
+            # 2026-09-23 RPi5 실측: bluetoothctl `scan on`을 켜 둔 채(Discovering: yes)면 스캔에는 잡히는데
+            # 연결만 시간 초과됐다. BlueZ 스캔은 클라이언트별이라 bleak가 남의 스캔을 끌 수 없다.
+            hint = (" — 다른 프로그램의 BLE 스캔이 켜져 있지 않은지 확인"
+                    " (`bluetoothctl show | grep Discovering` → no 여야 함)")
+        log.warning("micro:bit BLE 연결 실패: %s: %s%s", type(exc).__name__, exc, hint)
         return False
 
 
