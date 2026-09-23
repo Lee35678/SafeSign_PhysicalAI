@@ -31,11 +31,11 @@ def test_speed_0_and_100_map_to_range_ends():
     assert controller._speed_pct_to_byte(100) == 255
 
 
-def test_speed_web_default_values():
-    """web(state_machine.PICAR_COMMANDS)이 실제로 보내는 값들."""
-    assert controller._speed_pct_to_byte(40) == 102   # 서행
-    assert controller._speed_pct_to_byte(50) == 128   # 후진
-    assert controller._speed_pct_to_byte(60) == 153   # 좌/우회전
+def test_speed_confirmed_values():
+    """2026-09-23 바닥 주행으로 확정한 값들 (13_picar_하드웨어_검증리포트_v1 §4.5)."""
+    assert controller._speed_pct_to_byte(20) == 51    # 서행
+    assert controller._speed_pct_to_byte(40) == 102   # 좌/우회전·후진
+    assert controller._speed_pct_to_byte(50) == 128   # 상한
 
 
 def test_speed_is_clamped_to_byte_range():
@@ -45,7 +45,7 @@ def test_speed_is_clamped_to_byte_range():
 
 
 # ── action -> I2C 레지스터/바이트 ──────────────────────────────────────────────
-def _i2c(action: str, speed: int = 60) -> dict:
+def _i2c(action: str, speed: int = 40) -> dict:
     return controller._apply_motor(action, speed, mock=True)["i2c"]
 
 
@@ -58,12 +58,12 @@ def test_stop_uses_stop_register_not_motor_register():
 def test_forward_drives_both_wheels_forward():
     i2c = _i2c("forward")
     assert i2c["reg"] == hex(controller.REG_MOTOR)
-    assert i2c["data"] == [controller.DIR_FORWARD, 153, controller.DIR_FORWARD, 153]
+    assert i2c["data"] == [controller.DIR_FORWARD, 102, controller.DIR_FORWARD, 102]
 
 
 def test_backward_drives_both_wheels_backward():
     assert _i2c("backward")["data"] == [
-        controller.DIR_BACKWARD, 153, controller.DIR_BACKWARD, 153,
+        controller.DIR_BACKWARD, 102, controller.DIR_BACKWARD, 102,
     ]
 
 
@@ -75,8 +75,8 @@ def test_left_and_right_are_mirrored_spin_turns():
     left = _i2c("left")["data"]
     right = _i2c("right")["data"]
 
-    assert left == [controller.DIR_BACKWARD, 153, controller.DIR_FORWARD, 153]
-    assert right == [controller.DIR_FORWARD, 153, controller.DIR_BACKWARD, 153]
+    assert left == [controller.DIR_BACKWARD, 102, controller.DIR_FORWARD, 102]
+    assert right == [controller.DIR_FORWARD, 102, controller.DIR_BACKWARD, 102]
     assert left != right
     # 좌우 바퀴 방향이 서로 반대여야 제자리 회전이 된다
     assert left[0] != left[2] and right[0] != right[2]
@@ -310,3 +310,42 @@ def test_stop_failure_is_recorded_for_health(monkeypatch):
     assert controller._last_stop_error is not None
     assert "OSError" in controller._last_stop_error
     controller._last_stop_error = None   # 다른 테스트에 새지 않게 되돌린다
+
+
+# ── 속도 상한 (2026-09-24 — 확정값이 코드 곳곳에 흩어져 옛 값 60이 남아 있었다) ─────────────
+def test_default_speed_cap_is_the_confirmed_upper_limit():
+    """60은 바닥 주행에서 "너무 빠름"으로 기각, 50이 상한 (리포트 13 §4.5)."""
+    assert controller.MAX_SPEED_PCT == 50
+
+
+def test_speed_above_cap_is_clipped_before_reaching_the_motor():
+    """web(feature/web)이 좌/우회전을 60으로 보내고 있다 — 그대로 쓰면 기각한 속도로 제자리 회전한다."""
+    result = controller._apply_motor("left", 60, mock=True)
+    assert result["status"] == "mocked"
+    assert result["i2c"]["data"] == [controller.DIR_BACKWARD, 128, controller.DIR_FORWARD, 128]
+    assert result["speed_pct"] == 50
+    assert result["speed_capped_from"] == 60, "잘렸다는 표시가 없으면 호출 측이 옛 값을 못 찾는다"
+
+
+def test_speed_within_cap_is_untouched_and_unmarked():
+    result = controller._apply_motor("forward", 20, mock=True)
+    assert result["i2c"]["data"][1] == 51
+    assert "speed_capped_from" not in result
+
+
+def test_non_numeric_speed_is_rejected_not_reported_as_i2c_failure():
+    """숫자가 아니면 비교에서 TypeError가 나 execute()가 i2c_failed로 오보했을 것이다."""
+    result = controller._apply_motor("forward", "fast", mock=True)
+    assert result["reason"] == "invalid_speed"
+    assert "i2c" not in result
+
+
+def test_stop_ignores_a_garbage_speed():
+    """정지는 속도와 무관하다 — 속도 값이 이상해도 멈춰야 한다."""
+    result = controller._apply_motor("stop", "??", mock=True)
+    assert result["status"] == "mocked"
+    assert result["i2c"]["reg"] == hex(controller.REG_STOP)
+
+
+def test_diagnose_exposes_speed_cap():
+    assert controller.diagnose(mock=True)["max_speed_pct"] == controller.MAX_SPEED_PCT

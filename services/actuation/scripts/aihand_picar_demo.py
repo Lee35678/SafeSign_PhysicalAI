@@ -24,22 +24,27 @@ picar는 주행 명령 후 `PICAR_MOTION_DURATION_S`(기본 2초) 뒤 **스스�
 끼어들지 않도록 heartbeat로 갱신하고, 정지 계열(정지·주의·확인_완료)은 LED 점멸 위상이 리셋되지 않게
 **한 번만** 보낸다.
 
-## ⚠️ 잠정값
+## 속도 — 2026-09-23 바닥 주행 확정값
 
-`PICAR_COMMANDS`의 속도는 스키마에도 "실측 후 확정"으로 남아 있는 잠정값이다(2026-09-23 이전
-`services/web/src/state_machine.py`의 placeholder를 그대로 가져왔다). 순항 속도는 `--cruise-speed`로
-바꿀 수 있고, **서행은 순항보다 느려야 의미가 있으므로** 순항 속도 이상이면 시작 시 경고한다.
+`PICAR_COMMANDS`의 속도는 **서행 20 / 좌·우회전·후진 40 / 상한 50**이다
+(`document/13_picar_하드웨어_검증리포트_v1.md` §4.5). 60은 "너무 빠름"으로 기각됐다.
+(2026-09-24까지는 옛 placeholder 서행 30 / 회전 50 / 후진 40이 들어 있었다.)
+
+- 순항 속도는 `--cruise-speed`(기본 40 = 일반 주행)로 바꿀 수 있고, **상한 50을 넘기면 거부**한다.
+- **서행은 순항보다 느려야 의미가 있으므로** 순항 속도 이하로 내리면 시작 시 경고한다.
+- picar 서비스도 `PICAR_MAX_SPEED`(기본 50)를 넘는 요청을 잘라서 실행한다 — 이 스크립트가 틀린 값을
+  보내도 차는 50을 넘지 않는다. 잘렸으면 응답에 `speed_capped_from`이 붙는다.
 
 `확인_완료`는 PRD상 "적색·황색 번갈아 2회 점멸"이지만 스키마가 off/on/blink만 표현하므로 전체 점멸로
 근사한다.
 
 ## 사용
 
-    # RPi5에서 actuation이 localhost:8002에 떠 있고, picar(RPi4B)가 192.168.0.42:8000일 때
-    python3 aihand_picar_demo.py --picar http://192.168.0.42:8000
+    # RPi5에서 actuation이 localhost:8002에 떠 있고, picar(RPi4B)가 RPi5 AP의 192.168.50.10:8000일 때
+    python3 aihand_picar_demo.py --picar http://192.168.50.10:8000
 
-    # 순항 속도 조정
-    python3 aihand_picar_demo.py --picar http://192.168.0.42:8000 --cruise-speed 40
+    # 순항 속도 조정 (0~50)
+    python3 aihand_picar_demo.py --picar http://192.168.50.10:8000 --cruise-speed 30
 
 ## 안전
 
@@ -59,6 +64,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+MAX_SPEED_PCT = 50  # 2026-09-23 확정 상한 — picar 서비스의 PICAR_MAX_SPEED 기본값과 같다
 HEARTBEAT_S = 1.0    # picar 자동 정지(2초)보다 충분히 짧아야 주행이 끊기지 않는다
 SIGNAL_HOLD_S = 2.0  # ④ 수신호 상태 유지 시간
 
@@ -77,15 +83,15 @@ _NEUTRAL_ANGLES = {"thumb": 90, "index": 90, "middle": 90,
 _LED_OFF = {"red": "off", "yellow_left": "off", "yellow_right": "off"}
 
 # 순서가 메뉴 번호이자 펌웨어 G{n} 번호다 (G1=정지 … G7=주의).
-# 속도는 잠정값 — 위 docstring "잠정값" 참고.
+# 속도는 2026-09-23 확정값 — 위 docstring "속도" 참고.
 PICAR_COMMANDS = {
     "정지": {"command": "stop", "motor": {"action": "stop", "speed": 0},
            "led": {"red": "on", "yellow_left": "off", "yellow_right": "off"}},
-    "서행": {"command": "slow", "motor": {"action": "forward", "speed": 30},
+    "서행": {"command": "slow", "motor": {"action": "forward", "speed": 20},
            "led": {"red": "off", "yellow_left": "blink", "yellow_right": "blink"}},
-    "좌회전_유도": {"command": "turn_left", "motor": {"action": "left", "speed": 50},
+    "좌회전_유도": {"command": "turn_left", "motor": {"action": "left", "speed": 40},
                "led": {"red": "off", "yellow_left": "blink", "yellow_right": "off"}},
-    "우회전_유도": {"command": "turn_right", "motor": {"action": "right", "speed": 50},
+    "우회전_유도": {"command": "turn_right", "motor": {"action": "right", "speed": 40},
                "led": {"red": "off", "yellow_left": "off", "yellow_right": "blink"}},
     "확인_완료": {"command": "complete", "motor": {"action": "stop", "speed": 0},
              "led": {"red": "blink", "yellow_left": "blink", "yellow_right": "blink"}},
@@ -274,11 +280,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="AI Hand + picar 연동 데모 (RPi5)")
     ap.add_argument("--aihand", default="http://localhost:8002", help="actuation 서비스 URL")
     ap.add_argument("--picar", required=True, help="picar 서비스 URL (RPi4B), 예: http://192.168.0.42:8000")
-    ap.add_argument("--cruise-speed", type=int, default=40, help="① 순항 전진 속도 0~100%% (기본 40)")
+    ap.add_argument("--cruise-speed", type=int, default=40, help=f"① 순항 전진 속도 0~{MAX_SPEED_PCT}%% (기본 40 = 일반 주행)")
     args = ap.parse_args()
 
-    if not 0 <= args.cruise_speed <= 100:
-        ap.error("--cruise-speed는 0~100 사이여야 한다")
+    if not 0 <= args.cruise_speed <= MAX_SPEED_PCT:
+        ap.error(f"--cruise-speed는 0~{MAX_SPEED_PCT} 사이여야 한다 (60 이상은 바닥 주행에서 기각)")
     aihand = args.aihand.rstrip("/")
     picar = args.picar.rstrip("/")
 
@@ -290,6 +296,8 @@ def main() -> int:
     pc = _get(f"{picar}/health")
     print(f"aihand /health → {ah}")
     print(f"picar  /health → {pc}")
+    if "hardware" in pc and "max_speed_pct" not in pc["hardware"]:   # 응답은 왔는데 상한 필드가 없음
+        print("⚠️  picar 서비스에 속도 상한이 없는 이전 버전입니다 — RPi4B에서 pull 후 재시작하세요.")
     if ah.get("mock_hardware") is True:
         print("⚠️  actuation이 MOCK_HARDWARE=true — 서보가 실제로 움직이지 않습니다.")
     mc = ah.get("microbit_connected")

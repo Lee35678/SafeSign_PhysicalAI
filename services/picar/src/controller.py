@@ -83,6 +83,12 @@ DIR_FORWARD = 1
 # 실물 주행 후 팀이 확정할 잠정값이다(위 docstring 참고).
 MOTION_DURATION_S = float(os.getenv("PICAR_MOTION_DURATION_S", "2.0"))
 
+# 속도 상한(%). 2026-09-23 바닥 주행에서 60은 "너무 빠름"으로 기각, 50이 상한으로 확정됐다
+# (13_picar_하드웨어_검증리포트_v1 §4.5 — 서행 20 / 좌우회전·후진 40). 호출 측(web·데모 스크립트)이
+# 무엇을 보내든 **이 값을 넘겨 모터를 돌리지 않는다** — 속도는 여러 곳에 흩어져 있어 한 곳이 옛 값을
+# 보내도 차가 튀어나가지 않게 하는 마지막 안전망이다. 넘은 요청은 잘라서 실행하고 응답에 표시한다.
+MAX_SPEED_PCT = max(0, min(100, int(os.getenv("PICAR_MAX_SPEED", "50"))))
+
 # 외부 LED 4개 -> GPIO 4핀 (2026-09-22 확정, 위 docstring "LED" 절 참고).
 # 값은 **핀 튜플**이다 — 한 채널이 여러 핀을 함께 구동할 수 있다(적색 2개).
 # 내장 적색(BCM21)·청색(BCM20)은 사용하지 않는다.
@@ -184,7 +190,18 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
     좌/우 회전은 제자리 회전(한쪽 전진 + 반대쪽 후진)으로 구현했다 — 교육용 시범이라 회전이 눈에
     확실히 보이는 편이 낫다는 판단. 완만한 선회가 필요하면 한쪽 속도를 0으로 두는 방식으로 바꾸면 된다
     (실물 주행 후 조정 대상).
+
+    속도는 MAX_SPEED_PCT로 자른다. 잘렸으면 응답의 `speed_capped_from`에 원래 요청값을 남긴다 —
+    status는 그대로 ok다(안전한 쪽으로 보정해 실행했으므로). 호출 측은 이 필드로 옛 값을 찾아 고친다.
     """
+    try:
+        # 정지는 속도와 무관하다 — 속도 값이 이상해도 **정지만큼은 반드시 실행**한다
+        requested = 0 if action == "stop" else int(speed_pct)
+    except (TypeError, ValueError):
+        # 숫자가 아니면 아래 비교에서 TypeError가 나 execute()가 "i2c_failed"로 오보한다 — 먼저 거른다
+        return {"status": "error", "reason": "invalid_speed", "speed": speed_pct}
+    speed_pct = max(0, min(requested, MAX_SPEED_PCT))
+    capped = {"speed_capped_from": requested} if requested > MAX_SPEED_PCT else {}
     speed = _speed_pct_to_byte(speed_pct)
 
     if action == "stop":
@@ -209,6 +226,7 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
                     "reg": hex(REG_STOP if kind == "stop" else REG_MOTOR),
                     "data": [0x00] if kind == "stop" else list(payload)},
             "auto_stop_s": None if kind == "stop" else MOTION_DURATION_S,
+            **capped,
         }
 
     if kind == "stop":
@@ -224,7 +242,7 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
     _write_motor(*payload)
     _schedule_auto_stop()
     return {"status": "ok", "action": action, "speed_pct": speed_pct,
-            "auto_stop_s": MOTION_DURATION_S}
+            "auto_stop_s": MOTION_DURATION_S, **capped}
 
 
 # ── LED ───────────────────────────────────────────────────────────────────────
@@ -301,6 +319,7 @@ def diagnose(mock: bool = True) -> dict:
         "leds": {n: list(pins) for n, pins in PIN_MAP.items()},
         "leds_unassigned": [n for n, pins in PIN_MAP.items() if not pins],
         "motion_duration_s": MOTION_DURATION_S,
+        "max_speed_pct": MAX_SPEED_PCT,
         "motion_active": _auto_stop_timer is not None and _auto_stop_timer.is_alive(),
         # 🔴 정지 실패는 "차가 계속 달린다"는 뜻이다. None이 아니면 즉시 확인할 것.
         # 주의: motion_active는 **타이머 상태**일 뿐 바퀴가 실제로 도는지가 아니다 —

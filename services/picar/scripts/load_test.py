@@ -15,7 +15,12 @@ Wi-Fi 실패도 0건이었지만, 바닥에서는 **기동 토크 때문에 전�
 - **왕복 지연** — `03_인터페이스계약서_v2` §5-2의 **타임아웃 500ms**가 현실적인 값인지.
   이 스크립트를 **PC에서 실행하면** 실제 시연 경로(Wi-Fi + HTTP)를 그대로 지나간다.
 - **요청 실패** — 모터 구동 중 무선이 끊기는지. 실패 시각을 찍어 모터 동작과 대조할 수 있다.
-- **속도 감각** — `--speed`를 바꿔가며 바닥에서의 실제 거동을 본다 (§10 #5 잠정값 확정용).
+- **속도 감각** — `--speed`를 바꿔가며 바닥에서의 실제 거동을 본다. 2026-09-23 이 스크립트로
+  **서행 20 / 좌·우회전·후진 40 / 상한 50**을 확정했다(`13_picar_하드웨어_검증리포트_v1` §4.5).
+
+> ⚠️ **picar 서비스는 `PICAR_MAX_SPEED`(기본 50)를 넘는 속도를 잘라서 실행한다**(2026-09-24).
+> 전원 여유를 보려고 50을 넘겨 돌리려면 RPi4B에서 서비스를 `PICAR_MAX_SPEED=70`처럼 올려 띄워야
+> 한다 — 안 그러면 `--speed 70`을 줘도 실제로는 50으로 달린다(스크립트가 경고한다).
 
 `get_throttled`는 Pi 로컬 값이라 이 스크립트가 직접 읽지 않는다. Pi 쪽에서 아래를 같이 띄울 것:
 
@@ -31,10 +36,10 @@ Wi-Fi 실패도 0건이었지만, 바닥에서는 **기동 토크 때문에 전�
 ## 사용
 
     # ① 제자리 회전 — 공간이 거의 필요 없고 전류는 가장 크다. 먼저 이것부터.
-    python3 load_test.py --url http://192.168.0.42:8000 --pattern spin --speed 40 --duration 30
+    python3 load_test.py --url http://192.168.50.10:8000 --pattern spin --speed 40 --duration 30
 
     # ② 원 주행 — 실제 이동 + 반복 기동 토크
-    python3 load_test.py --url http://192.168.0.42:8000 --pattern circle --speed 40 --duration 60
+    python3 load_test.py --url http://192.168.50.10:8000 --pattern circle --speed 40 --duration 60
 """
 from __future__ import annotations
 
@@ -136,9 +141,9 @@ def main() -> int:
             pass
 
     ap = argparse.ArgumentParser(description="picar 부하 테스트 (바닥 주행)")
-    ap.add_argument("--url", required=True, help="예: http://192.168.0.42:8000")
+    ap.add_argument("--url", required=True, help="예: http://192.168.50.10:8000")
     ap.add_argument("--pattern", choices=sorted(PATTERNS), default="spin")
-    ap.add_argument("--speed", type=int, default=40, help="0~100%% (기본 40 = 서행 잠정값)")
+    ap.add_argument("--speed", type=int, default=40, help="0~100%% (기본 40 = 일반 주행 확정값. 50 초과는 서버가 자른다)")
     ap.add_argument("--duration", type=float, default=30.0, help="총 주행 초 (기본 30)")
     ap.add_argument("--timeout", type=float, default=2.0,
                     help="요청 타임아웃 초. 계약서 예산은 0.5초지만, 측정이 목적이라 "
@@ -149,6 +154,9 @@ def main() -> int:
 
     if not 0 <= args.speed <= 100:
         ap.error("--speed는 0~100 사이여야 한다 (퍼센트)")
+    if args.speed > 50:
+        print(f"⚠️  --speed {args.speed}: picar 서비스 기본 상한(PICAR_MAX_SPEED=50)을 넘습니다. "
+              "서버에서 상한을 올리지 않았다면 실제로는 50으로 달립니다.")
     if args.duration > 300:
         ap.error("--duration은 300초를 넘기지 않는다 (배터리·안전)")
 
