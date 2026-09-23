@@ -50,6 +50,98 @@
 | 17:40:59 | 1 | progress 3/7 | 32 | ok | `OKP37` | 2.55 | 정상 |  |
 | 17:41:07 | 1 | progress 1/7 | 36 | ok | `OKP17` | 1.51 | 정상 |  |
 
+
 - **펌웨어 보고 완료**(G1~G7 HTTP): 중앙 801ms · 최대 803ms  (7건) — 회신이 손 동작 **이후**라 동작 시간 포함
 - **완료**(육안): 중앙 1.63s · 최대 2.55s  (11건)
   > KPI 2.0초를 **어느 쪽으로 재느냐**가 팀 결정이다 (`proposals/picar_주행시간_스키마_변경안.md` 결정 2).
+
+### AI Hand 검증 — 2026-09-23 18:15
+- 실행 환경: **Rpi5 네이티브**
+- micro:bit 재부팅 후 첫 회차: y
+- `/health` 전: `{'status': 'ok', 'service': 'actuation', 'mock_hardware': False, 'microbit_connected': True}`
+- `/health` 후: `{'status': 'ok', 'service': 'actuation', 'mock_hardware': False, 'microbit_connected': True}`
+
+| 시각 | 회차 | 명령 | HTTP(ms) | status | 회신 | **완료(s)** | 판정 | 비고 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 18:14:19 | 1 | G1 정지 | 802 | ok | `OK1` | 1.55 | 정상 |  |
+| 18:14:25 | 1 | G2 서행 | 796 | ok | `OK2` | 1.44 | 정상 |  |
+| 18:14:31 | 1 | G3 좌회전_유도 | 801 | ok | `OK3` | 1.41 | 정상 |  |
+| 18:14:39 | 1 | G4 우회전_유도 | 806 | ok | `OK4` | 1.41 | 정상 |  |
+| 18:14:44 | 1 | G5 확인_완료 | 794 | ok | `OK5` | 1.87 | 정상 |  |
+| 18:14:49 | 1 | G6 후진 | 800 | ok | `OK6` | 1.52 | 정상 |  |
+| 18:14:55 | 1 | G7 주의 | 794 | ok | `OK7` | 1.89 | 정상 |  |
+| 18:14:59 | 1 | result correct | 26 | ok | `OK:CORRECT` |  | 정상 |  |
+| 18:15:03 | 1 | result incorrect | 41 | ok | `OK:INCORRECT` |  | 정상 |  |
+| 18:15:09 | 1 | progress 3/7 | 33 | ok | `OKP37` |  | 정상 |  |
+| 18:15:14 | 1 | progress 1/7 | 32 | ok | `OKP17` |  | 정상 |  |
+
+- **펌웨어 보고 완료**(G1~G7 HTTP): 중앙 800ms · 최대 806ms  (7건) — 회신이 손 동작 **이후**라 동작 시간 포함
+- **완료**(육안): 중앙 1.52s · 최대 1.89s  (7건)
+  > KPI 2.0초를 **어느 쪽으로 재느냐**가 팀 결정이다 (`proposals/picar_주행시간_스키마_변경안.md` 결정 2).
+
+### AI Hand 검증 — 2026-09-23 18:24
+
+- 실행 환경: **auto**
+- micro:bit 재부팅 후 첫 회차: auto
+- `/health` 전: `{'status': 'ok', 'service': 'actuation', 'mock_hardware': False, 'microbit_connected': True}`
+- `/health` 후: `{'status': 'ok', 'service': 'actuation', 'mock_hardware': False, 'microbit_connected': True}`
+
+| 시각 | 회차 | 명령 | HTTP(ms) | status | 회신 | **완료(s)** | 판정 | 비고 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 18:23:55 | 1 | G1 정지 | 803 | ok | `OK1` |  | auto |  |
+| 18:23:56 | 1 | G2 서행 | 806 | ok | `OK2` |  | auto |  |
+| 18:23:57 | 1 | G3 좌회전_유도 | 806 | ok | `OK3` |  | auto |  |
+| 18:23:57 | 1 | G4 우회전_유도 | 806 | ok | `OK4` |  | auto |  |
+| 18:23:58 | 1 | G5 확인_완료 | 806 | ok | `OK5` |  | auto |  |
+| 18:23:59 | 1 | G6 후진 | 806 | ok | `OK6` |  | auto |  |
+| 18:24:00 | 1 | G7 주의 | 806 | ok | `OK7` |  | auto |  |
+| 18:24:00 | 1 | result correct | 37 | ok | `OK:CORRECT` |  | auto |  |
+| 18:24:01 | 1 | result incorrect | 1443 | ok | `OK:INCORRECT` |  | auto |  |
+| 18:24:03 | 1 | progress 3/7 | 1425 | ok | `OKP37` |  | auto |  |
+| 18:24:03 | 1 | progress 1/7 | 38 | ok | `OKP17` |  | auto |  |
+| 18:24:04 | 2 | G1 정지 | 805 | ok | `OK1` |  | auto |  |
+| 18:24:04 | 2 | G2 서행 | 806 | ok | `OK2` |  | auto |  |
+| 18:24:05 | 2 | G3 좌회전_유도 | 806 | ok | `OK3` |  | auto |  |
+| 18:24:06 | 2 | G4 우회전_유도 | 806 | ok | `OK4` |  | auto |  |
+| 18:24:07 | 2 | G5 확인_완료 | 806 | ok | `OK5` |  | auto |  |
+| 18:24:08 | 2 | G6 후진 | 806 | ok | `OK6` |  | auto |  |
+| 18:24:08 | 2 | G7 주의 | 806 | ok | `OK7` |  | auto |  |
+| 18:24:09 | 2 | result correct | 38 | ok | `OK:CORRECT` |  | auto |  |
+| 18:24:10 | 2 | result incorrect | 1424 | ok | `OK:INCORRECT` |  | auto |  |
+| 18:24:11 | 2 | progress 3/7 | 1424 | ok | `OKP37` |  | auto |  |
+| 18:24:11 | 2 | progress 1/7 | 38 | ok | `OKP17` |  | auto |  |
+| 18:24:12 | 3 | G1 정지 | 805 | ok | `OK1` |  | auto |  |
+| 18:24:13 | 3 | G2 서행 | 806 | ok | `OK2` |  | auto |  |
+| 18:24:14 | 3 | G3 좌회전_유도 | 806 | ok | `OK3` |  | auto |  |
+| 18:24:15 | 3 | G4 우회전_유도 | 806 | ok | `OK4` |  | auto |  |
+| 18:24:15 | 3 | G5 확인_완료 | 806 | ok | `OK5` |  | auto |  |
+| 18:24:16 | 3 | G6 후진 | 806 | ok | `OK6` |  | auto |  |
+| 18:24:17 | 3 | G7 주의 | 806 | ok | `OK7` |  | auto |  |
+| 18:24:17 | 3 | result correct | 38 | ok | `OK:CORRECT` |  | auto |  |
+| 18:24:19 | 3 | result incorrect | 1425 | ok | `OK:INCORRECT` |  | auto |  |
+| 18:24:20 | 3 | progress 3/7 | 1424 | ok | `OKP37` |  | auto |  |
+| 18:24:20 | 3 | progress 1/7 | 38 | ok | `OKP17` |  | auto |  |
+| 18:24:21 | 4 | G1 정지 | 805 | ok | `OK1` |  | auto |  |
+| 18:24:22 | 4 | G2 서행 | 806 | ok | `OK2` |  | auto |  |
+| 18:24:22 | 4 | G3 좌회전_유도 | 806 | ok | `OK3` |  | auto |  |
+| 18:24:23 | 4 | G4 우회전_유도 | 806 | ok | `OK4` |  | auto |  |
+| 18:24:24 | 4 | G5 확인_완료 | 805 | ok | `OK5` |  | auto |  |
+| 18:24:25 | 4 | G6 후진 | 806 | ok | `OK6` |  | auto |  |
+| 18:24:26 | 4 | G7 주의 | 806 | ok | `OK7` |  | auto |  |
+| 18:24:26 | 4 | result correct | 38 | ok | `OK:CORRECT` |  | auto |  |
+| 18:24:27 | 4 | result incorrect | 1424 | ok | `OK:INCORRECT` |  | auto |  |
+| 18:24:28 | 4 | progress 3/7 | 1425 | ok | `OKP37` |  | auto |  |
+| 18:24:29 | 4 | progress 1/7 | 38 | ok | `OKP17` |  | auto |  |
+| 18:24:29 | 5 | G1 정지 | 805 | ok | `OK1` |  | auto |  |
+| 18:24:30 | 5 | G2 서행 | 806 | ok | `OK2` |  | auto |  |
+| 18:24:31 | 5 | G3 좌회전_유도 | 806 | ok | `OK3` |  | auto |  |
+| 18:24:32 | 5 | G4 우회전_유도 | 806 | ok | `OK4` |  | auto |  |
+| 18:24:33 | 5 | G5 확인_완료 | 806 | ok | `OK5` |  | auto |  |
+| 18:24:33 | 5 | G6 후진 | 806 | ok | `OK6` |  | auto |  |
+| 18:24:34 | 5 | G7 주의 | 825 | ok | `OK7` |  | auto |  |
+| 18:24:34 | 5 | result correct | 38 | ok | `OK:CORRECT` |  | auto |  |
+| 18:24:36 | 5 | result incorrect | 1424 | ok | `OK:INCORRECT` |  | auto |  |
+| 18:24:37 | 5 | progress 3/7 | 1425 | ok | `OKP37` |  | auto |  |
+| 18:24:37 | 5 | progress 1/7 | 37 | ok | `OKP17` |  | auto |  |
+
+- **펌웨어 보고 완료**(G1~G7 HTTP): 중앙 806ms · 최대 825ms  (35건) — 회신이 손 동작 **이후**라 동작 시간 포함

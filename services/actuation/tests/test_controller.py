@@ -264,3 +264,33 @@ def test_connect_passes_the_scanned_device_not_the_address(monkeypatch):
     _patch_ble(monkeypatch, [dev])
     assert asyncio.run(ble_bridge.connect(mock=False)) is True
     assert _ScriptedClient.instances[0].device is dev
+
+
+# ── 동시 전송 직렬화 ─────────────────────────────────────────────────────────
+class _EchoClient:
+    """쓴 명령에 대해 잠시 뒤 펌웨어처럼 회신한다 (G{n} → OK{n})."""
+    is_connected = True
+
+    async def write_gatt_char(self, _uuid, data):
+        n = data.decode().strip()[1:]
+
+        async def _reply():
+            await asyncio.sleep(0.02)
+            ble_bridge._on_notify(None, f"OK{n}".encode())
+
+        asyncio.get_running_loop().create_task(_reply())
+
+
+def test_concurrent_sends_each_get_their_own_reply(monkeypatch):
+    """회신 칸이 하나뿐이라 잠금 없이 동시에 보내면 뒤 요청이 앞 요청의 대기 이벤트를 지우고
+    회신을 가로챈다 — web이 actuation을 병렬로 호출하면 '엉뚱한 OK'나 timeout이 난다."""
+    monkeypatch.setattr(ble_bridge, "_client", _EchoClient())
+    monkeypatch.setattr(ble_bridge, "_reply_event", None)
+    monkeypatch.setattr(ble_bridge, "_send_lock", None)
+
+    async def _run():
+        ble_bridge._reply_event = asyncio.Event()
+        return await asyncio.gather(*(ble_bridge.send_gesture(n, mock=False) for n in (1, 2, 3)))
+
+    results = asyncio.run(_run())
+    assert [r.get("reply") for r in results] == ["OK1", "OK2", "OK3"], results

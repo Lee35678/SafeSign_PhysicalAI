@@ -15,7 +15,7 @@ picar는 전부 자동 측정이 가능했지만, AI Hand는 **사람이 봐야�
 ## 🔑 왜 지연을 두 번 재는가
 
 KPI "물리 피드백 지연 P95 ≤ 2.0초"를 **어느 시점으로 재느냐**가 팀 결정으로 올라가 있다
-(`document/proposals/picar_주행시간_스키마_변경안.md` 결정 2). 현재 근거는 계산값(약 4.2초)뿐이다.
+(`document/proposals/picar_주행시간_스키마_변경안.md` 결정 2). AI Hand 몫은 2026-09-23 실측 약 0.8초다.
 
 | 측정 | 의미 |
 | --- | --- |
@@ -29,6 +29,10 @@ KPI "물리 피드백 지연 P95 ≤ 2.0초"를 **어느 시점으로 재느냐*
 > 📌 **`/result`는 2026-09-23부터 ACK-first다.** 이전 펌웨어는 LED를 2초 보여준 **뒤에** 회신해
 > `ble_bridge.ACK_TIMEOUT_S`(2.0초)를 넘겨 매번 `timeout`이었다(RPi5 실측 2042ms). 펌웨어가 회신을
 > 먼저 보내도록 바뀌었으므로 **이제 `/result`의 timeout은 진짜 실패다** — 예외로 취급하지 않는다.
+>
+> 📌 **`--auto`는 result correct 직후 incorrect를 쉬지 않고 보낸다.** ACK를 먼저 보내도 LED 표시가
+> 수신 핸들러 안에서 돌면 다음 명령이 밀린다(2026-09-23 실측 1424ms). 그래서 `SLOW_MS`를 넘으면
+> `ok`여도 🔴로 적는다. 대화형은 사람이 쉬는 틈에 LED가 끝나 이 결함이 안 보인다.
 
 이 두 숫자를 실측해야 회의에 계산값이 아닌 근거를 들고 갈 수 있다.
 
@@ -76,6 +80,12 @@ KNOWN_COLLISIONS = {
 }
 
 VERDICTS = {"1": "정상", "2": "기지 제약(감수)", "3": "🔴 실패"}
+
+# HTTP 응답이 이보다 느리면 `ok`여도 실패로 본다 (2026-09-23 RPi5 실측 기준).
+# - /command: 손 동작 0.8초(150ms × 5 + BLE) 실측 794~825ms
+# - /result·/progress: 즉시 회신이라 26~42ms. 1424ms가 나오면 앞 명령의 LED 표시에 핸들러가
+#   묶여 있다는 뜻이다(자동 연속 모드에서 result correct → incorrect 순서로 보내므로 드러난다).
+SLOW_MS = {"/command": 1200, "/result": 300, "/progress": 300}
 
 
 def _post(base: str, path: str, payload: dict, timeout: float) -> tuple[float, dict | None, str]:
@@ -289,6 +299,13 @@ def main() -> int:
     if fails:
         lines.append(f"- 🔴 **실패 {len(fails)}건** — " +
                      ", ".join(f"{r['label']}({r['status']})" for r in fails[:8]))
+    slow = [r for r in rows if r["status"] in ("ok", "mocked")
+            and float(r["http_ms"]) > SLOW_MS.get(r["path"], float("inf"))]
+    if slow:
+        lines.append(f"- 🔴 **지연 초과 {len(slow)}건** — " +
+                     ", ".join(f"{r['label']}({r['http_ms']}ms)" for r in slow[:8]) +
+                     "  \n  > `ok`여도 실패다. result·progress가 느리면 펌웨어 핸들러가 앞 명령의 LED 표시에 "
+                     "묶여 있다는 뜻이고, 실전에서 result 직후 G 명령이 `ACK_TIMEOUT_S`(2.0초)를 넘긴다.")
 
     text = "\n".join(lines) + "\n"
     with open(args.out, "a", encoding="utf-8") as f:
@@ -296,7 +313,7 @@ def main() -> int:
 
     print(text)
     print(f"→ {args.out} 에 추가했습니다. 그대로 리포트에 붙이면 됩니다.")
-    return 1 if fails else 0
+    return 1 if fails or slow else 0
 
 
 if __name__ == "__main__":

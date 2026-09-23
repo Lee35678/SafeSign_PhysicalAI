@@ -41,6 +41,9 @@ ACK_TIMEOUT_S = 2.0  # 물리 피드백 지연 KPI(P95<=2.0초, 10_PRD_v2 §3 �
 _client: "BleakClient | None" = None
 _reply_event: "asyncio.Event | None" = None
 _last_reply: "str | None" = None
+# 회신 칸(_last_reply/_reply_event)이 하나뿐이라 전송은 **한 번에 하나만** 한다. 잠금이 없으면 동시 요청
+# (예: web이 /command와 /result를 병렬로 보냄)이 서로의 대기 이벤트를 지우고 회신을 가로챈다.
+_send_lock: "asyncio.Lock | None" = None
 
 
 def _on_notify(_sender, data: bytearray) -> None:
@@ -120,7 +123,18 @@ def is_connected(mock: bool = True) -> bool:
 
 
 async def _send_line(line: str) -> dict:
-    """실물 연결 상태에서 한 줄을 전송하고 응답을 ACK_TIMEOUT_S 동안 대기 (mock 처리는 호출부 담당)."""
+    """실물 연결 상태에서 한 줄을 전송하고 응답을 ACK_TIMEOUT_S 동안 대기 (mock 처리는 호출부 담당).
+
+    동시에 불려도 순서대로 하나씩 처리한다(_send_lock 주석 참고). micro:bit 펌웨어도 명령을 하나씩
+    처리하므로 병렬로 보내 얻는 이득은 없다."""
+    global _send_lock
+    if _send_lock is None:
+        _send_lock = asyncio.Lock()
+    async with _send_lock:
+        return await _send_line_locked(line)
+
+
+async def _send_line_locked(line: str) -> dict:
     if not is_connected(mock=False) and not await connect(mock=False):
         return {"status": "error", "reason": "microbit_unreachable"}
 

@@ -51,6 +51,9 @@ function moveInverted(index: number, angle: number) {
 }
 
 // 손가락 하나씩 순차 이동, 각 손가락 사이 150ms 텀
+// 서보 이동 시간(moveServo의 200)보다 텀이 50ms 짧아 **인접 손가락 2개가 50ms씩 겹쳐 움직인다**
+// (최악 약 1.74A, 어댑터 3A 이내). 2026-09-23 연속 35회 실측에서 리셋·BLE 끊김 없음 → 150ms 확정.
+// 텀을 더 줄이면 3개 이상이 겹치므로 전류를 다시 계산하고 연속 검증을 새로 할 것.
 function setHand(thumb: number, index: number, middle: number, ring: number, pinky: number) {
     moveServo(THUMB, thumb);
     basic.pause(150);
@@ -67,7 +70,17 @@ function setHand(thumb: number, index: number, middle: number, ring: number, pin
 // ==== 판정 결과 표시 (RESULT, 테스트/시연 공통) ====
 // "correct" -> LED에 O 모양, "incorrect" -> LED에 X 모양. 둘 다 1초간 표시 후 꺼진다.
 // 소리는 쓰지 않는다 (최상단 절대 규칙) — 피드백은 LED 단독이다.
+//
+// ⚠️ 반드시 control.inBackground()로 호출할 것 (수신 핸들러 안에서 직접 부르지 않는다).
+//    핸들러 안에서 pause하면 그동안 들어온 명령이 줄을 서서 밀린다 — 2026-09-23 연속 실측에서
+//    result 직후 명령이 매번 1424ms 걸렸다. result 직후 G 명령이 오면 1.4초 대기 + 동작 0.8초로
+//    ble_bridge.ACK_TIMEOUT_S(2.0초)를 넘긴다.
+// ⚠️ showLeds의 두 번째 인자 0을 지우지 말 것. 기본값이 400이라 그림을 그린 뒤 400ms를 더 쉰다
+//    (그래서 pause(1000)이 실제로는 1.4초였다).
+let resultSeq = 0;
 function showResult(isCorrect: boolean) {
+    resultSeq += 1;
+    let mySeq = resultSeq;
     if (isCorrect) {
         basic.showLeds(`
             . # # # .
@@ -75,7 +88,7 @@ function showResult(isCorrect: boolean) {
             # . . . #
             # . . . #
             . # # # .
-        `);
+        `, 0);
     } else {
         basic.showLeds(`
             # . . . #
@@ -83,10 +96,11 @@ function showResult(isCorrect: boolean) {
             . . # . .
             . # . # .
             # . . . #
-        `);
+        `, 0);
     }
     basic.pause(1000);   // 판정 결과 LED 표시 시간. 소리는 쓰지 않는다 (최상단 절대 규칙 참고)
-    basic.clearScreen();
+    // 표시 중에 새 결과가 오면 그쪽이 화면을 이어받는다 — 앞선 표시가 새 표시를 지우지 않게 한다
+    if (mySeq == resultSeq) basic.clearScreen();
 }
 
 // ---- 체크리스트 7가지 손동작 ----
@@ -124,14 +138,15 @@ bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () 
     let msg = bluetooth.uartReadUntil(serial.delimiters(Delimiters.NewLine));
 
     // ==== 판정 결과 표시 (RESULT, TEST_MODE와 무관하게 항상 처리) ====
+    // ACK 먼저 보내고 LED는 백그라운드로 — 핸들러가 즉시 끝나야 다음 명령이 밀리지 않는다 (showResult 주석 참고)
     if (msg == "correct") {
-        bluetooth.uartWriteString("OK:CORRECT\n");   // ACK 먼저 — LED 표시(1초) 동안 송신 측이 기다리지 않도록
-        showResult(true);
+        bluetooth.uartWriteString("OK:CORRECT\n");
+        control.inBackground(() => showResult(true));
         return;
     }
     if (msg == "incorrect") {
-        bluetooth.uartWriteString("OK:INCORRECT\n");   // ACK 먼저
-        showResult(false);
+        bluetooth.uartWriteString("OK:INCORRECT\n");
+        control.inBackground(() => showResult(false));
         return;
     }
 
