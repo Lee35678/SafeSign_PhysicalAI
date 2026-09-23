@@ -93,23 +93,38 @@ def similarity_to_score(similarity: float, calibration: Optional[dict] = None) -
     return int(round(float(np.clip(similarity, 0.0, 1.0)) * 100))
 
 
-def get_template(sign_name: str) -> Optional[np.ndarray]:
-    """클래스 대표 벡터. DB가 우선이고, 없으면 **모델 번들의 centroid**로 폴백한다.
+_FILE_TEMPLATES = Path(__file__).resolve().parent.parent.parent / "models" / "sign_templates.json"
+_file_cache: Optional[dict] = None
 
-    번들 폴백을 두는 이유: 템플릿 DB 시드(services/data의 seed_templates.py)는 데이터 담당 몫인데,
-    그게 비어 있으면 match_score가 계속 0으로 나오고 1단계 소속 게이트도 동작하지 못한다.
-    학습 스크립트가 어차피 같은 centroid를 번들에 실어 보내므로, 그것을 쓰면 vision 단독으로도
-    완결된다. DB가 채워지면 DB 값이 우선이다.
+# 일치율 표시용 기본 보정 — 공개 학습 데이터에서 같은 클래스 중심과의 코사인 유사도 5·95 퍼센타일
+# (2026-09-22 실측). 번들에 보정값이 없을 때만 쓴다. **판정에는 쓰이지 않는 표시용 값이다.**
+DEFAULT_CALIBRATION = {"sim_min": 0.9217, "sim_max": 0.9978}
+
+
+def _file_templates() -> dict:
+    """models/sign_templates.json 의 클래스 중심 (공개 학습 데이터로 만든 것)."""
+    global _file_cache
+    if _file_cache is None:
+        try:
+            raw = json.loads(_FILE_TEMPLATES.read_text(encoding="utf-8"))
+            _file_cache = {k: np.asarray(v, dtype=float) for k, v in raw.get("templates", {}).items()}
+        except (OSError, ValueError):
+            _file_cache = {}
+    return _file_cache
+
+
+def get_template(sign_name: str) -> Optional[np.ndarray]:
+    """클래스 대표 벡터. DB가 우선이고, 없으면 **models/sign_templates.json** 으로 폴백한다.
+
+    폴백을 두는 이유: 템플릿 DB 시드(services/data의 seed_templates.py)는 데이터 담당 몫인데,
+    그게 비어 있으면 match_score가 계속 0으로 나온다. sign_templates.json 은 같은 중심을 담고 있어
+    vision 단독으로도 완결된다. DB가 채워지면 DB 값이 우선이다.
+    (예전에는 SVM 번들의 게이트 중심으로 폴백했다 — vision_research 에는 SVM 번들이 없다.)
     """
     template = _load_templates().get(sign_name)
     if template is not None:
         return template
-    from cognition import model_store  # 지연 import (순환 방지)
-
-    gate = model_store.get_open_set_gate()
-    if gate:
-        return gate["centroids"].get(sign_name)
-    return None
+    return _file_templates().get(sign_name)
 
 
 def match_score(feature: np.ndarray, sign_name: str, calibration: Optional[dict] = None) -> int:
@@ -117,7 +132,8 @@ def match_score(feature: np.ndarray, sign_name: str, calibration: Optional[dict]
     template = get_template(sign_name)
     if template is None or template.shape != feature.shape:
         return 0
-    return similarity_to_score(cosine_similarity(feature, template), calibration)
+    return similarity_to_score(cosine_similarity(feature, template),
+                               calibration or DEFAULT_CALIBRATION)
 
 
 def available_signs() -> list[str]:

@@ -1,5 +1,8 @@
 # vision — Perception + Cognition (담당: 이동혁)
 
+> **vision_research 브랜치** — 이 브랜치는 딥러닝 연구용이다. SVM 코드는 걷어냈고, 아래 본문은
+> 운영 모델(feature/vision) 기준 설명이다. 이 브랜치의 설계·실행·결과는 **[RESEARCH.md](RESEARCH.md)** 를 본다.
+
 RACI: 파이프라인·판정로직 **R**, 하드웨어·로봇동작 **A**
 
 ```

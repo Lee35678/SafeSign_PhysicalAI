@@ -1,0 +1,2 @@
+# 공개 데이터 27,735건을 담은 캐시 — 원본 데이터(services/data/datasets/processed)처럼 git 에 올리지 않는다
+.landmark_cache.npz

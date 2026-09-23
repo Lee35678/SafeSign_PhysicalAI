@@ -33,11 +33,11 @@
 
     숫자키로 "지금 내가 하려는 동작"을 찍어두면, 그게 정답 라벨이 되어 오판정을 셀 수 있다.
     로그에는 **원본 랜드마크 21개**가 함께 들어가므로 나중에 다른 특징 모드로 다시 계산해
-    비교할 수 있다. 분석은 `python scripts/analyze_log.py <로그파일>`.
+    비교할 수 있다. (분석 스크립트 analyze_log.py 는 SVM 전용이라 이 브랜치에서 뺐다.)
 
 모델이 아직 없어도 실행된다 — 그 경우 랜드마크만 그려주므로 **카메라·MediaPipe 배선 확인**에는
 지금 당장 쓸 수 있다(판정은 계속 model_not_loaded). 모델을 만들려면
-`python training/train_svm.py` (로컬, 16초).
+`python training/train_handformer.py --final` (GPU).
 
 **평가 데이터를 모으는 것은 이 스크립트가 아니라 `record_dataset.py`다.** 여기는 눈으로 보는 확인만.
 """
@@ -184,11 +184,12 @@ def draw_overlay(image, result: dict, fps: float, n_frames: int, font,
     cv2.rectangle(image, (0, 0), (image.shape[1], 92), (30, 30, 30), -1)
 
     conf = result.get("confidence", 0.0)
+    unc = result.get("uncertainty")          # EDL 불확실성 u — 이 값이 높으면 "모르는 손"으로 거부한다
     score = result.get("match_score", 0)
     reason = result.get("reason", "")
     consecutive = result.get("consecutive", 0)
     line2 = (
-        f"conf {conf:.2f}   match {score:3d}   "
+        f"conf {conf:.2f}   u {'-' if unc is None else f'{unc:.2f}'}   match {score:3d}   "
         f"{consecutive}/{n_frames} frames   {result.get('latency_ms', 0):3d}ms   {fps:4.1f}fps"
     )
 
@@ -289,8 +290,8 @@ def main() -> None:
     else:
         print(f"[주의] 분류기 모델이 없습니다: {info['path']}")
         print("       랜드마크는 그려지지만 판정은 계속 'model_not_loaded'입니다.")
-        print("       `python training/train_svm.py` 로 학습하면 이 경로에 생깁니다.")
-    print(f"판정 설정: tau={classify.effective_tau()}  N={smoothing.N_FRAMES}프레임")
+        print("       `python training/train_handformer.py --final` 로 학습하면 이 경로에 생깁니다.")
+    print(f"판정 설정: 거부규칙={classify.effective_rule()[0]}  N={smoothing.N_FRAMES}프레임")
     if not model_store.get_match_score_calibration() or not templates.available_signs():
         print("[참고] 템플릿 DB가 비어 있어 match_score는 0으로 나옵니다 "
               "(services/data의 seed_templates.py 담당: 김지훈). 판정 자체와는 무관합니다.")
@@ -363,7 +364,7 @@ def main() -> None:
             "record": "header",
             "started_at": datetime.now().isoformat(timespec="seconds"),
             "model": info,
-            "tau": classify.effective_tau(),
+            "reject_rule": classify.effective_rule()[0],
             "n_frames": smoothing.N_FRAMES,
             "camera": args.camera,
             "mirror": not args.no_mirror,
@@ -425,6 +426,7 @@ def main() -> None:
                         "intended": intended,
                         "predicted": result.get("predicted_class"),
                         "confidence": result.get("confidence"),
+                        "uncertainty": result.get("uncertainty"),
                         "match_score": result.get("match_score"),
                         "is_reject": result.get("is_reject"),
                         "reason": result.get("reason"),
@@ -489,7 +491,7 @@ def main() -> None:
     print(f"\n종료 ({frame_count} 프레임 처리)")
     if args.log:
         print(f"로그 {logged}줄 기록됨 -> {path}")
-        print(f"분석: python scripts/analyze_log.py {path}")
+        print(f"로그: {path}  (프레임마다 예측·확신도·불확실성 u·원본 랜드마크가 들어 있다)")
 
 
 if __name__ == "__main__":

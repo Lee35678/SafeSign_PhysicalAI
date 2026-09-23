@@ -24,7 +24,7 @@ VALID_REASONS = {
     classify.REASON_NORMALIZE_FAILED,
     classify.REASON_MODEL_NOT_LOADED,
     classify.REASON_INFERENCE_ERROR,
-    classify.REASON_BELOW_TAU,
+    classify.REASON_OUT_OF_DISTRIBUTION,
 }
 
 
@@ -74,10 +74,11 @@ def test_classes_match_documents():
     assert classify.NEGATIVE_CLASS not in classify.SIGN_CLASSES
 
 
-def test_tau_default():
+def test_reject_rule_default():
     """모델·환경변수가 없으면 05_모델카드_v3 §8-0 초기 기본값 0.75."""
-    tau = classify.effective_tau()
-    assert 0.0 < tau <= 1.0
+    rule, tau_u = classify.effective_rule()
+    assert rule in ("relative", "threshold")
+    assert 0.0 < tau_u < 1.0
 
 
 if __name__ == "__main__":

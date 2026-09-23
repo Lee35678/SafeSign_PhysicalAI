@@ -77,7 +77,7 @@ def health():
         "status": "ok",
         "service": "vision",
         "model": model_store.describe(),
-        "tau": classify.effective_tau(),
+        "reject_rule": classify.effective_rule()[0],
         "n_frames": smoothing.N_FRAMES,
         "templates": templates.available_signs(),
     }

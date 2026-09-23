@@ -20,7 +20,7 @@ def _resolve_n_frames() -> int:
     """N 결정 우선순위: 환경변수 N_FRAMES > 학습 번들에 기록된 값 > 기본값 3.
 
     번들에 담는 이유는 모델과 판정 파라미터가 따로 놀지 않게 하기 위함이다
-    (τ도 같은 원칙 — classify.effective_tau 참고).
+    (거부 규칙도 같은 원칙 — classify.effective_rule 참고).
     """
     env = os.getenv("N_FRAMES")
     if env:

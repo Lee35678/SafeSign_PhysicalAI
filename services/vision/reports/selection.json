@@ -1,0 +1,66 @@
+{
+ "profile": "colab",
+ "settings_mlp": {
+  "activation": "softplus",
+  "lam_max": 1.0,
+  "norm": "batch",
+  "critical_weight": 1.0
+ },
+ "settings_hf": {
+  "activation": "exp",
+  "lam_max": 1.0,
+  "norm": "batch",
+  "critical_weight": 1.0
+ },
+ "arch": "hf_base",
+ "test_public": {
+  "acc": 96.93877551020408,
+  "auc_err": 0.9000974658869396,
+  "reject": 4.081632653061225,
+  "u_median": 0.0028812759555876255,
+  "loco": {
+   "mean_auc": 0.9338079958110431,
+   "mean_block": 59.32203093663672,
+   "per_class": {
+    "서행": {
+     "auc": 0.8355338691159586,
+     "block": 3.8461538461538463,
+     "n_unknown": 52
+    },
+    "우회전_유도": {
+     "auc": 0.8717634331049405,
+     "block": 11.016949152542372,
+     "n_unknown": 118
+    },
+    "정지": {
+     "auc": 0.9838761431092572,
+     "block": 100.0,
+     "n_unknown": 46
+    },
+    "좌회전_유도": {
+     "auc": 0.9828719836938654,
+     "block": 98.50746268656717,
+     "n_unknown": 134
+    },
+    "주의": {
+     "auc": 0.9207431102362206,
+     "block": 17.5,
+     "n_unknown": 80
+    },
+    "확인_완료": {
+     "auc": 0.9616598251933763,
+     "block": 85.5072463768116,
+     "n_unknown": 69
+    },
+    "후진": {
+     "auc": 0.9802076062236833,
+     "block": 98.87640449438202,
+     "n_unknown": 89
+    }
+   }
+  }
+ },
+ "torch": "2.11.0+cu128",
+ "device": "Tesla T4",
+ "minutes": 178.19177352587383
+}
