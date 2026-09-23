@@ -271,7 +271,7 @@ def main() -> int:
         lines.append(f"| {r['time']} | {r['rep']} | {r['label']} | {r['http_ms']} | "
                      f"{r['status']} | `{r['reply']}` | {r['done_s']} | {r['verdict']} | {r['memo']} |")
 
-    # 지연 통계는 손 동작(/command)만 — result(LED 2초)·progress(즉시 회신)는 성격이 달라 섞지 않는다.
+    # 지연 통계는 손 동작(/command)만 — result(ACK 즉시, LED 1초)·progress(즉시 회신)는 성격이 달라 섞지 않는다.
     http_ms = [float(r["http_ms"]) for r in rows
                if r["status"] in ("ok", "mocked") and r["path"] == "/command"]
     done = [float(r["done_s"]) for r in rows if r["done_s"] not in ("", "auto") and r["path"] == "/command"]

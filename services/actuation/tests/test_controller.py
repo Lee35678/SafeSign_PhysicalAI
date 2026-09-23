@@ -188,3 +188,70 @@ def test_is_connected_returns_a_real_bool_on_bluez(monkeypatch):
 
     monkeypatch.setattr(ble_bridge, "_client", _FakeClient(connected=True))
     assert ble_bridge.is_connected(mock=False) is True
+
+
+# ── connect 실패 경로 (2026-09-23 RPi5에서 "연결이 안 된다"는데 서버가 아무 이유도 안 남김) ──────────
+class _Dev:
+    def __init__(self, name, address="AA:BB:CC:DD:EE:FF"):
+        self.name = name
+        self.address = address
+
+
+class _ScriptedClient:
+    """connect/start_notify에서 지정한 예외를 던지고, disconnect 호출 여부를 기록한다."""
+    instances: list = []
+
+    def __init__(self, address, fail_at=None, exc=None):
+        self.address = address
+        self.fail_at = fail_at
+        self.exc = exc
+        self.disconnected = False
+        _ScriptedClient.instances.append(self)
+
+    async def connect(self):
+        if self.fail_at == "connect":
+            raise self.exc
+
+    async def start_notify(self, _uuid, _cb):
+        if self.fail_at == "notify":
+            raise self.exc
+
+    async def disconnect(self):
+        self.disconnected = True
+
+
+def _patch_ble(monkeypatch, devices, fail_at=None, exc=None):
+    async def _discover(timeout):
+        return devices
+
+    _ScriptedClient.instances = []
+    monkeypatch.setattr(ble_bridge.BleakScanner, "discover", staticmethod(_discover))
+    monkeypatch.setattr(ble_bridge, "BleakClient",
+                        lambda address: _ScriptedClient(address, fail_at, exc))
+    monkeypatch.setattr(ble_bridge, "_client", None)
+    monkeypatch.setattr(ble_bridge, "_reply_event", None)
+
+
+def test_notify_failure_releases_the_half_open_connection(monkeypatch):
+    """연결 후 notify 등록이 실패했는데 안 끊으면 BlueZ에 연결이 남아 micro:bit가 광고를 멈추고,
+    **이후 스캔에서 영영 안 보인다.**"""
+    from bleak.exc import BleakError
+
+    _patch_ble(monkeypatch, [_Dev("BBC micro:bit [zavig]")], fail_at="notify", exc=BleakError("x"))
+    assert asyncio.run(ble_bridge.connect(mock=False)) is False
+    assert _ScriptedClient.instances[0].disconnected, "반쯤 열린 연결을 끊지 않았다"
+    assert ble_bridge._client is None
+
+
+def test_connect_timeout_returns_false_instead_of_crashing_startup(monkeypatch):
+    """asyncio.TimeoutError는 BleakError가 아니다 — 안 잡으면 uvicorn 기동이 통째로 실패한다."""
+    _patch_ble(monkeypatch, [_Dev("BBC micro:bit")], fail_at="connect", exc=asyncio.TimeoutError())
+    assert asyncio.run(ble_bridge.connect(mock=False)) is False
+
+
+def test_not_found_logs_what_the_scan_did_see(monkeypatch, caplog):
+    """원인(이미 다른 쪽에 연결됨 / 전원 / 이름 불일치)을 좁히려면 스캔에 뭐가 보였는지가 필요하다."""
+    _patch_ble(monkeypatch, [_Dev("Galaxy Buds"), _Dev(None)])
+    with caplog.at_level("WARNING", logger="uvicorn.error"):
+        assert asyncio.run(ble_bridge.connect(mock=False)) is False
+    assert "Galaxy Buds" in caplog.text
