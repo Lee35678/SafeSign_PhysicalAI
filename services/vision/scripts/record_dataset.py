@@ -96,8 +96,8 @@ def _now_iso() -> str:
 
 
 def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
-                take: int, seq: int, orientation: str, variant: str = "normal",
-                device: str = "laptop_webcam") -> Path:
+                take: int, seq: int, orientation: str, device: str = "laptop_webcam",
+                variant: str = "normal") -> Path:
     """공개 데이터와 같은 형식으로 1건 저장 (04_데이터셋명세서_v2 §6)."""
     folder = out_dir / class_name
     folder.mkdir(parents=True, exist_ok=True)
@@ -343,8 +343,8 @@ def main() -> int:
                     if usable:
                         burst_seq += 1
                         p = save_sample(args.out, class_name, args.subject_id, lm_frame,
-                                        take, burst_seq, orientation, args.variant,
-                                        camera.device_tag)
+                                        take, burst_seq, orientation, camera.device_tag,
+                                        args.variant)
                         last_take_files.append(p)
                         saved_total += 1
                         per_class[class_name] = per_class.get(class_name, 0) + 1
