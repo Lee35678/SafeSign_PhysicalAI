@@ -2,6 +2,7 @@
 
 담당: 이동혁 (파이프라인·판정로직 R)
 역할: Pi Camera Module 3 -> MediaPipe(LIVE_STREAM) -> 정규화 -> 분류/일치율 산출.
+RPi5 실물 실행: MOCK_CAMERA=false CAMERA_SOURCE=csi 로 띄운다 (README "RPi5에서 실행" 참고).
 입출력 스키마는 shared/schemas/landmark_frame.schema.json, judgment_result.schema.json 참고.
 
 카메라가 이 서비스(RPi5)에 직결되어 있으므로, 실제 런타임에는 외부에서 프레임을 POST 받는 것이
@@ -77,6 +78,8 @@ def health():
         "status": "ok",
         "service": "vision",
         "model": model_store.describe(),
+        # 카메라가 실제로 돌고 있는지 — state(running/mock/error) · capture_fps · result_fps · error
+        "camera": capture.get_status(),
         "tau": classify.effective_tau(),
         "n_frames": smoothing.N_FRAMES,
         "templates": templates.available_signs(),
