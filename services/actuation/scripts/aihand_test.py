@@ -130,12 +130,28 @@ def _steps(args) -> list[tuple[str, str, dict, str]]:
 
 
 def _ask(prompt: str, default: str = "") -> str:
-    try:
-        v = input(prompt).strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        raise
-    return v or default
+    """입력 한 줄을 받는다. **인코딩 오류로 절대 죽지 않는다.**
+
+    2026-09-23 비고란에 한글을 입력하자 `UnicodeDecodeError`로 스크립트가 죽고, **그때까지의
+    기록이 저장되지 않은 채 날아갔다.** 원인은 두 가지가 가능하다:
+      - Windows에서 ssh로 접속하면 콘솔 입력이 **cp949**로 넘어온다
+      - 한글을 백스페이스로 지울 때 터미널이 한 글자가 아니라 **한 바이트만** 지우면 깨진 UTF-8이 남는다
+    그래서 `input()` 대신 바이트로 읽어 utf-8 → cp949 → 치환(�) 순으로 푼다.
+    """
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    raw = sys.stdin.buffer.readline()
+    if not raw:
+        raise EOFError
+    for enc in ("utf-8", "cp949"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", errors="replace")
+    return text.strip() or default
 
 
 def main() -> int:
@@ -232,6 +248,8 @@ def main() -> int:
                 })
     except (EOFError, KeyboardInterrupt):
         print("\n중단됨 — 여기까지의 기록을 저장합니다.")
+    except Exception as exc:  # noqa: BLE001 — 어떤 오류든 **기록은 반드시 남긴다**
+        print(f"\n🔴 스크립트 오류: {type(exc).__name__}: {exc}\n   여기까지의 기록을 저장합니다.")
 
     after = _health(base)
 
