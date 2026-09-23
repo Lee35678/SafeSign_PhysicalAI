@@ -46,3 +46,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .claude/
+
+#기타 데이터
+services/picar/reference/*
