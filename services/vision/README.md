@@ -35,7 +35,9 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
 ```
 src/
 ├── app.py                    FastAPI 진입점 (/health, /latest, /predict, /reset)
-├── perception/capture.py     Pi Camera Module 3 + MediaPipe LIVE_STREAM 콜백 → landmark_frame
+├── perception/
+│   ├── capture.py            카메라 → MediaPipe LIVE_STREAM 콜백 → landmark_frame (+ /health 카메라 상태)
+│   └── camera_source.py      CSI(picamera2) · USB(OpenCV) 카메라 열기 — 촬영·확인 도구와 공용
 └── cognition/
     ├── normalize.py          21 keypoints → 63차원(+방향 6) 특징벡터 (학습·추론 공용, 05 §3-5)
     ├── classify.py           SVM 추론 + τ 판정 + match_score → judgment_result
@@ -46,7 +48,9 @@ training/
 ├── train_svm.py                 로컬 학습 스크립트 (기본 경로)
 └── train_svm_colab.ipynb        Colab 노트북 (대체 경로)
 scripts/
-├── webcam_check.py              노트북 웹캠으로 학습된 모델을 눈으로 확인 (--log 로 진단 로그)
+├── webcam_check.py              웹캠/CSI 카메라로 학습된 모델을 눈으로 확인 (--source csi, --log 로 진단 로그)
+├── run_rpi5.sh                  RPi5 에서 CSI 카메라로 서비스 실행
+├── camera_source.py             (호환용) src/perception/camera_source.py 를 다시 내보냄
 ├── record_dataset.py            KPI 측정용 평가 데이터 촬영 (카운트다운 + 테이크 관리)
 ├── evaluate_kpi.py              자체 촬영 데이터로 KPI 5개 지표 계산
 ├── analyze_log.py               webcam_check 로그 분석 (오판정 원인 추적)
@@ -88,9 +92,84 @@ curl http://localhost:8001/health      # model.loaded, tau, n_frames 확인
 curl http://localhost:8001/latest
 ```
 
-카메라(Pi Camera Module 3)가 아직 없고 `picamera2`는 Raspberry Pi OS apt 패키지라 x86 Docker에
-설치되지 않는다. 그래서 기본값 `MOCK_CAMERA=true`로 "손 미검출" 프레임만 흘려보내며 배선을 검증하고,
-실물 카메라 연동은 RPi5 확보 후 `perception/capture.py`의 TODO를 채운다(네이티브 실행 권장).
+`picamera2`는 Raspberry Pi OS apt 패키지라 x86 Docker에 설치되지 않는다. 그래서 Docker 기본값은
+`MOCK_CAMERA=true`로 "손 미검출" 프레임만 흘려보내며 배선을 검증한다. **실물 카메라는 RPi5에서
+네이티브로 돌린다** → 아래 [RPi5 에서 실행](#rpi5-에서-실행-camera-module-3-csi).
+
+노트북에서도 실제 캡처 경로를 확인할 수 있다 (웹캠이 CSI 대신):
+
+```bash
+MOCK_CAMERA=false CAMERA_SOURCE=usb uvicorn app:app --app-dir src --port 8001
+curl http://localhost:8001/health      # camera.state=running, capture_fps, result_fps
+```
+
+### RPi5 에서 실행 (Camera Module 3, CSI)
+
+카메라 여는 코드는 `perception/camera_source.py` 하나다 — 송승호 님이 RPi4B 에서 실물 확인한
+picamera2 경로를 촬영 도구(`record_dataset.py`) · 확인 도구(`webcam_check.py`) · 서비스(`capture.py`)가
+같이 쓴다.
+
+**1. 준비 (한 번만)**
+
+```bash
+sudo apt update
+sudo apt install -y python3-picamera2 fonts-nanum     # picamera2 는 pip 가 아니라 apt
+rpicam-hello --list-cameras                            # imx708 (Camera Module 3) 가 보여야 한다
+
+cd services/vision
+python3 -m venv --system-site-packages .venv          # ⚠️ 이 옵션이 있어야 venv 안에서 picamera2 가 보인다
+source .venv/bin/activate
+pip install -r requirements-dev.txt                    # 서비스만 돌릴 거면 requirements.txt 로 충분
+```
+
+**2. 모델 복사** — `models/svm_classifier.joblib` 은 **git 에 없다**(.gitignore). 노트북에서:
+
+```bash
+scp services/vision/models/svm_classifier.joblib <user>@<rpi5-ip>:~/SafeSign_PhysicalAI/services/vision/models/
+```
+
+`hand_landmarker.task` · `sign_templates.json` 은 git 에 있어서 그대로 온다.
+scikit-learn 은 학습 때와 같은 **1.9.x** 여야 한다(`/health` 의 `model.metadata.sklearn_version` 과 비교,
+다르면 기동 로그에 경고).
+
+**3. 카메라 + 모델 눈으로 확인**
+
+```bash
+python scripts/webcam_check.py --source csi                # 모니터 연결 시 — 창에 판정 표시
+python scripts/webcam_check.py --source csi --no-window    # SSH 로만 붙었을 때 — 콘솔에 판정 출력
+python scripts/webcam_check.py --list-cameras              # CSI·USB 카메라 목록
+```
+
+화면이 없으면(`DISPLAY` 없음) 자동으로 `--no-window` 가 된다. 색이 뒤집혀 보이면 `--swap-rb`.
+
+**4. 서비스로 띄우기** (웹이 폴링하는 실제 경로)
+
+```bash
+bash scripts/run_rpi5.sh               # = MOCK_CAMERA=false CAMERA_SOURCE=csi uvicorn ... --host 0.0.0.0 --port 8001
+curl http://localhost:8001/health      # camera.state 가 running, capture_fps·result_fps 가 0 보다 커야 한다
+curl http://localhost:8001/latest      # 손을 대면 predicted_class 가 바뀐다
+```
+
+웹을 다른 기기에서 띄우면 그쪽 `VISION_URL=http://<rpi5-ip>:8001`.
+
+| 환경변수 | 기본 | 뜻 |
+| --- | --- | --- |
+| `MOCK_CAMERA` | `true` | `false` 여야 실물 카메라를 쓴다 (`run_rpi5.sh` 가 설정) |
+| `CAMERA_SOURCE` | `csi` | `csi` · `usb` · `auto`(CSI 먼저, 안 되면 USB) |
+| `CAPTURE_SIZE` / `CAPTURE_FPS` | `1280x720` / `30` | 계약값(1920x1080@60)은 MediaPipe 까지 같이 돌리기엔 무겁다 — `capture.py` 머리말 |
+| `CAMERA_MIRROR` | `true` | 좌우 반전 (촬영 도구와 같게). joint23 은 반전에 불변이라 판정엔 영향 없음 |
+| `CAMERA_SWAP_RB` / `CAMERA_AUTOFOCUS` | `false` / `true` | 색 뒤집힘 교정 / Camera Module 3 연속 AF |
+| `DB_PATH` | `/data/db/signdb.sqlite3` | 템플릿 DB(services/data). 없으면 판정은 되고 `match_score` 만 0 |
+
+**카메라가 안 열려도 서비스는 죽지 않는다** — "손 미검출"로 버티고 원인을 `/health` 의 `camera.error` 에
+남긴다. 막히면 여기부터 본다:
+
+| 증상 | 원인 · 조치 |
+| --- | --- |
+| `camera.error: picamera2를 불러올 수 없습니다` | apt 설치 안 됨, 또는 venv 를 `--system-site-packages` 없이 만듦 → venv 다시 생성 |
+| `numpy.dtype size changed` 류 오류 | apt picamera2(시스템 numpy)와 venv 의 pip numpy 가 충돌 → `pip install --upgrade simplejpeg` 후 재시도 |
+| `rpicam-hello` 에 카메라가 없음 | 케이블 방향 · 커넥터(RPi5 는 22핀 미니 커넥터 — 전용 케이블) 확인 |
+| `result_fps` 가 `capture_fps` 보다 한참 낮음 | MediaPipe 가 밀리는 중. LIVE_STREAM 이 알아서 프레임을 버리므로 정상이지만, 판정 지연 KPI 가 안 나오면 `CAPTURE_SIZE=960x540` 으로 낮춰 본다 |
 
 ### 확인 방법 두 가지 (용도가 다름)
 
@@ -101,6 +180,7 @@ cd services/vision
 python tests/test_normalize.py      # 정규화 불변성 + 방향 축 + 관절 특징 21개
 python tests/test_classify.py       # 모델 없이도 안전하게 미판정하는지 4개
 python tests/test_gate.py           # 소속 게이트 분기 7개
+python tests/test_capture.py        # 캡처 루프 배선 3개 (가짜 카메라 — BGR→RGB, 타임스탬프, 카메라 실패 시 버티기)
 # pytest가 있으면: python -m pytest tests -q
 ```
 
@@ -168,7 +248,8 @@ python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 �
 - [ ] **팀원 촬영분 확보** (2명) — KPI 측정의 유일한 경로. 회의 안건 1
 - [ ] 팀원 데이터 확보 후 **τ 재결정** — 지금은 잠정값 0.75
 - [ ] 게이트가 못 막는 25%(정지와 매우 닮은 자세) — negative 학습(안건 2 B) 전환 검토
-- [ ] `perception/capture.py`의 picamera2 연동 (카메라 도착 후)
-- [ ] `hand_landmarker.task` 모델 번들 다운로드 → `models/` (05_모델카드_v3 §1 URL)
+- [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — **RPi5 실물 확인 대기**
+- [ ] RPi5 실물에서 `result_fps` · 판정 지연 P95 측정 (mediapipe aarch64 휠 설치 여부 포함)
+- [x] ~~`hand_landmarker.task` 모델 번들 다운로드 → `models/`~~ (git 에 포함)
 - [ ] 실측 후 τ·N프레임 재검증, 05_모델카드_v3 §7-3 실측 표 채우기
 - [ ] `/latest` 폴링 → WebSocket 전환 검토 (지연 KPI 여유 없을 때)
