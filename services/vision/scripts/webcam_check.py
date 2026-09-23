@@ -24,6 +24,16 @@
     python scripts/webcam_check.py --no-window --max-frames 60   # 창 없이 콘솔 출력만
 
     q 또는 ESC : 종료 / r : N프레임 누적 초기화
+    1~7 : 지금 하려는 수신호 지정(정답 라벨) / 0 : 7종 아닌 애매한 자세 / ` : 라벨 해제
+
+진단 로그 (--log):
+    무엇이 어떻게 틀렸는지 오프라인에서 분석하려면 로그를 남긴다.
+
+        python scripts/webcam_check.py --log
+
+    숫자키로 "지금 내가 하려는 동작"을 찍어두면, 그게 정답 라벨이 되어 오판정을 셀 수 있다.
+    로그에는 **원본 랜드마크 21개**가 함께 들어가므로 나중에 다른 특징 모드로 다시 계산해
+    비교할 수 있다. 분석은 `python scripts/analyze_log.py <로그파일>`.
 
 모델이 아직 없어도 실행된다 — 그 경우 랜드마크만 그려주므로 **카메라·MediaPipe 배선 확인**에는
 지금 당장 쓸 수 있다(판정은 계속 model_not_loaded). 모델을 만들려면
@@ -34,9 +44,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -59,6 +71,13 @@ ROMAN = {
     "후진": "REVERSE",
     "주의": "CAUTION",
     "negative": "(none)",
+}
+
+# 숫자키 -> 정답 라벨. "지금 내가 하려는 동작"을 찍어두면 오판정을 셀 수 있다.
+LABEL_KEYS = {
+    "1": "정지", "2": "서행", "3": "좌회전_유도", "4": "우회전_유도",
+    "5": "확인_완료", "6": "후진", "7": "주의",
+    "0": "애매한자세",        # 7종 중 아무것도 아닌 자세 (소속 게이트 검증용)
 }
 
 # MediaPipe 손 랜드마크 연결 (그리기용)
@@ -152,7 +171,8 @@ def _load_korean_font(size: int = 26):
     return None
 
 
-def draw_overlay(image, result: dict, fps: float, n_frames: int, font) -> "any":
+def draw_overlay(image, result: dict, fps: float, n_frames: int, font,
+                 intended: Optional[str] = None, logged: int = 0) -> "any":
     """판정 결과를 화면 위에 올린다. 한글 폰트가 있으면 PIL로, 없으면 영문으로."""
     import cv2
 
@@ -188,6 +208,24 @@ def draw_overlay(image, result: dict, fps: float, n_frames: int, font) -> "any":
         cv2.putText(image, label, (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
     cv2.putText(image, line2, (12, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1)
+
+    if intended is not None:
+        # 정답 라벨과 예측이 맞는지 한눈에 — 초록 일치 / 빨강 불일치
+        hit = (not is_reject) and cls == intended
+        c = (0, 200, 0) if hit else (0, 100, 255)
+        h = image.shape[0]
+        cv2.rectangle(image, (0, h - 40), (image.shape[1], h), (30, 30, 30), -1)
+        txt = f"[{ROMAN.get(intended, intended)}]  logged {logged}"
+        if font is not None:
+            from PIL import Image, ImageDraw
+            import numpy as np
+
+            pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+            ImageDraw.Draw(pil).text((12, h - 36), f"의도: {intended}    기록 {logged}줄",
+                                     font=font, fill=(c[2], c[1], c[0]))
+            image = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+        else:
+            cv2.putText(image, txt, (12, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
     return image
 
 
@@ -216,6 +254,11 @@ def main() -> None:
     parser.add_argument("--max-frames", type=int, default=0, help="N프레임 처리 후 자동 종료 (0=무제한)")
     parser.add_argument("--no-mirror", action="store_true", help="좌우 반전(거울 모드) 끄기")
     parser.add_argument("--list-cameras", action="store_true", help="열리는 카메라 인덱스만 확인하고 종료")
+    parser.add_argument("--log", nargs="?", const="AUTO", default=None, metavar="PATH",
+                        help="진단 로그(JSONL) 기록. 경로를 생략하면 logs/ 아래 자동 생성. "
+                             "원본 랜드마크까지 남기므로 나중에 다른 특징 모드로 재계산 가능")
+    parser.add_argument("--log-every", type=int, default=1,
+                        help="N프레임마다 한 줄씩 기록 (기본 1 = 전부)")
     args = parser.parse_args()
 
     if args.list_cameras:
@@ -307,7 +350,33 @@ def main() -> None:
     if font is None and not args.no_window:
         print("[참고] 한글 폰트를 찾지 못해 클래스명을 영문으로 표시합니다 (pillow 설치 시 한글 표시).")
 
+    # ---- 진단 로그 준비 ----
+    log_file = None
+    if args.log:
+        path = (Path(args.log) if args.log != "AUTO"
+                else SERVICE_ROOT / "logs" /
+                f"webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = path.open("w", encoding="utf-8")
+        # 첫 줄은 헤더 — 어떤 모델로 찍은 로그인지 남겨야 나중에 해석이 된다
+        log_file.write(json.dumps({
+            "record": "header",
+            "started_at": datetime.now().isoformat(timespec="seconds"),
+            "model": info,
+            "tau": classify.effective_tau(),
+            "n_frames": smoothing.N_FRAMES,
+            "camera": args.camera,
+            "mirror": not args.no_mirror,
+        }, ensure_ascii=False, default=str) + "\n")
+        print(f"진단 로그: {path}")
+        print("  숫자키로 '지금 하려는 동작'을 찍어주세요 — 그래야 오판정을 셀 수 있습니다.")
+        for k, v in LABEL_KEYS.items():
+            print(f"    {k} = {v}")
+        print("    ` = 라벨 해제")
+
     print("\n손을 카메라에 비춰보세요.  q/ESC=종료,  r=N프레임 누적 초기화\n")
+    intended: Optional[str] = None
+    logged = 0
 
     last_printed = None
     frame_count = 0
@@ -346,6 +415,32 @@ def main() -> None:
                     result = {"predicted_class": "negative", "is_reject": True, "reason": "no_frame",
                               "confidence": 0.0, "match_score": 0, "latency_ms": 0, "consecutive": 0}
 
+                # ---- 로그 기록 ----
+                # 원본 랜드마크를 그대로 남긴다. 예측값만 남기면 "다른 특징 모드였다면
+                # 어땠을까"를 나중에 확인할 수 없다.
+                if log_file is not None and frame_count % max(1, args.log_every) == 0:
+                    rec = {
+                        "record": "frame",
+                        "t": round(time.time(), 3),
+                        "intended": intended,
+                        "predicted": result.get("predicted_class"),
+                        "confidence": result.get("confidence"),
+                        "match_score": result.get("match_score"),
+                        "is_reject": result.get("is_reject"),
+                        "reason": result.get("reason"),
+                        "consecutive": result.get("consecutive"),
+                        "hand_detected": bool(lm_frame and lm_frame.get("hand_detected")),
+                    }
+                    if lm_frame and lm_frame.get("hand_detected"):
+                        rec["handedness"] = lm_frame.get("handedness")
+                        rec["landmarks"] = [
+                            {"id": p["id"], "x": round(p["x"], 6),
+                             "y": round(p["y"], 6), "z": round(p["z"], 6)}
+                            for p in lm_frame["landmarks"]
+                        ]
+                    log_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    logged += 1
+
                 fps_n += 1
                 if fps_n >= 10:
                     now = time.perf_counter()
@@ -363,7 +458,8 @@ def main() -> None:
                         last_printed = key
                 else:
                     draw_landmarks(frame_bgr, image_lms)
-                    frame_bgr = draw_overlay(frame_bgr, result, fps, smoothing.N_FRAMES, font)
+                    frame_bgr = draw_overlay(frame_bgr, result, fps, smoothing.N_FRAMES, font,
+                                             intended, logged)
                     cv2.imshow("SafeSign webcam check (q=quit, r=reset)", frame_bgr)
                     key = cv2.waitKey(1) & 0xFF
                     if key in (ord("q"), 27):
@@ -371,6 +467,14 @@ def main() -> None:
                     if key == ord("r"):
                         smoothing.reset()
                         print("  N프레임 누적 초기화")
+                    pressed = chr(key) if 32 <= key < 127 else ""
+                    if pressed in LABEL_KEYS:
+                        intended = LABEL_KEYS[pressed]
+                        smoothing.reset()   # 동작을 바꿨으니 N프레임 누적도 새로
+                        print(f"  의도 = {intended}")
+                    elif pressed == "`":
+                        intended = None
+                        print("  의도 해제")
 
                 frame_count += 1
                 if args.max_frames and frame_count >= args.max_frames:
@@ -379,8 +483,13 @@ def main() -> None:
         cap.release()
         if not args.no_window:
             cv2.destroyAllWindows()
+        if log_file is not None:
+            log_file.close()
 
     print(f"\n종료 ({frame_count} 프레임 처리)")
+    if args.log:
+        print(f"로그 {logged}줄 기록됨 -> {path}")
+        print(f"분석: python scripts/analyze_log.py {path}")
 
 
 if __name__ == "__main__":

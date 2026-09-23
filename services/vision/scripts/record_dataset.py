@@ -80,13 +80,24 @@ ORIENTATION_HINT = {
     "우기울임": "손목을 오른쪽으로 30도쯤 기울여서",
 }
 
+# 7종 중 아무것도 아닌 자세. 학습 클래스가 아니라 **τ(미판정)가 제대로 걸리는지 검증**하는 용도다.
+# 2026-09-21 회의 안건 2 A에서 negative를 학습하지 않고 τ로 거르기로 했는데, 그 전제를 확인할
+# 데이터가 지금 하나도 없다. 미판정률 KPI(≤5%)와 직결된다.
+AMBIGUOUS_CLASS = "애매한자세"
+AMBIGUOUS_SHAPE = (
+    AMBIGUOUS_CLASS,
+    "?????",
+    "7종 중 아무것도 아닌 자세 (매번 다르게: 반쯤 편 손, 가위, 손날, 손가락 3개 등)",
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
-                take: int, seq: int, orientation: str, device: str = "laptop_webcam") -> Path:
+                take: int, seq: int, orientation: str, device: str = "laptop_webcam",
+                variant: str = "normal") -> Path:
     """공개 데이터와 같은 형식으로 1건 저장 (04_데이터셋명세서_v2 §6)."""
     folder = out_dir / class_name
     folder.mkdir(parents=True, exist_ok=True)
@@ -105,6 +116,7 @@ def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
                     "recorded_at": _now_iso(),
                     "orientation": orientation,   # 안건 3 A안 A/B용
                     "take": take,                 # 같은 테이크 = 한 번의 "시도"
+                    "variant": variant,           # normal=KPI 본체 / borderline=참고용(KPI 제외)
                     "device": device,             # laptop_webcam / rpi5_csi_module3
                 },
             },
@@ -116,7 +128,8 @@ def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
 
 
 def draw_prompt(image, class_name: str, shape: str, hint: str, orientation: str,
-                take: int, takes: int, saved: int, state: str, font) -> "any":
+                take: int, takes: int, saved: int, state: str, font,
+                variant: str = "normal") -> "any":
     """지금 뭘 해야 하는지를 화면 위에 크게 띄운다 (외부인이 보고 따라할 수 있게)."""
     import cv2
 
@@ -129,6 +142,8 @@ def draw_prompt(image, class_name: str, shape: str, hint: str, orientation: str,
     )
     line1 = f"{class_name}   {shape}"
     line2 = f"{hint}  /  {ORIENTATION_HINT.get(orientation, orientation)}"
+    if variant == "borderline":
+        line2 = f"[경계사례] {hint} 에서 살짝만 어긋나게"
     line3 = f"테이크 {take}/{takes}   저장 {saved}건   [{state}]"
     footer = "SPACE 촬영   U 직전 취소   N 클래스 건너뛰기   Q 종료"
 
@@ -164,6 +179,12 @@ def main() -> int:
     ap.add_argument("--orientations", default="정면,좌기울임,우기울임",
                     help="테이크마다 돌아가며 요청할 손 방향. 쉼표 구분. 안 쓰려면 '정면'")
     ap.add_argument("--classes", default="", help="쉼표로 지정하면 그 클래스만 촬영")
+    ap.add_argument("--variant", choices=["normal", "borderline"], default="normal",
+                    help="normal=정상 수행(KPI 본체) / borderline=일부러 살짝 어긋난 자세. "
+                         "borderline은 **별도 폴더**에 저장되고 KPI 계산에서 제외한다 — "
+                         "'어디까지 정답으로 볼 것인가'는 제품 결정이라 라벨을 못 붙이기 때문")
+    ap.add_argument("--ambiguous", action="store_true",
+                    help="7종 대신 '애매한자세'만 촬영 (τ 미판정 검증용, 20~30컷 권장)")
     ap.add_argument("--landmarker", default=str(SERVICE_ROOT / "models" / "hand_landmarker.task"))
     ap.add_argument("--no-mirror", action="store_true")
     add_camera_args(ap, default_source="usb")   # --source/--camera/--size/--fps/--list-cameras 등
@@ -188,13 +209,21 @@ def main() -> int:
     from mediapipe.tasks.python.vision import HandLandmarker, HandLandmarkerOptions, RunningMode
 
     # webcam_check와 같은 준비 루틴을 재사용한다(모델 자동 다운로드, 한글 폰트)
-    from webcam_check import LatestResult, _load_korean_font, ensure_landmarker
+    from webcam_check import (
+        LatestResult,
+        _load_korean_font,
+        draw_landmarks,
+        ensure_landmarker,
+    )
 
     orientations = [o.strip() for o in args.orientations.split(",") if o.strip()]
-    shapes = SIGN_SHAPES
+    if args.variant == "borderline":
+        # KPI 계산에 섞이지 않도록 물리적으로 다른 폴더에 떨군다
+        args.out = args.out.parent / f"{args.out.name}_borderline"
+    shapes = [AMBIGUOUS_SHAPE] if args.ambiguous else SIGN_SHAPES
     if args.classes:
         want = {c.strip() for c in args.classes.split(",") if c.strip()}
-        shapes = [s for s in SIGN_SHAPES if s[0] in want]
+        shapes = [s for s in SIGN_SHAPES + [AMBIGUOUS_SHAPE] if s[0] in want]
         missing = want - {s[0] for s in shapes}
         if missing:
             raise SystemExit(f"모르는 클래스: {sorted(missing)}")
@@ -205,7 +234,23 @@ def main() -> int:
     print("=" * 70)
     print(f"  클래스 {len(shapes)}종 × 테이크 {args.takes}회 × {args.burst}프레임 = 최대 {total_planned}건")
     print(f"  손 방향: {' / '.join(orientations)}")
+    print("  모드: " + args.variant + ("  (KPI 계산에서 제외되는 참고용 데이터)" if args.variant == "borderline" else ""))
+    print()
+    print("  " + "-" * 66)
+    print("  촬영 수칙 - 이게 데이터 양보다 중요합니다")
+    print("  " + "-" * 66)
+    print("   1. 테이크마다 손을 완전히 내렸다가 다시 드세요.")
+    print("      자세를 고정한 채 연달아 찍으면 사실상 같은 사진이 되어, 공개 데이터에서")
+    print("      발견한 문제(무작위 98.81% vs 세션 77.57%)가 그대로 재현됩니다.")
+    print("   2. 카메라와의 거리를 테이크마다 조금씩 바꾸세요.")
+    print("   3. 화면이 요청하는 손 방향(정면/좌기울임/우기울임)을 따라주세요.")
+    print("   4. 촬영자끼리 서로 다른 장소·조명에서 찍으세요.")
+    print("   5. 일부러 어긋나게 하지 마세요 - 안내대로 자연스럽게 하면 됩니다.")
+    print("      (일부러 어긋낸 자세는 --variant borderline 으로 따로 찍습니다)")
+    print("  " + "-" * 66)
     print(f"\n  ※ 이 데이터는 **학습에 쓰지 않는다.** KPI 측정 전용이다.")
+    print("  ※ 한 테이크의 여러 프레임은 한 번의 시도로 묶어서 평가합니다"
+          " (운영의 N=3 연속 프레임 판정과 같은 방식).")
     print(f"  ※ subject_id '{args.subject_id}' 는 팀원이 아닌 사람이어야 의미가 있다.\n")
 
     existing = sorted(args.out.glob(f"*/{args.subject_id}_*.json"))
@@ -298,7 +343,8 @@ def main() -> int:
                     if usable:
                         burst_seq += 1
                         p = save_sample(args.out, class_name, args.subject_id, lm_frame,
-                                        take, burst_seq, orientation, camera.device_tag)
+                                        take, burst_seq, orientation, camera.device_tag,
+                                        args.variant)
                         last_take_files.append(p)
                         saved_total += 1
                         per_class[class_name] = per_class.get(class_name, 0) + 1
@@ -319,11 +365,10 @@ def main() -> int:
                 elif state == "준비":
                     shown = f"준비 {max(0.0, state_until - now):.1f}s"
 
-                from webcam_check import draw_landmarks
                 draw_landmarks(frame_bgr, image_lms)
                 frame_bgr = draw_prompt(frame_bgr, class_name, shape, hint, orientation,
                                         take, args.takes, per_class.get(class_name, 0),
-                                        shown, font)
+                                        shown, font, args.variant)
                 cv2.imshow("SafeSign 자체 촬영 (SPACE=촬영, Q=종료)", frame_bgr)
 
                 key = cv2.waitKey(1) & 0xFF
