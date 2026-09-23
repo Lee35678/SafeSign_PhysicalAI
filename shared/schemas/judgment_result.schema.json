@@ -18,9 +18,10 @@
         "model_not_loaded",
         "inference_error",
         "below_tau",
+        "out_of_distribution",
         "awaiting_consecutive_frames"
       ],
-      "description": "is_reject=true일 때의 사유. 웹 상태머신이 SC-04(카메라 인식 실패: no_hand/normalize_failed)와 SC-03b(재시도 유도: below_tau 등)를 구분하는 데 쓴다"
+      "description": "is_reject=true일 때의 사유. 웹 상태머신이 SC-04(카메라 인식 실패: no_hand/normalize_failed)와 SC-03b(재시도 유도: below_tau/out_of_distribution 등)를 구분하는 데 쓴다. out_of_distribution은 손은 잡혔지만 7종 어디에도 속하지 않는 손모양(1단계 소속 게이트가 차단) — 2026-09-22 추가, 05_모델카드_v3 §3-7"
     },
     "consecutive": { "type": "integer", "minimum": 0, "description": "현재까지 연속으로 같은 클래스가 나온 프레임 수 (N프레임 판정 안정화 진행도, 05_모델카드_v3 §3-6)" }
   }
