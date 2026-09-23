@@ -55,7 +55,8 @@ async def command(aihand_command: dict):
 
 @app.post("/result")
 async def result(payload: dict):
-    """판정 결과(OK/NG)를 micro:bit LED로 전달 — "correct"/"incorrect" 전송 시 LED에 O/X를 2초간 표시.
+    """판정 결과(OK/NG)를 micro:bit LED로 전달 — "correct"/"incorrect" 전송 시 LED에 O/X를 1초간 표시
+    (펌웨어는 ACK를 먼저 회신한 뒤 LED를 띄운다, 2026-09-23).
 
     payload 예: {"is_correct": true, "match_score": 87}
 

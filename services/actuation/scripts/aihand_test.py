@@ -8,7 +8,7 @@
 picar는 전부 자동 측정이 가능했지만, AI Hand는 **사람이 봐야만 알 수 있는 것**이 핵심이다.
 
 - 손모양이 맞는지 — 응답이 `ok`여도 서보가 안 움직일 수 있다(picar LED와 같은 거짓 양성)
-- **동작 완료까지 걸린 시간** — 손가락 5개가 200ms 간격으로 순차 이동하므로 HTTP 응답보다 훨씬 길다
+- **동작 완료까지 걸린 시간** — 손가락 5개가 순차 이동한다(간격은 펌웨어 `setHand()`의 `basic.pause` 값)
 
 그래서 이 스크립트는 자동화가 아니라 **관찰을 구조화해 받아 적는 도구**다.
 
@@ -22,13 +22,13 @@ KPI "물리 피드백 지연 P95 ≤ 2.0초"를 **어느 시점으로 재느냐*
 | HTTP 응답 시간 (자동) | **펌웨어가 보고한 완료** — 펌웨어는 `setHand()`가 끝난 **뒤에** `OK{n}`을 회신한다 |
 | Enter까지의 시간 (사람) | **육안 완료** — 서보가 물리적으로 멈춘 시점 |
 
-> ⚠️ **HTTP 응답은 "반응 시작"이 아니다.** 펌웨어가 손가락 5개를 200ms 간격으로 다 움직인 다음에
+> ⚠️ **HTTP 응답은 "반응 시작"이 아니다.** 펌웨어가 손가락 5개를 순차로 다 움직인 다음에
 > 회신하므로, `/command`의 HTTP 시간에는 손 동작 시간이 이미 들어 있다. "반응 시작"(첫 손가락이
 > 움직이는 순간)은 전송 직후 BLE 지연 수십 ms 수준이라 이 도구로는 따로 재지 않는다.
 >
-> ⚠️ **`/result`는 `timeout`이 정상일 수 있다.** 펌웨어가 LED를 2초 보여준 **뒤에** 회신하는데
-> `ble_bridge.ACK_TIMEOUT_S`가 2.0초라 회신이 대기 시간을 넘긴다. **LED가 정상이면 판정은 LED
-> 기준으로 한다** — 이 스크립트는 `/result`의 timeout을 자동 실패로 세지 않는다.
+> 📌 **`/result`는 2026-09-23부터 ACK-first다.** 이전 펌웨어는 LED를 2초 보여준 **뒤에** 회신해
+> `ble_bridge.ACK_TIMEOUT_S`(2.0초)를 넘겨 매번 `timeout`이었다(RPi5 실측 2042ms). 펌웨어가 회신을
+> 먼저 보내도록 바뀌었으므로 **이제 `/result`의 timeout은 진짜 실패다** — 예외로 취급하지 않는다.
 
 이 두 숫자를 실측해야 회의에 계산값이 아닌 근거를 들고 갈 수 있다.
 
@@ -118,10 +118,9 @@ def _steps(args) -> list[tuple[str, str, dict, str]]:
                     hint))
     if not args.gestures_only:
         out.append(("result correct", "/result", {"is_correct": True, "match_score": 90},
-                    "LED에 O 모양이 2초간 뜨는지 · **패닉 070이 뜨지 않는지**"
-                    "  (status=timeout은 예상 가능 — LED로 판정)"))
+                    "LED에 O 모양이 뜨는지 · **패닉 070이 뜨지 않는지**"))
         out.append(("result incorrect", "/result", {"is_correct": False, "match_score": 40},
-                    "LED에 X 모양이 2초간 뜨는지  (status=timeout은 예상 가능 — LED로 판정)"))
+                    "LED에 X 모양이 뜨는지"))
         out.append(("progress 3/7", "/progress", {"current": 3, "total": 7},
                     "LED 표시는 **없는 것이 정상**. 회신 `OKP37`이 유일한 성공 근거"))
         out.append(("progress 1/7", "/progress", {"current": 1, "total": 7},
@@ -182,7 +181,11 @@ def main() -> int:
     print(f"\n대상 {base}   /health → {before}")
     if before.get("mock_hardware") is True:
         print("⚠️  **MOCK_HARDWARE=true 입니다.** 서보가 실제로 움직이지 않습니다.")
-    if before.get("microbit_connected") is False:
+    mc = before.get("microbit_connected")
+    if isinstance(mc, dict):   # bool() 수정 전 actuation은 {"_value": ...}로 내보낸다
+        print(f"⚠️  microbit_connected가 bool이 아닙니다({mc}) — actuation을 최신으로 갱신하세요.")
+        mc = mc.get("_value")
+    if mc is False:
         print("🔴 micro:bit가 연결되지 않았습니다. 전원·BLE를 먼저 확인하세요.")
 
     env = "auto" if args.auto else _ask(
@@ -211,7 +214,9 @@ def main() -> int:
                 worker.start()
 
                 done_s = ""
-                if not args.auto:
+                # "완료" 시점은 손 동작에만 의미가 있다. result·progress에 Enter를 받으면 사람이 아무 때나
+                # 누른 값이 통계에 섞인다(2026-09-23 로그: progress 5.63s가 최대값으로 잡혔다).
+                if not args.auto and path == "/command":
                     # 사람이 손 동작이 끝나는 순간 Enter — 이것이 "육안 완료" 시점이다.
                     # setHand()는 엄지→검지→중지→약지→소지 순서라 **소지가 멈추는 순간**이 끝이다.
                     _ask("   → 전송됨. 손(마지막은 소지)이 **완전히 멈추는 순간** Enter ")
@@ -224,9 +229,6 @@ def main() -> int:
 
                 if err:
                     print(f"   🔴 요청 실패: {err}")
-                elif status == "timeout" and path == "/result":
-                    print(f"   ⚠️  status=timeout ({dt * 1000:.0f}ms) — 펌웨어가 LED 2초 표시 후 회신해"
-                          " ACK 대기(2.0s)를 넘긴 것으로 보임. LED가 정상이면 정상 판정")
                 elif status not in ("ok", "mocked"):
                     print(f"   🔴 status={status}  reason={(body or {}).get('reason', '')}")
                 else:
@@ -272,7 +274,7 @@ def main() -> int:
     # 지연 통계는 손 동작(/command)만 — result(LED 2초)·progress(즉시 회신)는 성격이 달라 섞지 않는다.
     http_ms = [float(r["http_ms"]) for r in rows
                if r["status"] in ("ok", "mocked") and r["path"] == "/command"]
-    done = [float(r["done_s"]) for r in rows if r["done_s"] not in ("", "auto")]
+    done = [float(r["done_s"]) for r in rows if r["done_s"] not in ("", "auto") and r["path"] == "/command"]
     lines.append("")
     if http_ms:
         lines.append(f"- **펌웨어 보고 완료**(G1~G7 HTTP): 중앙 {sorted(http_ms)[len(http_ms) // 2]:.0f}ms · "
@@ -282,10 +284,8 @@ def main() -> int:
                      f"최대 {max(done):.2f}s  ({len(done)}건)")
         lines.append("  > KPI 2.0초를 **어느 쪽으로 재느냐**가 팀 결정이다 "
                      "(`proposals/picar_주행시간_스키마_변경안.md` 결정 2).")
-    # /result의 timeout은 펌웨어 구조상 예상되는 값이라 자동 실패로 세지 않는다(사람 판정은 반영).
     fails = [r for r in rows if r["verdict"].startswith("🔴")
-             or (r["status"] not in ("ok", "mocked", "?")
-                 and not (r["status"] == "timeout" and r["path"] == "/result"))]
+             or r["status"] not in ("ok", "mocked", "?")]
     if fails:
         lines.append(f"- 🔴 **실패 {len(fails)}건** — " +
                      ", ".join(f"{r['label']}({r['status']})" for r in fails[:8]))

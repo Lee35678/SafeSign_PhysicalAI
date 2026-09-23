@@ -158,3 +158,33 @@ if __name__ == "__main__":  # pytest 없이도 돌려볼 수 있게
                 print(f"FAIL {name}")
                 traceback.print_exc()
     print(f"\n{'FAILED ' + str(failed) if failed else 'ALL PASSED'}")
+
+
+# ── is_connected (2026-09-23 RPi5 실측에서 발견) ─────────────────────────────
+class _DeprecatedIsConnectedLike:
+    """bleak 0.22 BlueZ 백엔드가 `is_connected`로 돌려주는 래퍼를 흉내 낸다.
+
+    bool처럼 쓰이지만 bool이 아니다 — FastAPI가 `{"_value": ...}` dict로 직렬화한다.
+    """
+
+    def __init__(self, value: bool):
+        self._value = value
+
+    def __bool__(self) -> bool:
+        return self._value
+
+
+class _FakeClient:
+    def __init__(self, connected: bool):
+        self.is_connected = _DeprecatedIsConnectedLike(connected)
+
+
+def test_is_connected_returns_a_real_bool_on_bluez(monkeypatch):
+    """래퍼 객체를 그대로 반환하면 /health가 `{"_value": false}`를 내보내고,
+    dict는 항상 참이라 **연결이 끊겨도 호출부는 연결됨으로 읽는다.**"""
+    monkeypatch.setattr(ble_bridge, "_client", _FakeClient(connected=False))
+    result = ble_bridge.is_connected(mock=False)
+    assert result is False, f"bool이 아니라 {type(result).__name__}를 반환했다"
+
+    monkeypatch.setattr(ble_bridge, "_client", _FakeClient(connected=True))
+    assert ble_bridge.is_connected(mock=False) is True

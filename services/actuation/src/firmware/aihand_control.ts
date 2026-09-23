@@ -50,22 +50,22 @@ function moveInverted(index: number, angle: number) {
     moveServo(index, 180 - angle);
 }
 
-// 손가락 하나씩 순차 이동, 각 손가락 사이 200ms 텀
+// 손가락 하나씩 순차 이동, 각 손가락 사이 150ms 텀
 function setHand(thumb: number, index: number, middle: number, ring: number, pinky: number) {
     moveServo(THUMB, thumb);
-    basic.pause(200);
+    basic.pause(150);
     moveInverted(INDEX, index);
-    basic.pause(200);
+    basic.pause(150);
     moveInverted(MIDDLE, middle);
-    basic.pause(200);
+    basic.pause(150);
     moveInverted(RING, ring);
-    basic.pause(200);
+    basic.pause(150);
     moveInverted(PINKY, pinky);
-    basic.pause(200);
+    basic.pause(150);
 }
 
 // ==== 판정 결과 표시 (RESULT, 테스트/시연 공통) ====
-// "correct" -> LED에 O 모양, "incorrect" -> LED에 X 모양. 둘 다 2초간 표시 후 꺼진다.
+// "correct" -> LED에 O 모양, "incorrect" -> LED에 X 모양. 둘 다 1초간 표시 후 꺼진다.
 // 소리는 쓰지 않는다 (최상단 절대 규칙) — 피드백은 LED 단독이다.
 function showResult(isCorrect: boolean) {
     if (isCorrect) {
@@ -85,7 +85,7 @@ function showResult(isCorrect: boolean) {
             # . . . #
         `);
     }
-    basic.pause(2000);   // 판정 결과 LED 표시 시간. 소리는 쓰지 않는다 (최상단 절대 규칙 참고)
+    basic.pause(1000);   // 판정 결과 LED 표시 시간. 소리는 쓰지 않는다 (최상단 절대 규칙 참고)
     basic.clearScreen();
 }
 
@@ -125,13 +125,13 @@ bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () 
 
     // ==== 판정 결과 표시 (RESULT, TEST_MODE와 무관하게 항상 처리) ====
     if (msg == "correct") {
+        bluetooth.uartWriteString("OK:CORRECT\n");   // ACK 먼저 — LED 표시(1초) 동안 송신 측이 기다리지 않도록
         showResult(true);
-        bluetooth.uartWriteString("OK:CORRECT\n");
         return;
     }
     if (msg == "incorrect") {
+        bluetooth.uartWriteString("OK:INCORRECT\n");   // ACK 먼저
         showResult(false);
-        bluetooth.uartWriteString("OK:INCORRECT\n");
         return;
     }
 

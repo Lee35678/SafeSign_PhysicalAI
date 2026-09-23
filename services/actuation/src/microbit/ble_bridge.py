@@ -82,7 +82,11 @@ async def disconnect() -> None:
 def is_connected(mock: bool = True) -> bool:
     if mock:
         return True
-    return _client is not None and _client.is_connected
+    # 🔴 반드시 bool()로 감쌀 것. bleak 0.22의 BlueZ 백엔드(RPi5)는 `is_connected`가 bool이 아니라
+    # `_DeprecatedIsConnectedReturn` 래퍼 객체를 돌려준다. 그대로 반환하면 FastAPI가 이를
+    # `{"_value": true}`로 직렬화하는데, **dict는 값과 무관하게 항상 참**이라 연결이 끊겨도 호출부는
+    # "연결됨"으로 읽는다 (2026-09-23 RPi5 실측 로그에서 발견. Windows 백엔드는 bool이라 A-1에서는 안 보였다).
+    return _client is not None and bool(_client.is_connected)
 
 
 async def _send_line(line: str) -> dict:
