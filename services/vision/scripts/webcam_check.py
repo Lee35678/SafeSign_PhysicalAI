@@ -17,16 +17,11 @@
     python -m venv .venv && .venv\\Scripts\\activate
     pip install -r requirements-dev.txt
 
-    # 실행 (노트북 웹캠)
+    # 실행
     python scripts/webcam_check.py                 # 기본 카메라(0번)
     python scripts/webcam_check.py --camera 1      # 카메라가 여러 개면
-    python scripts/webcam_check.py --list-cameras  # 어떤 카메라가 잡히는지 확인
+    python scripts/webcam_check.py --list-cameras  # 어떤 인덱스가 되는지 확인
     python scripts/webcam_check.py --no-window --max-frames 60   # 창 없이 콘솔 출력만
-
-    # 실행 (RPi5 + Camera Module 3, CSI) — 카메라 여는 코드는 perception/camera_source.py
-    python scripts/webcam_check.py --source csi               # 모니터가 연결돼 있으면 창으로
-    python scripts/webcam_check.py --source csi --no-window   # SSH 로 붙었으면 콘솔로
-      (화면이 없는 환경이면 --no-window 를 자동으로 켠다)
 
     q 또는 ESC : 종료 / r : N프레임 누적 초기화
     1~7 : 지금 하려는 수신호 지정(정답 라벨) / 0 : 7종 아닌 애매한 자세 / ` : 라벨 해제
@@ -59,10 +54,6 @@ from typing import Optional
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_ROOT / "src"))
-
-from perception.camera_source import (  # noqa: E402 — CSI(picamera2)·USB(OpenCV) 공통 캡처
-    add_camera_args, has_display, list_cameras, open_camera,
-)
 
 # 05_모델카드_v3 §1: MediaPipe Hand Landmarker 공식 모델 번들 (Apache License 2.0)
 LANDMARKER_URL = (
@@ -135,6 +126,25 @@ def ensure_landmarker(path: Path, allow_download: bool = True) -> Path:
     urllib.request.urlretrieve(LANDMARKER_URL, path)
     print(f"  저장 완료: {path} ({path.stat().st_size / 1e6:.1f} MB)")
     return path
+
+
+def list_cameras(max_index: int = 5) -> None:
+    import cv2
+
+    print("사용 가능한 카메라 인덱스를 찾는 중...")
+    found = []
+    for idx in range(max_index):
+        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW if sys.platform == "win32" else 0)
+        if cap.isOpened():
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                found.append((idx, frame.shape[1], frame.shape[0]))
+        cap.release()
+    if found:
+        for idx, w, h in found:
+            print(f"  --camera {idx}   ({w}x{h})")
+    else:
+        print("  열리는 카메라가 없습니다. 다른 앱이 카메라를 쓰고 있는지, 권한이 있는지 확인하세요.")
 
 
 # --------------------------------------------------------------------------------------
@@ -237,12 +247,13 @@ def draw_landmarks(image, image_landmarks) -> None:
 # --------------------------------------------------------------------------------------
 def main() -> None:
     parser = argparse.ArgumentParser(description="노트북 웹캠으로 학습된 수신호 분류기를 확인한다")
-    add_camera_args(parser, default_source="usb")   # --source csi|usb|auto · --camera · --size · --fps ...
+    parser.add_argument("--camera", type=int, default=0, help="카메라 인덱스 (기본 0)")
     parser.add_argument("--landmarker", default=str(SERVICE_ROOT / "models" / "hand_landmarker.task"))
     parser.add_argument("--no-download", action="store_true", help="MediaPipe 모델 자동 다운로드 끄기")
     parser.add_argument("--no-window", action="store_true", help="창 없이 콘솔로만 출력")
     parser.add_argument("--max-frames", type=int, default=0, help="N프레임 처리 후 자동 종료 (0=무제한)")
     parser.add_argument("--no-mirror", action="store_true", help="좌우 반전(거울 모드) 끄기")
+    parser.add_argument("--list-cameras", action="store_true", help="열리는 카메라 인덱스만 확인하고 종료")
     parser.add_argument("--log", nargs="?", const="AUTO", default=None, metavar="PATH",
                         help="진단 로그(JSONL) 기록. 경로를 생략하면 logs/ 아래 자동 생성. "
                              "원본 랜드마크까지 남기므로 나중에 다른 특징 모드로 재계산 가능")
@@ -253,9 +264,6 @@ def main() -> None:
     if args.list_cameras:
         list_cameras()
         return
-    if not args.no_window and not has_display():
-        print("[참고] 화면이 없는 환경(SSH 등)이라 --no-window 로 실행합니다.")
-        args.no_window = True
 
     import cv2
     import mediapipe as mp
@@ -330,8 +338,13 @@ def main() -> None:
         result_callback=on_result,
     )
 
-    camera = open_camera(args)          # CSI(picamera2) / USB(OpenCV) — read()는 둘 다 BGR
-    print(f"카메라: {camera.description}")
+    backend = cv2.CAP_DSHOW if sys.platform == "win32" else 0
+    cap = cv2.VideoCapture(args.camera, backend)
+    if not cap.isOpened():
+        raise SystemExit(
+            f"카메라 {args.camera}번을 열 수 없습니다. --list-cameras 로 인덱스를 확인하거나, "
+            "다른 앱이 카메라를 점유 중인지 확인하세요."
+        )
 
     font = _load_korean_font()
     if font is None and not args.no_window:
@@ -352,8 +365,7 @@ def main() -> None:
             "model": info,
             "tau": classify.effective_tau(),
             "n_frames": smoothing.N_FRAMES,
-            "camera": {"source": args.source, "index": args.camera,
-                       "description": camera.description},
+            "camera": args.camera,
             "mirror": not args.no_mirror,
         }, ensure_ascii=False, default=str) + "\n")
         print(f"진단 로그: {path}")
@@ -374,8 +386,8 @@ def main() -> None:
     try:
         with HandLandmarker.create_from_options(options) as landmarker:
             while True:
-                frame_bgr = camera.read()
-                if frame_bgr is None:
+                ok, frame_bgr = cap.read()
+                if not ok:
                     print("카메라 프레임을 읽지 못했습니다.")
                     break
                 if not args.no_mirror:
@@ -468,7 +480,7 @@ def main() -> None:
                 if args.max_frames and frame_count >= args.max_frames:
                     break
     finally:
-        camera.close()
+        cap.release()
         if not args.no_window:
             cv2.destroyAllWindows()
         if log_file is not None:
