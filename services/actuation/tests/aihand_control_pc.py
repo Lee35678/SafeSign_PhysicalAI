@@ -48,8 +48,10 @@ async def send_gesture(client, g: int):
 
 async def send_result(client, is_correct: bool):
     # TEST_MODE와 무관하게 항상 지원
-    # "correct"   -> LED 'O' 2초 + 부저 모스 '-' (1초 단일 톤)
-    # "incorrect" -> LED 'X' 2초 + 부저 모스 '..' (1초 안에 짧은 톤 2번)
+    # "correct"   -> LED 'O' 2초 표시 후 소등, "OK:CORRECT" 회신
+    # "incorrect" -> LED 'X' 2초 표시 후 소등, "OK:INCORRECT" 회신
+    # 소리(부저)는 쓰지 않는다 — BLE 시작 후 music.* 호출은 패닉 070을 유발한다
+    # (aihand_control.ts 최상단 "절대 규칙" 참고)
     msg = "correct\n" if is_correct else "incorrect\n"
     await client.write_gatt_char(UART_RX_UUID, msg.encode())
     print(f"[송신] {msg.strip()}")
@@ -70,8 +72,8 @@ async def run_production(client):
              1=다섯펴기 2=검지중지 3=엄지+검지 4=엄지+소지
              5=엄지만 6=검지만 7=소지만
   loop     : 1~7번을 순서대로 5회 반복 (내구성/안정성 테스트용)
-  correct   : 판정 결과 LED에 O 표시(2초) + 부저 모스 '-' (1초)
-  incorrect : 판정 결과 LED에 X 표시(2초) + 부저 모스 '..' (1초)
+  correct   : 판정 결과 LED에 O 표시(2초, 소리 없음)
+  incorrect : 판정 결과 LED에 X 표시(2초, 소리 없음)
   progress <current> <total> : 진행 표시 전송 (LED 표시 없음, 회신만 확인)
                           예) progress 3 7
   q        : 종료
@@ -150,8 +152,8 @@ async def run_test(client):
                           5=엄지만 6=검지만 7=소지만
   hand <5개 각도>        : 엄지,검지,중지,약지,소지 순서로 콤마 구분
                           예) hand 0,180,180,180,180
-  correct                : 판정 결과 LED에 O 표시(2초) + 부저 모스 '-' (1초)
-  incorrect              : 판정 결과 LED에 X 표시(2초) + 부저 모스 '..' (1초)
+  correct                : 판정 결과 LED에 O 표시(2초, 소리 없음)
+  incorrect              : 판정 결과 LED에 X 표시(2초, 소리 없음)
   progress <current> <total> : 진행 표시 전송 (LED 표시 없음, 회신만 확인)
   q                      : 종료
 ===================

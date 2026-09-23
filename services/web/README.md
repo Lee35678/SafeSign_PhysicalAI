@@ -15,16 +15,8 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 
 ## 담당 범위
 
-- `backend/state_machine.py` — 교육 상태머신. 백그라운드 스레드(`start_polling`, 앱 startup에서 시작)가
-  0.2초 간격으로 vision `GET /latest`를 폴링해 현재 커리큘럼 단계(`CURRICULUM`, PRD §3.2 순서)와
-  비교, 정답/오답을 판정해 actuation `/command`·`/result`·`/progress`와 picar `/picar`를 호출한다.
-  - `GET /api/state` — 현재 state/target_signal/progress/last_result 조회
-  - `POST /api/start` — 커리큘럼 처음부터 시작 (SC-01/02 -> SC-03, 세션 이어하기 없음)
-  - 같은 (커리큘럼 단계, predicted_class) 조합에는 물리 피드백을 한 번만 보낸다(`_last_dispatched`) —
-    학습자가 같은 자세를 계속 취하고 있어도 매 폴링마다 AI Hand/picar가 반복 동작하지 않도록 함
-  - actuation/picar 호출 모두 "실패해도 학습 흐름은 계속"(best-effort) — 예외를 삼키고 1회 재시도 후 진행
-- `frontend/` — 정적 HTML/CSS/JS (SC-01~SC-07 화면). 프레임워크 도입은 팀 논의 후 결정.
-  아직 `/api/state`·`/api/start`를 호출하지 않는 정적 스텁 상태(파이프라인 검증이 우선이라 후순위)
+- `backend/` — FastAPI. 교육 상태머신(현재 화면/세션 상태), vision·actuation·picar 호출
+- `frontend/` — 정적 HTML/CSS/JS (SC-01~SC-07 화면). 프레임워크 도입은 팀 논의 후 결정
 
 ## 화면 ↔ 상태 매핑 (09_화면목록_v2.md 참고, 2026-09-18 갱신)
 
@@ -44,13 +36,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 ## 아직 확정 안 된 것
 
 - [ ] SC-03 화면 분할 단위 (시범/인식 동시 표시 여부) — vision 담당과 협의
-- [x] ~~vision `/latest` 폴링 주기~~ → 0.2초로 우선 구현(`VISION_POLL_INTERVAL_S`), 실측 후 조정
-- [ ] 프론트엔드(`main.js`)가 `/api/state`를 폴링해 SC-01~SC-07 화면을 실제로 전환하도록 연결
-- [ ] `picar_command`의 `motor.speed` 값(현재 `state_machine.py`의 `PICAR_COMMANDS`에 잠정치로만
-  있음) 실측 후 확정
-- [ ] SC-04(camera_fail) 진입 조건 — 현재는 `is_reject`/`negative`를 그냥 무시만 하고 별도 상태
-  전환은 구현하지 않음 (연속 미검출 횟수 등 임계값 필요)
-- [ ] 커리큘럼 순서(`CURRICULUM`)가 PRD §3.2 표 순서 그대로인데, 실제 교육 설계상 순서인지 확인 필요
+- [ ] vision `/latest` 폴링 주기 (또는 WebSocket 전환 시점)
 
 ## 로컬 실행
 

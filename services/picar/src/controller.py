@@ -29,11 +29,31 @@ SDA=BCM2)로 그 코프로세서에 명령만 보낸다. 그 명령 프로토콜
 올 때까지 차가 계속 달린다(벽으로 돌진). 그래서 이 구현은 주행 명령 후 `MOTION_DURATION_S`(기본 2초)
 뒤에 자동 정지시킨다 — 안전을 위한 잠정 기본값이며, 실물 주행 후 팀이 확정해야 한다.
 
-## LED
+## LED (2026-09-21 배선 확정 → 2026-09-22 적색 핀 분리)
 
-보드 내장 LED는 적색(BCM21)·청색(BCM20) 2개뿐이다. PRD가 요구하는 적색 + 황색×2(개별 점멸) 중
-황색 2개는 보드에 없어 외부 LED를 여유 GPIO에 추가 배선하기로 했다(2026-09-21 팀 확인). 정확한 핀
-번호는 실물 배선 후 확정 — 아래 `USED_BCM_PINS`(Raspbot이 이미 점유한 핀)와 충돌하지 않는 핀으로 고를 것.
+보드 내장 LED는 적색(BCM21)·청색(BCM20) 2개뿐이라 설계가 요구하는 적색×2 + 황색×2(총 4개)를
+채울 수 없다. **외부 LED 4개를 GPIO 4핀으로 구동**한다.
+
+| 채널 | BCM | 물리 핀 | 외부 LED | 비고 |
+| --- | --- | --- | --- | --- |
+| `led_red` | **13, 19** | 33, 35 | 적색 2개 — **각각 전용 핀** | 논리적으로는 1채널, 항상 함께 구동 |
+| `led_yellow_left` | 5 | 29 | 황색 1개 | 좌회전 시 단독 점멸해야 해서 개별 핀 필수 |
+| `led_yellow_right` | 6 | 31 | 황색 1개 | 우회전 시 단독 점멸 |
+
+- **적색을 2핀으로 나눈 이유(2026-09-22)**: 처음에는 BCM13 하나에 2개를 병렬로 물렸다. 그러면
+  330Ω 기준 그 핀에만 약 7.9mA가 흘러 **핀 기본 구동 한도 8mA에 붙어버려**, 5mm LED를 밝게 쓸
+  여유가 없었다(저항을 낮추면 한도 초과). 핀을 나누면 **개당 8mA까지 쓸 수 있다.**
+- **스키마는 그대로다.** 수신호 7종에서 적색은 정지(양쪽 점등)·확인_완료(양쪽 점멸)에만 쓰이고
+  **한쪽만 켜지는 경우가 없어서**, `picar_command.schema.json`은 `red` 단일 채널을 유지한다.
+  핀이 2개가 된 것은 전류 문제일 뿐 제어 의미는 1채널 그대로다.
+- **점멸 동조는 `LEDBoard`로 보장한다.** `LED` 객체 2개를 따로 `blink()`시키면 각자 스레드를 돌려
+  위상이 어긋날 수 있다. `LEDBoard`는 한 스레드로 묶어 구동하므로 두 적색이 항상 같이 깜빡인다.
+- **내장 적색(BCM21)은 쓰지 않는다.** 내장 LED의 직렬저항 값을 알 수 없어 부하를 예측할 수 없다.
+- **저항**: LED마다 개별 **220Ω**(공통 저항 금지 — 밝기 불균일·전류 쏠림). Vf≈2.0V 기준 개당 약
+  5.9mA(황색 5.5mA)로 핀 기본 구동 한도 8mA 안. 330Ω(약 3.9mA)은 5mm LED 정격 20mA의 20%라
+  어두워서 2026-09-22 교체했다. **150Ω 이하로는 내리지 말 것** — 8.7mA로 한도를 넘는다.
+- 위 4개 핀은 `USED_BCM_PINS`(Raspbot 점유)와 충돌하지 않는다 —
+  `tests/test_controller.py`가 이를 자동 검사한다.
 """
 from __future__ import annotations
 
@@ -63,11 +83,13 @@ DIR_FORWARD = 1
 # 실물 주행 후 팀이 확정할 잠정값이다(위 docstring 참고).
 MOTION_DURATION_S = float(os.getenv("PICAR_MOTION_DURATION_S", "2.0"))
 
-# 보드 내장 LED (hardware_pinmap.md "LED1"/"LED2" 행)
+# 외부 LED 4개 -> GPIO 4핀 (2026-09-22 확정, 위 docstring "LED" 절 참고).
+# 값은 **핀 튜플**이다 — 한 채널이 여러 핀을 함께 구동할 수 있다(적색 2개).
+# 내장 적색(BCM21)·청색(BCM20)은 사용하지 않는다.
 PIN_MAP = {
-    "led_red": 21,             # LED1 (적색), 그대로 사용
-    "led_yellow_left": None,   # TODO: 외부 LED 배선 후 여유 BCM 핀 배정 (USED_BCM_PINS와 충돌 금지)
-    "led_yellow_right": None,  # TODO: 위와 동일
+    "led_red": (13, 19),         # 물리 33·35 — 적색 2개를 각각 전용 핀으로(핀당 전류 확보)
+    "led_yellow_left": (5,),     # 물리 29 — 좌회전 시 단독 점멸
+    "led_yellow_right": (6,),    # 물리 31 — 우회전 시 단독 점멸
 }
 
 _i2c_lock = threading.Lock()
@@ -103,6 +125,30 @@ def _write_stop() -> None:
         _get_bus().write_byte_data(I2C_ADDR, REG_STOP, 0x00)
 
 
+# 정지 쓰기 재시도 횟수. **정지는 실패하면 안 되는 명령**이다 — 모터 전류가 클수록 I2C에 노이즈가
+# 실릴 수 있어(2026-09-23 부하 테스트 #10, speed 50), 한 번 실패로 차를 놓치지 않게 재시도한다.
+STOP_RETRY = max(1, int(os.getenv("PICAR_STOP_RETRY", "3")))
+
+# 마지막 정지 실패 사유. 자동 정지는 타이머 스레드에서 돌아 호출부가 결과를 볼 수 없으므로,
+# 여기에 남겨 /health(diagnose)로 드러낸다 — "조용한 실패"를 없애기 위함.
+_last_stop_error: "str | None" = None
+
+
+def _write_stop_retrying() -> None:
+    """정지를 재시도하며 쓴다. 전부 실패하면 마지막 예외를 그대로 올린다."""
+    global _last_stop_error
+    last: "Exception | None" = None
+    for _ in range(STOP_RETRY):
+        try:
+            _write_stop()
+            _last_stop_error = None
+            return
+        except Exception as exc:  # noqa: BLE001 — 재시도 후 아래에서 다시 올린다
+            last = exc
+    _last_stop_error = f"{type(last).__name__}: {last}"
+    raise last
+
+
 # ── 모터 ──────────────────────────────────────────────────────────────────────
 def _cancel_auto_stop() -> None:
     global _auto_stop_timer
@@ -121,10 +167,14 @@ def _schedule_auto_stop() -> None:
 
 
 def _safe_stop() -> None:
-    """타이머 스레드에서 호출 — 실패해도 서비스를 죽이지 않는다."""
+    """타이머 스레드에서 호출 — 실패해도 서비스를 죽이지 않는다.
+
+    예외를 삼키지만 **조용히 삼키지는 않는다** — 사유를 `_last_stop_error`에 남겨
+    `/health`로 드러낸다. 여기서 실패하면 차가 계속 달리므로 반드시 눈에 띄어야 한다.
+    """
     try:
-        _write_stop()
-    except Exception:  # noqa: BLE001 — I2C 실패로 타이머 스레드가 죽지 않게만 한다
+        _write_stop_retrying()
+    except Exception:  # noqa: BLE001 — 타이머 스레드가 죽지 않게만 한다(사유는 위에서 기록됨)
         pass
 
 
@@ -162,8 +212,13 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
         }
 
     if kind == "stop":
+        # 🔴 순서가 중요하다 — **정지 쓰기가 성공한 뒤에** 자동 정지 타이머를 걷는다.
+        # 먼저 취소하면 _write_stop()이 실패했을 때 **안전망까지 사라져 차가 계속 달린다.**
+        # 2026-09-23 부하 테스트 #10(speed 50)에서 "끝날 때 정지 안 됨"으로 실제 관측됐다.
+        # 실패하면 예외가 execute()로 올라가 i2c_failed로 응답되고, 타이머는 살아 있어
+        # 늦어도 MOTION_DURATION_S 안에 차가 멈춘다.
+        _write_stop_retrying()
         _cancel_auto_stop()
-        _write_stop()
         return {"status": "ok", "action": "stop"}
 
     _write_motor(*payload)
@@ -173,31 +228,85 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
 
 
 # ── LED ───────────────────────────────────────────────────────────────────────
-def _get_led(name: str, pin: int):
+def _get_led(name: str, pins: tuple):
+    """채널 하나를 `LEDBoard`로 묶어 돌려준다.
+
+    핀이 1개여도 LEDBoard를 쓴다 — 타입을 통일해야 아래 분기가 단순해진다. 핀이 여러 개일 때
+    `LED` 객체를 따로 만들어 각각 blink()하면 **스레드가 따로 돌아 위상이 어긋날 수 있는데**,
+    LEDBoard는 한 스레드로 묶어 구동하므로 적색 2개가 항상 같이 깜빡인다.
+    """
     if name not in _leds:
-        from gpiozero import LED  # noqa: PLC0415 — 실물 경로에서만 임포트
-        _leds[name] = LED(pin)
+        from gpiozero import LEDBoard  # noqa: PLC0415 — 실물 경로에서만 임포트
+        _leds[name] = LEDBoard(*pins)
     return _leds[name]
 
 
-def _apply_led(name: str, state: str, mock: bool) -> dict:
-    """LED 하나에 off/on/blink 적용. PIN_MAP에 핀이 없으면(mock 무관) 미구현으로 응답."""
-    pin = PIN_MAP.get(name)
-    if pin is None:
-        return {"status": "unsupported", "led": name, "reason": "pin_not_assigned"}
-    if mock:
-        return {"status": "mocked", "led": name, "pin": pin, "state": state}
+LED_STATES = ("off", "on", "blink")  # picar_command.schema.json의 led.* enum과 동일
 
-    led = _get_led(name, pin)
+
+def _apply_led(name: str, state: str, mock: bool) -> dict:
+    """LED 하나에 off/on/blink 적용. PIN_MAP에 핀이 없으면(mock 무관) 미구현으로 응답.
+
+    검증은 mock 분기보다 **먼저** 한다 — mock 응답이 실물과 같은 판정을 내려야 보드 없이 하는
+    테스트에 의미가 있다(`_apply_motor`도 같은 순서).
+    """
+    pins = PIN_MAP.get(name)
+    if not pins:
+        return {"status": "unsupported", "led": name, "reason": "pin_not_assigned"}
+    if state not in LED_STATES:
+        return {"status": "error", "led": name, "reason": "unknown_led_state", "state": state}
+    if mock:
+        return {"status": "mocked", "led": name, "pins": list(pins), "state": state}
+
+    led = _get_led(name, pins)
     if state == "on":
         led.on()
     elif state == "off":
         led.off()
-    elif state == "blink":
+    else:  # blink
         led.blink(on_time=0.3, off_time=0.3)  # 비블로킹 — 다음 명령이 오면 덮어쓴다
+    return {"status": "ok", "led": name, "pins": list(pins), "state": state}
+
+
+# ── 진단 (GET /health 용) ─────────────────────────────────────────────────────
+def _probe_i2c() -> dict:
+    """코프로세서가 실제로 ACK하는지 확인하는 **비파괴 프로브**.
+
+    `write_quick`은 주소만 보내고 데이터를 쓰지 않으므로 모터가 돌지 않는다.
+    """
+    info = {"bus": I2C_BUS, "addr": hex(I2C_ADDR)}
+    try:
+        with _i2c_lock:
+            _get_bus().write_quick(I2C_ADDR)
+        info["reachable"] = True
+    except Exception as exc:  # noqa: BLE001 — 진단 경로는 어떤 실패도 응답으로 돌려준다
+        info["reachable"] = False
+        info["reason"] = f"{type(exc).__name__}: {exc}"
+    return info
+
+
+def diagnose(mock: bool = True) -> dict:
+    """서비스 생존과 **하드웨어 접근 가능 여부를 구분해서** 보고한다.
+
+    `/picar`가 HTTP 200을 돌려줘도 모터가 실제로 돌았다는 보장이 없다. web이 "프로세스는 살아
+    있는데 I2C가 죽었다"를 알 수 있어야 시연 중 조용한 실패를 감지할 수 있다.
+    """
+    if mock:
+        i2c = {"bus": I2C_BUS, "addr": hex(I2C_ADDR), "reachable": None, "reason": "mocked"}
     else:
-        return {"status": "error", "led": name, "reason": "unknown_led_state", "state": state}
-    return {"status": "ok", "led": name, "pin": pin, "state": state}
+        i2c = _probe_i2c()
+
+    return {
+        "i2c": i2c,
+        "leds": {n: list(pins) for n, pins in PIN_MAP.items()},
+        "leds_unassigned": [n for n, pins in PIN_MAP.items() if not pins],
+        "motion_duration_s": MOTION_DURATION_S,
+        "motion_active": _auto_stop_timer is not None and _auto_stop_timer.is_alive(),
+        # 🔴 정지 실패는 "차가 계속 달린다"는 뜻이다. None이 아니면 즉시 확인할 것.
+        # 주의: motion_active는 **타이머 상태**일 뿐 바퀴가 실제로 도는지가 아니다 —
+        # 정지 쓰기가 실패한 상태에서도 타이머가 없으면 False가 나온다. 아래 값을 함께 봐야 한다.
+        "last_stop_error": _last_stop_error,
+    }
 
 
 # ── 엔트리포인트 ───────────────────────────────────────────────────────────────

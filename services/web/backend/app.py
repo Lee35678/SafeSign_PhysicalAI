@@ -15,7 +15,6 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend.state_machine import router as state_machine_router
-from backend.state_machine import start_polling
 
 VISION_URL = os.getenv("VISION_URL", "http://localhost:8001")
 ACTUATION_URL = os.getenv("ACTUATION_URL", "http://localhost:8002")
@@ -24,11 +23,6 @@ PICAR_TIMEOUT_MS = int(os.getenv("PICAR_TIMEOUT_MS", "500"))
 
 app = FastAPI(title="SafeSign Web Service")
 app.include_router(state_machine_router, prefix="/api")
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    start_polling()
 
 
 @app.get("/health")

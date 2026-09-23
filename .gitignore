@@ -47,5 +47,6 @@ Thumbs.db
 !.vscode/extensions.json
 .claude/
 
-#기타 데이터
-services/picar/reference/*
+# picar 구동 조사용 벤더 자료 (Raspbot 공식 이미지 등). 원본은 Yahboom 배포처에서 받는다.
+# Raspbot_rpi4B.img 하나가 15GB라 git에 올릴 수 없다 — 필요한 내용은 문서로 옮길 것.
+services/picar/reference/

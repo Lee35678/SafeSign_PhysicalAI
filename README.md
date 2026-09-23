@@ -2,20 +2,20 @@
 
 산업 안전 수신호 교육용 피지컬 AI (AI Hand + picar + micro:bit + Raspberry Pi 5 + Raspberry Pi 4B 8GB)
 
-**개발 착수 시 반드시 먼저 읽을 문서**: [document/10_PRD_v2.md](document/10_PRD_v2.md) — 01~09번
-문서를 종합한 최신 요구사항입니다. 개별 세부사항은 [document/](document/) 폴더의 각 문서를 참고하세요.
+**개발 착수 시 반드시 먼저 읽을 문서**: [document/10_PRD_v2.md](document/10_PRD_v2.md) — 번호 문서를
+종합한 최신 요구사항입니다. 문서 전체 지도는 [document/README.md](document/README.md)에 있습니다.
 
 ---
 
 ## 1. 디렉터리 구조 (담당자별 컨테이너 분리)
 
-`document/10_PRD_v2.md` §4 시스템 아키텍처와 `역할 및 책임표.md`의 RACI를 기준으로 5개 서비스로
+`document/10_PRD_v2.md` §4 시스템 아키텍처와 `document/01_프로젝트계획서_v4.md` §역할 및 책임(RACI)을 기준으로 5개 서비스로
 나눴습니다. 각자 자기 서비스 폴더 안에서만 작업하면 다른 사람 코드와 충돌 없이 개발할 수 있고,
 마지막에 `docker compose up`으로 전부 합쳐서 로컬 통합 구동을 확인합니다.
 
 ```
 SafeSign_PhysicalAI/
-├── document/              # 기획/설계/계약 문서 (10_PRD_v2.md가 최신 종합본)
+├── document/              # 기획/설계/계약 문서 (README.md = 색인, 10_PRD_v2.md = 종합본)
 ├── services/
 │   ├── vision/             ← 이동혁 담당 (Perception + Cognition, 판정로직 R) — Raspberry Pi 5
 │   ├── actuation/          ← 송승호 담당 (AI Hand + micro:bit, 하드웨어 R) — Raspberry Pi 5
@@ -85,6 +85,6 @@ docker compose --profile tools run --rm data-tools python src/seed_templates.py
 
 - 서비스 간 메시지 필드/스키마 변경 시 → `document/03_인터페이스계약서_v2.md` 갱신
 - 아키텍처/범위가 바뀌면 → `document/10_PRD_v2.md`도 함께 갱신 (개별 문서만 고치고 PRD를 방치하지 않기)
-- 통합 7종 수신호 목록은 `document/02_설계문서_v2.md` §4 · `document/04_데이터셋명세서_v2.md` §1 ·
+- 통합 7종 수신호 목록은 `document/02_설계문서_v2.md` §4·§4-1 · `document/04_데이터셋명세서_v2.md` §1 ·
   `shared/schemas/aihand_command.schema.json` · `shared/schemas/picar_command.schema.json`에서
   동일하게 유지

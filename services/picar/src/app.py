@@ -21,7 +21,20 @@ app = FastAPI(title="SafeSign Picar Service")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "picar", "mock_hardware": MOCK_HARDWARE}
+    """생존 확인 + **하드웨어 접근 가능 여부**.
+
+    `status`만 보면 되도록 설계했다 — I2C 코프로세서가 응답하지 않으면 프로세스가 살아 있어도
+    `degraded`를 돌려준다. 호출하는 쪽(web)이 "picar가 조용히 죽은 상태"를 감지할 수 있어야
+    시연 중 모터가 안 도는 것을 알아챌 수 있다.
+    """
+    hardware = controller.diagnose(mock=MOCK_HARDWARE)
+    healthy = MOCK_HARDWARE or hardware["i2c"].get("reachable") is True
+    return {
+        "status": "ok" if healthy else "degraded",
+        "service": "picar",
+        "mock_hardware": MOCK_HARDWARE,
+        "hardware": hardware,
+    }
 
 
 @app.post("/picar")
