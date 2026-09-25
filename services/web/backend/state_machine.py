@@ -28,10 +28,11 @@
   (기존에는 반환값을 버려 "조용한 실패"를 감지할 수 없었다).
 - 모든 전송 결과를 `_session["last_dispatch"]`에 남겨 `/api/state`로 노출한다.
 - vision/actuation/picar의 GET /health를 주기적으로 확인해 `_session["devices"]`로 노출한다.
-- `_dispatch_feedback`은 여전히 순차 블로킹이다(§4 A/B/C 중 C안 채택: 순서 보장이 필요하고 로컬 통신이라
-  구조 변경의 이득이 크지 않다는 판단). 대신 ACTUATION_TIMEOUT_S를 2.0 -> 0.6초로 낮춰 최악 대기시간을
-  줄인다(actuation 3회 x (0.6초 x 2회) + picar 0.5초 x 2회 ≈ 4.6초, 기존 13초 대비 1/3 이하).
-  BLE 정상 응답은 0.6초보다 훨씬 빠르다는 전제이며, 실측 후 필요하면 재조정한다.
+- `_dispatch_feedback`은 여전히 순차 블로킹이다 — micro:bit가 명령을 하나씩 처리하므로 actuation 호출은
+  병렬로 보내도 빨라지지 않고, 순서 보장도 필요하다. 타임아웃은 엔드포인트별로 나눈다(2026-09-23 개선안
+  §4 C′안, 송승호 실측 반영): /command는 손 동작이 끝난 뒤 회신해 실측 0.79~0.83초라 1.5초,
+  /result·/progress는 실측 26~42ms라 0.5초. 최악 대기시간 = 1.5x2 + 0.5x2 + 0.5x2 + picar 0.5x2 ≈ 6초
+  (기존 2.0초 일괄 시 13초). 이전에 채택했던 C안(일괄 0.6초)은 /command가 전부 timeout 나서 철회됐다.
 
 관리자/등록 관련 상태 없음 — 수신호 등록 기능은 범위에서 제외됨 (03_인터페이스계약서_v2 §6).
 
@@ -51,15 +52,16 @@ VISION_URL = os.getenv("VISION_URL", "http://localhost:8001")
 ACTUATION_URL = os.getenv("ACTUATION_URL", "http://localhost:8002")
 PICAR_URL = os.getenv("PICAR_URL", "http://localhost:8003")
 PICAR_TIMEOUT_MS = int(os.getenv("PICAR_TIMEOUT_MS", "500"))
-# 2026-09-21 개선안 §4 C안 채택 (조은수 결정) — 2.0초 -> 0.6초, 최악 폴링 정지시간 완화.
-ACTUATION_TIMEOUT_S = float(os.getenv("ACTUATION_TIMEOUT_S", "0.6"))
+# 2026-09-23 개선안 §4 C′안 — 엔드포인트별 타임아웃 (C안 0.6초 일괄은 /command 실측 0.80초라 철회).
+ACTUATION_COMMAND_TIMEOUT_S = float(os.getenv("ACTUATION_COMMAND_TIMEOUT_S", "1.5"))   # /command
+ACTUATION_FEEDBACK_TIMEOUT_S = float(os.getenv("ACTUATION_FEEDBACK_TIMEOUT_S", "0.5"))  # /result, /progress
 POLL_INTERVAL_S = float(os.getenv("VISION_POLL_INTERVAL_S", "0.2"))
 DEVICE_HEALTH_INTERVAL_S = float(os.getenv("DEVICE_HEALTH_INTERVAL_S", "5.0"))
 DEVICE_HEALTH_TIMEOUT_S = 1.5
 
 # 손 미검출(no_hand/normalize_failed)이 연속 몇 회 지속되면 SC-04로 전환할지 — 09_화면목록_v2.md가
 # "임계값 필요"라고만 표시하고 수치는 정의하지 않아, POLL_INTERVAL_S 0.2초 기준 약 3초에 해당하는
-# 잠정치를 둔다. PICAR_COMMANDS의 motor.speed와 동일하게 실측 후 조정 대상(TBD).
+# 잠정치를 둔다. 실측 후 조정 대상(TBD).
 CAMERA_FAIL_STREAK_THRESHOLD = 15
 
 # SC-01~SC-07 상태값. 09_화면목록_v2.md 표와 동기화 유지.
@@ -95,19 +97,21 @@ CURRICULUM_INFO = {
 }
 
 # target_signal -> picar_command.schema.json 페이로드. `수신호에 따른 picar 동작.md` 기준.
-# motor.speed는 스키마에도 "실측 후 확정"으로 TBD 표시되어 있음 — 아래 값은 잠정 placeholder.
+# motor.speed는 2026-09-23 바닥 주행 테스트로 확정(13_picar_하드웨어_검증리포트_v1.md §4.5):
+# 서행 20, 좌/우회전·후진 40. 60은 "너무 빠름"으로 기각, picar 서비스가 50 초과를 잘라내지만
+# (응답 motor.speed_capped_from) 안전망일 뿐이므로 처음부터 이 값을 보낸다.
 PICAR_COMMANDS = {
     "정지": {"command": "stop", "motor": {"action": "stop", "speed": 0},
             "led": {"red": "on", "yellow_left": "off", "yellow_right": "off"}},
-    "서행": {"command": "slow", "motor": {"action": "forward", "speed": 40},
+    "서행": {"command": "slow", "motor": {"action": "forward", "speed": 20},
             "led": {"red": "off", "yellow_left": "blink", "yellow_right": "blink"}},
-    "좌회전_유도": {"command": "turn_left", "motor": {"action": "left", "speed": 60},
+    "좌회전_유도": {"command": "turn_left", "motor": {"action": "left", "speed": 40},
                 "led": {"red": "off", "yellow_left": "blink", "yellow_right": "off"}},
-    "우회전_유도": {"command": "turn_right", "motor": {"action": "right", "speed": 60},
+    "우회전_유도": {"command": "turn_right", "motor": {"action": "right", "speed": 40},
                 "led": {"red": "off", "yellow_left": "off", "yellow_right": "blink"}},
     "확인_완료": {"command": "complete", "motor": {"action": "stop", "speed": 0},
               "led": {"red": "blink", "yellow_left": "blink", "yellow_right": "blink"}},
-    "후진": {"command": "reverse", "motor": {"action": "backward", "speed": 50},
+    "후진": {"command": "reverse", "motor": {"action": "backward", "speed": 40},
             "led": {"red": "off", "yellow_left": "off", "yellow_right": "off"}},
     "주의": {"command": "caution", "motor": {"action": "stop", "speed": 0},
             "led": {"red": "off", "yellow_left": "blink", "yellow_right": "blink"}},
@@ -164,8 +168,7 @@ def _current_target_signal() -> "str | None":
 
 def _recommended_retry_count(match_score: int) -> int:
     """권장 재도전 횟수(SC-03b) — 09_화면목록_v2.md가 표시 항목으로 요구하나 산식은 어느 문서에도
-    정의돼 있지 않다. match_score 구간별 잠정치이며 PICAR_COMMANDS의 motor.speed와 같은 성격의
-    TBD 값이다. 실측 후 팀 확정 필요."""
+    정의돼 있지 않다. match_score 구간별 잠정치(TBD)이며 실측 후 팀 확정 필요."""
     if match_score >= 70:
         return 1
     if match_score >= 40:
@@ -210,13 +213,13 @@ def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict) -> dict
             "command": aihand_command,
             "target_signal": target_signal,
             "servo_angles": _PLACEHOLDER_SERVO_ANGLES,
-        }, ACTUATION_TIMEOUT_S),
+        }, ACTUATION_COMMAND_TIMEOUT_S),
         "result": _post_with_retry(f"{ACTUATION_URL}/result", {
             "is_correct": is_correct, "match_score": match_score,
-        }, ACTUATION_TIMEOUT_S),
+        }, ACTUATION_FEEDBACK_TIMEOUT_S),
         "progress": _post_with_retry(f"{ACTUATION_URL}/progress", {
             "current": _session["curriculum_index"] + 1, "total": len(CURRICULUM),
-        }, ACTUATION_TIMEOUT_S),
+        }, ACTUATION_FEEDBACK_TIMEOUT_S),
     }
 
     if is_correct:
