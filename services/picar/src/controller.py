@@ -276,13 +276,19 @@ def _apply_led(name: str, state: str, mock: bool) -> dict:
     if mock:
         return {"status": "mocked", "led": name, "pins": list(pins), "state": state}
 
-    led = _get_led(name, pins)
-    if state == "on":
-        led.on()
-    elif state == "off":
-        led.off()
-    else:  # blink
-        led.blink(on_time=0.3, off_time=0.3)  # 비블로킹 — 다음 명령이 오면 덮어쓴다
+    # GPIO 백엔드(lgpio)가 없거나 /dev/gpiochip0이 컨테이너에 매핑되지 않으면 여기서 예외가 난다.
+    # 삼키지 않으면 /picar가 500이 되고, LED를 먼저 처리하므로 **모터(정지 포함)까지 실행되지 않는다.**
+    try:
+        led = _get_led(name, pins)
+        if state == "on":
+            led.on()
+        elif state == "off":
+            led.off()
+        else:  # blink
+            led.blink(on_time=0.3, off_time=0.3)  # 비블로킹 — 다음 명령이 오면 덮어쓴다
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "led": name, "reason": "gpio_failed",
+                "detail": f"{type(exc).__name__}: {exc}"}
     return {"status": "ok", "led": name, "pins": list(pins), "state": state}
 
 

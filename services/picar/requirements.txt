@@ -2,6 +2,10 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 gpiozero==2.0.1
 # gpiozero는 MockFactory를 지원해 비-RPi 환경에서도 임포트/단위테스트가 가능합니다.
+lgpio==0.2.2.0
+# lgpio: gpiozero가 실제 핀을 구동할 때 쓰는 백엔드. Raspberry Pi OS에는 apt(python3-lgpio)로 깔려
+# 있지만 python:3.11-slim 컨테이너에는 없어서, 빠지면 Docker 실물 모드에서 LED 초기화가 실패한다.
+# aarch64/x86_64 wheel이 모두 있어 개발 PC 빌드도 깨지지 않는다(mock 모드에선 임포트하지 않음).
 smbus2==0.5.0
 # smbus2: Raspbot 모터/서보 코프로세서와의 I2C 통신용(주소 0x16, src/controller.py 참고).
 # 실제 I2C 접근은 RPi4B에서만 가능하며, MOCK_HARDWARE=true면 임포트조차 하지 않습니다

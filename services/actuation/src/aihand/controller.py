@@ -29,7 +29,8 @@ DEFAULT_SERVO_ANGLES = {
     "서행": {"thumb": 10, "index": 170, "middle": 170, "ring": 10, "pinky": 10, "wrist_rotation": 90},
     "좌회전_유도": {"thumb": 170, "index": 170, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
     "우회전_유도": {"thumb": 170, "index": 10, "middle": 10, "ring": 10, "pinky": 170, "wrist_rotation": 90},
-    "확인_완료": {"thumb": 170, "index": 10, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
+    # 2026-09-20 팀 확정: 엄지만 펴기 → 주먹(전부 굽힘). 2026-09-25 펌웨어 gesture5도 주먹으로 맞췄다(저장소·플래시 모두).
+    "확인_완료": {"thumb": 10, "index": 10, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
     "후진": {"thumb": 10, "index": 170, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
     "주의": {"thumb": 10, "index": 10, "middle": 10, "ring": 10, "pinky": 170, "wrist_rotation": 90},
 }

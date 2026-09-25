@@ -108,7 +108,7 @@ function gesture1() { setHand(0, 0, 0, 0, 0); }          // 다섯 손가락 펴
 function gesture2() { setHand(170, 0, 0, 170, 170); }    // 검지+중지 펴기
 function gesture3() { setHand(0, 0, 170, 170, 170); }    // 엄지 펴기 + 검지펴기
 function gesture4() { setHand(0, 170, 170, 170, 0); }    // 엄지 펴기 + 소지 펴기
-function gesture5() { setHand(0, 170, 170, 170, 170); }  // 엄지만 펴기
+function gesture5() { setHand(170, 170, 170, 170, 170); } // 주먹 (확인_완료, 2026-09-20 팀 확정 — 2026-09-25 반영)
 function gesture6() { setHand(170, 0, 170, 170, 170); }  // 검지 펴기
 function gesture7() { setHand(170, 170, 170, 170, 0); }  // 소지 펴기
 

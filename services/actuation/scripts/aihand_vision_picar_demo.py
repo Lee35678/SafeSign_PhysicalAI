@@ -10,6 +10,7 @@
 ## 한 수신호(라운드)의 흐름
 
     DEMO   : picar 정지 → AI Hand가 목표 수신호 시범 (`OK{n}` 회신 = 손모양 완성)
+    OBSERVE: 학습자가 AI Hand를 **보는 시간**(--observe, 기본 3초). 이 동안 판정은 세지 않는다
     ARM    : vision `/reset` 후 ARM_S 동안 판정 무시 — `/latest`에 직전 판정이 남아 있을 수 있다
     LISTEN : picar 순항(전진) 시작, `/latest`를 폴링하며 학습자 손 판정 대기 (최대 --listen-timeout초)
       ├ 정답    → picar를 **먼저** 수신호 동작으로(2초 유지 후 정지) → micro:bit O
@@ -25,6 +26,10 @@
   **도중**의 과도 자세가 오답으로 잡히지 않도록 같은 오답 클래스가 WRONG_CONFIRM_S 이상 유지돼야 오답으로
   친다. 정답은 즉시 확정한다.
 - `below_tau`/`out_of_distribution`/`no_hand`는 오답으로 세지 않고 안내만 한다(시간초과로 이어질 수 있음).
+- **OBSERVE를 둔 이유 (2026-09-25 실물)**: 처음엔 AI Hand가 손모양을 완성하고 ARM 0.5초 뒤 바로 판정을
+  시작해, 학습자가 AI Hand를 보기도 전에 **직전 수신호 손모양이 카메라에 잡혀 오답 처리**됐다(0.5 + 오답
+  확정 1.0 = 1.5초 안에 따라 해야 했다). 시범을 본 뒤 "따라 해 보세요!"가 나올 때부터 판정한다.
+  `/reset`을 OBSERVE **뒤에** 부르는 것도 같은 이유다 — 보는 동안 쌓인 연속판정을 버린다.
 
 ## 화면이 없으므로
 
@@ -72,16 +77,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aihand_picar_demo as base  # noqa: E402 — PICAR_COMMANDS·통신 헬퍼를 공유한다
 
+OBSERVE_S = 3.0         # 시범 후 학습자가 AI Hand를 보는 시간 (--observe로 조정, 판정 안 셈)
 ARM_S = 0.5             # /reset 직후 판정 무시 구간
 POLL_S = 0.1            # /latest 폴링 주기
 VISION_TIMEOUT_S = 0.5
-WRONG_CONFIRM_S = 1.0   # 같은 오답 클래스가 이만큼 유지돼야 오답 확정
+WRONG_CONFIRM_S = 1.0   # 같은 오답 클래스가 이만큼 유지돼야 오답 확정 (--wrong-confirm으로 조정)
 FOV_CHECK_S = 2.0       # 화각 점검 관찰 시간
 
 NEGATIVE_CLASS = "negative"  # services/vision/src/cognition/classify.py와 동일
 
 # 학습자에게 보여줄 손모양 — PRD §3.2 확정 스펙(학습 데이터 기준). AI Hand 실물과 다를 수 있다:
-# 엄지 서보 고장, 확인_완료는 펌웨어가 아직 "엄지만 펴기"(gesture5).
+# 엄지 서보 고장(교체 안 함). 확인_완료는 2026-09-25 펌웨어 gesture5를 주먹으로 맞췄다(저장소·플래시 모두)
+# (엄지가 고장이라 실물 동작은 옛 코드와 같다 — 플래시 여부는 MakeCode 소스로만 확인 가능).
 HAND_SHAPES = {
     "정지": "다섯 손가락 펴기",
     "서행": "검지 + 중지 펴기",
@@ -229,6 +236,22 @@ class Quit(Exception):
     pass
 
 
+class Skip(Exception):
+    """OBSERVE 중 진행자가 `s`를 눌렀다 — 현재 수신호를 건너뛴다."""
+
+
+# CSV 열 순서. DictWriter가 첫 기록의 키로 헤더를 만드므로 모든 기록이 같은 키를 가져야 한다.
+RECORD_FIELDS = ("time", "signal", "attempt", "outcome", "predicted", "match_score", "confidence",
+                 "vision_latency_ms", "demo_ok", "demo_ms", "observe_ms", "listen_ms",
+                 "picar_ok", "picar_ms", "microbit_ok", "microbit_ms", "feedback_ms")
+
+
+def _empty_rec(sig: str, attempt: int) -> dict:
+    rec = dict.fromkeys(RECORD_FIELDS, "")
+    rec.update(time=datetime.now().isoformat(timespec="milliseconds"), signal=sig, attempt=attempt)
+    return rec
+
+
 def _ok(body: dict | None, err: str) -> bool:
     return not err and (body or {}).get("status") in ("ok", "mocked")
 
@@ -268,7 +291,23 @@ def _get_json(url: str, timeout: float) -> dict | None:
         return None
 
 
-def _listen(vision: str, target: str, timeout_s: float, op: Operator) -> tuple[str, dict | None, float]:
+def _observe(seconds: float, op: Operator) -> None:
+    """학습자가 AI Hand 시범을 보는 시간. 판정은 보지 않고 진행자 입력(s/q)만 받는다."""
+    if seconds <= 0:
+        return
+    _log(f"👀 AI Hand를 보세요 ({seconds:g}초)")
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        cmd = op.poll()
+        if cmd == "q":
+            raise Quit
+        if cmd == "s":
+            raise Skip
+        time.sleep(POLL_S)
+
+
+def _listen(vision: str, target: str, timeout_s: float, op: Operator,
+            wrong_confirm_s: float = WRONG_CONFIRM_S) -> tuple[str, dict | None, float]:
     """(outcome, judgment, 판정 시각 monotonic). outcome: correct | wrong | timeout | skip."""
     deadline = time.monotonic() + timeout_s
     wrong_cls, wrong_since = None, 0.0
@@ -304,7 +343,7 @@ def _listen(vision: str, target: str, timeout_s: float, op: Operator) -> tuple[s
             if pred != wrong_cls:
                 wrong_cls, wrong_since = pred, now
                 _log(f"… {pred}(으)로 보입니다 (match {j.get('match_score')})")
-            elif now - wrong_since >= WRONG_CONFIRM_S:
+            elif now - wrong_since >= wrong_confirm_s:
                 return "wrong", j, now
         else:
             reason = j.get("reason")
@@ -399,12 +438,18 @@ def main() -> int:
     ap.add_argument("--signals", help="진행할 수신호(쉼표 구분, 기본 7종 전부 PRD 순서)")
     ap.add_argument("--attempts", type=int, default=3, help="수신호당 최대 시도 횟수 (기본 3)")
     ap.add_argument("--listen-timeout", type=float, default=10.0, help="시도당 판정 대기 초 (기본 10)")
+    ap.add_argument("--observe", type=float, default=OBSERVE_S,
+                    help=f"시범 후 학습자가 AI Hand를 보는 시간(초, 판정 안 셈, 기본 {OBSERVE_S:.0f})")
+    ap.add_argument("--wrong-confirm", type=float, default=WRONG_CONFIRM_S,
+                    help=f"같은 오답이 이만큼 유지돼야 오답 확정(초, 기본 {WRONG_CONFIRM_S:.0f})")
     ap.add_argument("--auto", action="store_true", help="라운드 사이 Enter 대기 없이 자동 진행")
     ap.add_argument("--skip-fov-check", action="store_true", help="시작 시 AI Hand 화각 점검 생략")
     ap.add_argument("--log", default=f"aihand_vision_picar_{datetime.now():%Y%m%d_%H%M%S}.csv",
                     help="시도별 기록 CSV 경로")
     args = ap.parse_args()
 
+    if args.observe < 0 or args.wrong_confirm < 0:
+        ap.error("--observe·--wrong-confirm은 0 이상이어야 한다")
     if not args.no_picar and not args.picar:
         ap.error("--picar URL을 주거나 --no-picar를 지정하세요")
     if not 0 <= args.cruise_speed <= base.MAX_SPEED_PCT:
@@ -460,21 +505,27 @@ def main() -> int:
                 _log(f"▶ 시도 {attempt}/{args.attempts} — AI Hand 시범")
                 t_demo = time.monotonic()
                 demo_ok = _aihand_demo(aihand, sig, "demo" if attempt == 1 else "correct_pose")
-                _vision_reset(vision)
+                t_demo_done = time.monotonic()
+                try:
+                    _observe(args.observe, op)
+                except Skip:
+                    records.append({**_empty_rec(sig, attempt), "outcome": "skip", "demo_ok": demo_ok})
+                    result = "건너뜀"
+                    break
+                _vision_reset(vision)        # 보는 동안 쌓인 연속판정은 버린다
                 time.sleep(ARM_S)
                 driver.set_base(CRUISE)
-                _log("따라 해 보세요!")
+                _log("✋ 따라 해 보세요!")
                 t_listen = time.monotonic()
-                outcome, j, t_dec = _listen(vision, sig, args.listen_timeout, op)
+                outcome, j, t_dec = _listen(vision, sig, args.listen_timeout, op, args.wrong_confirm)
                 j = j or {}
 
-                rec = {"time": datetime.now().isoformat(timespec="milliseconds"), "signal": sig,
-                       "attempt": attempt, "outcome": outcome, "predicted": j.get("predicted_class", ""),
-                       "match_score": j.get("match_score", ""), "confidence": j.get("confidence", ""),
-                       "vision_latency_ms": j.get("latency_ms", ""), "demo_ok": demo_ok,
-                       "demo_ms": _ms(t_demo, t_listen), "listen_ms": _ms(t_listen, t_dec),
-                       "picar_ok": "", "picar_ms": "", "microbit_ok": "", "microbit_ms": "",
-                       "feedback_ms": ""}
+                rec = _empty_rec(sig, attempt)
+                rec.update(outcome=outcome, predicted=j.get("predicted_class", ""),
+                           match_score=j.get("match_score", ""), confidence=j.get("confidence", ""),
+                           vision_latency_ms=j.get("latency_ms", ""), demo_ok=demo_ok,
+                           demo_ms=_ms(t_demo, t_demo_done), observe_ms=_ms(t_demo_done, t_listen),
+                           listen_ms=_ms(t_listen, t_dec))
 
                 if outcome == "correct":
                     driver.hold(sig)                                   # picar 먼저 (Wi-Fi)
@@ -523,7 +574,7 @@ def main() -> int:
         print(f"  정답 {correct}/{len(summary)}")
     if records:
         with open(args.log, "w", newline="", encoding="utf-8-sig") as f:
-            w = csv.DictWriter(f, fieldnames=list(records[0]))
+            w = csv.DictWriter(f, fieldnames=list(RECORD_FIELDS))
             w.writeheader()
             w.writerows(records)
         print(f"기록 저장: {args.log}")

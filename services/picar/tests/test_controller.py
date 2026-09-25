@@ -312,6 +312,23 @@ def test_stop_failure_is_recorded_for_health(monkeypatch):
     controller._last_stop_error = None   # 다른 테스트에 새지 않게 되돌린다
 
 
+def test_gpio_failure_does_not_block_the_motor(monkeypatch):
+    """LED(GPIO)가 죽어도 모터 명령 — 특히 정지 — 는 실행돼야 한다 (Docker에 gpiochip 미매핑 등)."""
+    def _no_gpio(name, pins):
+        raise RuntimeError("BadPinFactory")
+
+    stops = []
+    monkeypatch.setattr(controller, "_get_led", _no_gpio)
+    monkeypatch.setattr(controller, "_write_stop_retrying", lambda: stops.append(True))
+
+    result = controller.execute(
+        {"motor": {"action": "stop", "speed": 0}, "led": {"red": "on"}}, mock=False)
+
+    assert stops == [True]
+    assert result["motor"]["status"] == "ok"
+    assert result["led"]["red"]["reason"] == "gpio_failed"
+
+
 # ── 속도 상한 (2026-09-24 — 확정값이 코드 곳곳에 흩어져 옛 값 60이 남아 있었다) ─────────────
 def test_default_speed_cap_is_the_confirmed_upper_limit():
     """60은 바닥 주행에서 "너무 빠름"으로 기각, 50이 상한 (리포트 13 §4.5)."""

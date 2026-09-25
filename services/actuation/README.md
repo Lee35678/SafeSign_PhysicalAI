@@ -257,4 +257,45 @@ curl http://localhost:8002/health
 cd src && uvicorn app:app --reload --port 8002
 ```
 
+## RPi5 실물 실행 (네이티브, 가상환경)
+
+첫 통합은 Docker가 아니라 **네이티브 실행**을 권장한다 — 컨테이너에서 BlueZ/D-Bus 접근은 아직 검증 전이다
+(`document/11_하드웨어설계서_v1.md` §9.1).
+
+**최초 1회 — 가상환경 만들기**
+
+```bash
+cd ~/git/SafeSign_PhysicalAI/services/actuation
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip show bleak | grep Version     # → 0.22.3 (2026-09-23 RPi5 실물 검증 버전)
+```
+
+**매번 — 새 터미널을 열 때마다 활성화부터**
+
+```bash
+cd ~/git/SafeSign_PhysicalAI/services/actuation
+source .venv/bin/activate          # 프롬프트 앞에 (.venv)가 붙어야 한다
+MOCK_HARDWARE=false uvicorn app:app --app-dir src --host 0.0.0.0 --port 8002
+```
+
+콘솔에 `micro:bit BLE 연결됨: BBC micro:bit [...]`이 뜨고 micro:bit LED가 ✓로 바뀌면 성공이다.
+`curl localhost:8002/health`의 `microbit_connected`가 **`true`(bool)** 여야 한다.
+
+> 📌 `.venv`는 git에 올라가지 않는다(`.gitignore`). `git pull`로 지워지지 않지만, 저장소를 새로 받았거나
+> 다른 보드라면 다시 만들어야 한다. **서비스마다 가상환경이 따로**다 — vision은 `scripts/run_rpi5.sh`가
+> 켜 주고, web은 `services/web`에서 같은 방식으로 만든다.
+
+### 문제 해결
+
+| 증상 | 원인 | 조치 |
+| --- | --- | --- |
+| `uvicorn: command not found` | 가상환경이 **활성화되지 않았다** | `source .venv/bin/activate` |
+| `pip install` 시 `error: externally-managed-environment` | 가상환경 밖의 **시스템 pip**가 실행됐다(Bookworm은 시스템 Python 설치를 막는다) | 위와 같음. `ls -d .venv`로 있는지 먼저 보고, 없으면 "최초 1회"부터. 🔴 **`--break-system-packages`는 쓰지 말 것** — OS의 Python이 깨질 수 있다 |
+| `.venv`가 있어야 하는데 없다 | 다른 폴더·다른 보드에 접속했을 수 있다 | `pwd`·`hostname` 확인 — actuation은 **RPi5**에서 돈다 |
+| `micro:bit BLE 연결 실패: TimeoutError` | 다른 프로그램의 BLE 스캔이 켜져 있다(스캔엔 잡히는데 연결만 시간 초과) | `bluetoothctl show \| grep Discovering` → `yes`면 `scan on`을 친 창에서 `scan off` + `quit`, 모르면 `pkill bluetoothctl`. **`scan on`은 필요 없다** — 서버가 직접 스캔한다 (2026-09-23 실측) |
+| `micro:bit(...)가 스캔(5초)에 안 보임` | micro:bit가 이미 다른 쪽에 연결됐거나(✓ 표시) 전원·패닉 | 이전 서버가 살아 있는지 `pgrep -af uvicorn`, `bluetoothctl devices Connected`에 있으면 `disconnect <MAC>`, micro:bit 리셋 후 ◇ 확인 |
+| `/health`의 `microbit_connected`가 `{'_value': True}` | `bool()` 수정(2026-09-23) 이전 코드 | `git pull` 후 서버 재시작 |
+
 

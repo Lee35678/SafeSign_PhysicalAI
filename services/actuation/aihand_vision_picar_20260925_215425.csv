@@ -1,0 +1,8 @@
+time,signal,attempt,outcome,predicted,match_score,confidence,vision_latency_ms,demo_ok,demo_ms,listen_ms,picar_ok,picar_ms,microbit_ok,microbit_ms,feedback_ms
+2026-09-25T21:54:39.951,정지,1,correct,정지,98,0.9383,40,True,1309,2263,True,19,True,27,27
+2026-09-25T21:54:55.678,서행,1,correct,서행,90,0.9503,63,True,1310,7996,True,21,True,32,32
+2026-09-25T21:55:10.426,좌회전_유도,1,correct,좌회전_유도,95,0.9546,57,True,1316,4325,True,21,True,40,40
+2026-09-25T21:55:20.233,우회전_유도,1,correct,우회전_유도,69,0.9642,72,True,1309,1333,True,20,True,41,41
+2026-09-25T21:55:27.594,확인_완료,1,correct,확인_완료,53,0.9206,40,True,1316,1543,True,20,True,28,28
+2026-09-25T21:55:42.677,후진,1,correct,후진,90,0.8468,39,True,1310,2870,True,21,True,47,47
+2026-09-25T21:55:49.929,주의,1,correct,주의,90,0.9213,64,True,1309,1234,True,20,True,25,25
