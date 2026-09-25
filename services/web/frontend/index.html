@@ -6,12 +6,91 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- SC-01 랜딩(접속) 화면. 09_화면목록_v2.md 참고 -->
-  <main id="app">
-    <h1>SafeSign 안전 수신호 교육</h1>
-    <p>AI Hand와 함께 산업 현장 안전 수신호를 배워봅시다.</p>
-    <button id="start-btn">시작하기</button>
-  </main>
+  <!-- 09_화면목록_v2.md SC-01~SC-07. main.js가 .screen 중 하나에만 "active"를 붙여 전환한다. -->
+  <div id="app">
+
+    <!-- SC-07: 중간 이탈 후 재접속 안내 (세션 이어하기 미구현, 2026-09-18 결정) -->
+    <section id="screen-reentry" class="screen">
+      <h1>이전 학습이 종료되었습니다</h1>
+      <p>처음부터 다시 시작합니다.</p>
+      <button id="reentry-confirm-btn">확인</button>
+    </section>
+
+    <!-- SC-01: 랜딩(접속) -->
+    <section id="screen-landing" class="screen">
+      <h1>SafeSign 안전 수신호 교육</h1>
+      <p>AI Hand와 함께 산업 현장 안전 수신호를 배워봅시다.</p>
+      <button id="start-btn">시작하기</button>
+    </section>
+
+    <!-- SC-02: 교육 시작 확인 (커리큘럼 7종 미리보기) -->
+    <section id="screen-curriculum" class="screen">
+      <h1>배울 수신호 7종</h1>
+      <ol id="curriculum-list" class="curriculum-list"></ol>
+      <button id="curriculum-start-btn">교육 시작</button>
+    </section>
+
+    <!-- SC-03 (+ SC-03a/03b 오버레이): 수신호 시범/인식 핵심 화면 -->
+    <section id="screen-training" class="screen">
+      <header class="training-header">
+        <span id="signal-progress" class="badge">1 / 7</span>
+        <span id="attempt-badge" class="badge">시도 <span id="attempt-count">0</span>회</span>
+      </header>
+      <h1 id="signal-name">-</h1>
+      <p id="signal-desc" class="muted"></p>
+
+      <div class="camera-preview" id="camera-preview">
+        <div class="camera-placeholder">
+          <span>카메라 인식 중…</span>
+          <p class="muted small">
+            (실물 영상 미리보기는 vision 서비스에 프레임 스트리밍 엔드포인트가 추가되면 연결 예정)
+          </p>
+        </div>
+      </div>
+
+      <div class="match-score-row">
+        <label>일치율</label>
+        <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
+        <span id="match-score-value">0%</span>
+      </div>
+
+      <div id="training-overlay" class="overlay hidden"></div>
+    </section>
+
+    <!-- SC-04: 카메라 인식 실패 -->
+    <section id="screen-camera-fail" class="screen">
+      <h1>카메라 위치를 조정해주세요</h1>
+      <p>손이 잘 보이지 않습니다. 카메라 앞으로 손을 옮겨 다시 시도해주세요.</p>
+      <button id="camera-retry-btn">재시도</button>
+    </section>
+
+    <!-- SC-05: 학습 완료/집계 -->
+    <section id="screen-summary" class="screen">
+      <h1>수고하셨습니다 — 7종 완료</h1>
+      <table id="summary-table" class="summary-table">
+        <thead>
+          <tr><th>수신호</th><th>시도 횟수</th><th>정답 시 일치율</th></tr>
+        </thead>
+        <tbody id="summary-tbody"></tbody>
+      </table>
+      <button id="certificate-btn">수료증 발급받기</button>
+    </section>
+
+    <!-- SC-06: 수료증 발급 -->
+    <section id="screen-certificate" class="screen">
+      <h1>수료증이 발급되었습니다</h1>
+      <canvas id="certificate-canvas" width="800" height="560"></canvas>
+      <div class="certificate-actions">
+        <button id="certificate-download-btn">이미지로 저장</button>
+        <button id="certificate-print-btn">인쇄 / PDF로 저장</button>
+        <button id="restart-btn">다시 학습하기</button>
+      </div>
+    </section>
+
+  </div>
+
+  <footer id="device-status-bar" class="device-status-bar"></footer>
+
   <script src="main.js"></script>
 </body>
 </html>

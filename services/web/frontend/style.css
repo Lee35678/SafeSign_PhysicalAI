@@ -1,19 +1,211 @@
+:root {
+  color-scheme: light;
+}
+
 body {
   font-family: system-ui, sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
   margin: 0;
+  min-height: 100vh;
   background: #f5f5f5;
+  display: flex;
+  flex-direction: column;
 }
 
 #app {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem 3rem;
+}
+
+.screen {
+  display: none;
+  width: 100%;
+  max-width: 640px;
   text-align: center;
+}
+
+.screen.active {
+  display: block;
 }
 
 button {
   padding: 0.75rem 2rem;
   font-size: 1rem;
   cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  margin: 0.25rem;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+.muted {
+  color: #666;
+}
+
+.muted.small {
+  font-size: 0.8rem;
+}
+
+/* SC-02 */
+.curriculum-list {
+  text-align: left;
+  display: inline-block;
+  line-height: 1.8;
+}
+
+/* SC-03 */
+.training-header {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.badge {
+  background: #e5e7eb;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.camera-preview {
+  margin: 1rem auto;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 4 / 3;
+  background: #111827;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-placeholder {
+  color: #d1d5db;
+  text-align: center;
+  padding: 1rem;
+}
+
+.match-score-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 480px;
+  margin: 1rem auto 0;
+}
+
+.match-score-bar {
+  flex: 1;
+  height: 12px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.match-score-fill {
+  height: 100%;
+  width: 0%;
+  background: #2563eb;
+  transition: width 0.2s ease;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: white;
+  font-size: 1.2rem;
+  transition: opacity 0.2s ease;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay.correct {
+  background: rgba(22, 163, 74, 0.92);
+}
+
+.overlay.wrong {
+  background: rgba(220, 38, 38, 0.92);
+}
+
+.overlay h2 {
+  font-size: 2rem;
+  margin: 0;
+}
+
+/* SC-05 */
+.summary-table {
+  border-collapse: collapse;
+  margin: 1rem auto;
+  width: 100%;
+  max-width: 480px;
+}
+
+.summary-table th,
+.summary-table td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+}
+
+.summary-table thead {
+  background: #e5e7eb;
+}
+
+/* SC-06 */
+#certificate-canvas {
+  max-width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+}
+
+.certificate-actions {
+  margin-top: 1rem;
+}
+
+/* 장치 상태 표시줄 */
+.device-status-bar {
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  text-align: center;
+  background: #111827;
+  color: #d1d5db;
+  min-height: 1.6rem;
+}
+
+.device {
+  margin: 0 0.5rem;
+}
+
+.device.ok::before {
+  content: "●";
+  color: #22c55e;
+  margin-right: 0.3rem;
+}
+
+.device.bad::before {
+  content: "●";
+  color: #ef4444;
+  margin-right: 0.3rem;
+}
+
+@media print {
+  #device-status-bar,
+  .certificate-actions,
+  header.training-header {
+    display: none !important;
+  }
 }
