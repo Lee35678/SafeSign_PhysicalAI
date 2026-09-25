@@ -34,12 +34,7 @@ services:
       - SERVICE_NAME=actuation
       - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
       - MICROBIT_BLE_NAME=${MICROBIT_BLE_NAME:-BBC micro:bit}
-    # 실제 micro:bit 연결 시 (Linux 전용, 실물 도착 후 검증 필요):
-    # RPi5 <-> micro:bit 통신이 USB 시리얼에서 BLE로 전환되어(README 참고) 더 이상 device 매핑이
-    # 아니라 컨테이너가 호스트의 BlueZ/D-Bus에 접근할 수 있어야 한다.
-    # network_mode: host
-    # volumes:
-    #   - /var/run/dbus:/var/run/dbus
+    # 실제 micro:bit(BLE) 연결은 docker-compose.hw.yml 오버라이드로 켠다 (RPi5 전용 — 호스트 D-Bus 소켓 마운트).
 
   # picar 전용 컨트롤러. 실물 배포 시 picar 차체에 탑재된 별도의 Raspberry Pi 4B 8GB에서 실행되며,
   # web과는 Wi-Fi(HTTP)로 통신한다 (02_설계문서_v2 §1-1 — picar가 주행하면 카메라도 함께 이동해버리는
@@ -53,9 +48,7 @@ services:
     environment:
       - SERVICE_NAME=picar
       - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
-    # 실제 picar/RPi4B 연결 시 (Linux 전용):
-    # devices:
-    #   - /dev/gpiomem:/dev/gpiomem   # picar 모터/LED GPIO 직결 (privileged 필요할 수 있음)
+    # 실제 모터(I2C)/LED(GPIO) 구동은 docker-compose.hw.yml 오버라이드로 켠다 (RPi4B 전용 — /dev/i2c-1·/dev/gpiochip0 매핑).
 
   web:
     build: ./services/web

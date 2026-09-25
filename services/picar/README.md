@@ -183,3 +183,22 @@ curl -s -X POST http://localhost:8000/picar -H "Content-Type: application/json" 
 docker compose up --build picar
 curl http://localhost:8003/health
 ```
+
+## RPi4B 실물 실행 (Docker)
+
+`docker-compose.hw.yml`이 `MOCK_HARDWARE=false`로 바꾸고 `/dev/i2c-1`(모터)·`/dev/gpiochip0`(LED)을
+컨테이너에 넘긴다. GPIO 백엔드는 `lgpio`(requirements.txt)로 고정한다 — 컨테이너에선 device-tree가
+가려져 gpiozero 자동 선택을 믿을 수 없다. web이 부르는 `:8000`도 함께 연다. **⚠️ 아직 실물 미검증(2026-09-25).**
+
+```bash
+pgrep -af uvicorn                  # 네이티브 picar가 떠 있으면 먼저 종료 (포트 8000 충돌)
+ls /dev/i2c-1 /dev/gpiochip0       # 둘 다 있어야 한다 — i2c-1이 없으면 raspi-config로 I2C 활성화
+cd ~/git/SafeSign_PhysicalAI
+docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build picar
+curl -s http://localhost:8000/health   # status: ok, hardware.i2c.reachable: true
+```
+
+LED가 안 켜지면 `/picar` 응답의 `led.*.reason`이 `gpio_failed`로 나오고 `detail`에 원인이 담긴다.
+이때도 **모터(정지 포함)는 그대로 실행된다** — LED 오류가 모터 명령을 막지 않도록 분리해 두었다.
+`detail`이 `PinUnknownPi`면 gpiozero가 보드 판별을 못 한 것이다 — 컨테이너에선 device-tree가 가려져
+`/proc/cpuinfo`의 `Revision` 줄에 기댄다. 호스트에서 `grep Revision /proc/cpuinfo`로 줄이 있는지 확인할 것.

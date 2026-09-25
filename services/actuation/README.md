@@ -40,7 +40,7 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
 
 로컬 PC(Windows)에는 서보/micro:bit가 물리적으로 연결되어 있지 않으므로, 기본값
 `MOCK_HARDWARE=true`일 때는 실제 GPIO/시리얼 호출 대신 로그만 남기고 성공 응답을 반환합니다.
-하드웨어 도착 후 `MOCK_HARDWARE=false` + `devices:` 매핑(docker-compose.yml 주석 참고)으로 전환하세요.
+실물은 네이티브 실행(아래 "RPi5 실물 실행") 또는 `docker-compose.hw.yml` 오버라이드(아래 "RPi5 실물 실행 (Docker)")로 전환하세요.
 
 ## picar와의 관계
 
@@ -57,8 +57,8 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
   엄지 서보는 **교체하지 않기로 확정**했지만, **엄지 동작은 설계·시현에 그대로 유지**한다(2026-09-21)
   — 펌웨어의 엄지 각도는 손대지 않고 물리적으로만 움직이지 않는 상태로 진행
 - [x] ~~micro:bit 실제 시리얼 코드로 프로토콜 동작 검증~~ → bluetooth 방식으로 전환 완료
-- [ ] `docker compose up actuation`으로 RPi5 실물 환경에서 BLE(BlueZ/D-Bus) 접근 검증 (컨테이너
-  네트워킹, docker-compose.yml 주석 참고)
+- [ ] `docker-compose.hw.yml`로 RPi5 실물 환경에서 컨테이너 BLE(BlueZ/D-Bus) 접근 검증 — 구성은
+  준비됨(2026-09-25, D-Bus 소켓 마운트 방식), 실물 확인만 남음. 아래 "RPi5 실물 실행 (Docker)" 참고
 - [x] ~~RESULT(micro:bit LED 매트릭스) 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"correct"`/
   `"incorrect"` 문자열을 받으면 회신을 먼저 보내고 LED에 O/X를 1초간 표시하고 꺼지도록 구현 완료(TEST_MODE와 무관하게
   항상 처리). **소리는 쓰지 않는다**(부저 코드 삭제, 2026-09-22) — 아래 "절대 규칙" 참고
@@ -257,9 +257,29 @@ curl http://localhost:8002/health
 cd src && uvicorn app:app --reload --port 8002
 ```
 
+## RPi5 실물 실행 (Docker)
+
+`docker-compose.hw.yml`이 `MOCK_HARDWARE=false`로 바꾸고 호스트의 D-Bus 소켓(`/run/dbus`)을 넘긴다.
+bleak은 HCI를 직접 만지지 않고 호스트 `bluetoothd`와 D-Bus로만 대화하므로 `network_mode: host`는 쓰지
+않는다 — 덕분에 web은 계속 `http://actuation:8000`으로 부른다. **⚠️ 아직 실물 미검증(2026-09-25).**
+
+```bash
+pgrep -af uvicorn                  # 네이티브 actuation이 떠 있으면 먼저 종료 (micro:bit는 연결을 하나만 받는다)
+cd ~/git/SafeSign_PhysicalAI
+docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build actuation
+docker compose logs -f actuation   # "micro:bit BLE 연결됨: ..." 이 보여야 한다
+curl -s http://localhost:8002/health   # microbit_connected: true
+```
+
+| 증상 | 확인 |
+| --- | --- |
+| 로그에 `org.freedesktop.DBus.Error` / 소켓 없음 | 호스트에 `/run/dbus/system_bus_socket`이 있는지, `systemctl status bluetooth` |
+| `스캔에 안 보임` | 네이티브 서버·`bluetoothctl connect`가 micro:bit를 잡고 있지 않은지 (아래 네이티브 표와 동일) |
+| 위가 다 정상인데도 스캔/연결 실패 | 최후 수단: 오버라이드에 `network_mode: host` + `privileged: true` (포트 8002로 command 변경 필요 — 파일 주석 참고) |
+
 ## RPi5 실물 실행 (네이티브, 가상환경)
 
-첫 통합은 Docker가 아니라 **네이티브 실행**을 권장한다 — 컨테이너에서 BlueZ/D-Bus 접근은 아직 검증 전이다
+컨테이너 구성이 실물에서 검증되기 전까지는 **네이티브 실행이 기준 경로**다
 (`document/11_하드웨어설계서_v1.md` §9.1).
 
 **최초 1회 — 가상환경 만들기**

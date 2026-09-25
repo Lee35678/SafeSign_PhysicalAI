@@ -1,0 +1,30 @@
+# 실물 하드웨어 오버라이드 — docker-compose.yml(개발 PC, mock 기본값) 위에 덧씌워 쓴다.
+# 개발 PC(Windows Docker Desktop)에서는 쓰지 말 것: 아래 장치/소켓이 호스트에 없어 기동이 실패한다.
+#
+#   RPi4B(picar 차체):  docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build picar
+#   RPi5(스테이션):     docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build actuation
+#
+# ⚠️ 같은 보드에서 네이티브 uvicorn을 먼저 끌 것(`pgrep -af uvicorn`). 포트가 겹치고, micro:bit는
+#    BLE 연결을 하나만 받아서 네이티브 서버가 붙어 있으면 컨테이너 쪽 스캔에 안 보인다.
+services:
+  picar:
+    environment:
+      - MOCK_HARDWARE=false
+      # 컨테이너에는 /sys/firmware(device-tree)가 가려져 있어 gpiozero의 자동 선택에 기대지 않는다
+      - GPIOZERO_PIN_FACTORY=lgpio
+    devices:
+      - /dev/i2c-1:/dev/i2c-1          # 모터 코프로세서(0x16) — 먼저 `sudo raspi-config nonint do_i2c 0`
+      - /dev/gpiochip0:/dev/gpiochip0  # 외부 LED 4핀(BCM13·19·5·6) — lgpio는 /dev/gpiomem이 아니라 이것을 쓴다
+    # web(RPi5)은 PICAR_URL=http://192.168.50.10:8000 으로 호출한다 — 기본 매핑(8003)에 8000을 더한다
+    ports:
+      - "8000:8000"
+
+  actuation:
+    environment:
+      - MOCK_HARDWARE=false
+    # bleak은 HCI 소켓이 아니라 호스트 BlueZ(bluetoothd)와 D-Bus로만 대화하므로 system bus 소켓만
+    # 넘기면 된다. network_mode: host가 필요 없어 compose 네트워크(web -> http://actuation:8000)가 유지된다.
+    # 그래도 스캔/연결이 안 되면 최후 수단으로 network_mode: host + privileged: true 를 시험할 것
+    # (host 모드에선 ports가 무시되고 컨테이너 8000이 호스트 8000(web)과 충돌하므로 command로 --port 8002 지정).
+    volumes:
+      - /run/dbus:/run/dbus
