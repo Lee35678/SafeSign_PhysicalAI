@@ -1,0 +1,647 @@
+# 통합 테스트 · KPI 측정 · CI 계획서 (v0.2 — 초안)
+
+**팀명**: 심기일전 · **작성자**: 송승호 (하드웨어·로봇동작 R, 팀장)
+**최초 작성**: 2026-09-28(월) · **기준 커밋**: `dev` `ba8d98f` + 미커밋 테스트 정리분
+**일정**: W4 테스트·보완 마감 2026-10-04(일) **D-6** · 제출 2026-10-08(목) **D-10** · 최종 발표 2026-10-12(월)
+
+> **이 문서의 범위**: 서비스 4개(web·vision·actuation·picar)를 **엮어서** 검증하는 방법과, 그 결과로
+> KPI를 **어떻게 잴지**, 그리고 이를 GitHub에서 **자동으로 돌리는 방법(CI)**을 한 곳에 정리한다.
+> 서비스 하나 안의 단위 테스트는 각 서비스 `tests/`, 시행 원본 로그·혼동행렬은
+> [06_테스트·평가리포트](06_테스트·평가리포트.md), picar 하드웨어 실측은 [13](13_picar_하드웨어_검증리포트.md),
+> 하드웨어 설계 수치는 [11](11_하드웨어설계서.md), 실물 실행 명령은 [루트 README §4](../README.md)가 각각 다룬다 — 중복해서 적지 않고 링크한다.
+>
+> 📝 **표기**: 이 문서 안의 `§n`은 이 문서의 절이다. 수치 옆의 표시는 다음 뜻이다.
+> **실측**(측정값) · **코드값**(현재 코드 기본값) · **잠정**(문서상 임시값) · **추정**(계산·추론, 측정 안 함).
+>
+> 📌 **결정은 이 문서에서 하지 않는다.** 측정 방법의 미결 사항은
+> [proposals/회의안건_KPI측정방법](proposals/회의안건_KPI측정방법.md)에서 결정하고, 결정되면 이 문서에 반영한다.
+>
+> 🔎 **검토**: v0.2는 `sw-tester`(테스트 수·줄번호·재시도 로직·CI 초안), `hw-tester`(하드웨어 수치 출처·실물 절차),
+> `evaluator`(KPI 정의·표본 계산·데모 CSV) 관점의 검토를 반영했다. 수치·줄번호는 검토 때 원본과 다시 대조했다.
+
+---
+
+## 0. 한 장 요약
+
+| 영역 | 상태 | 막는 것 |
+| --- | --- | --- |
+| 단위 테스트 | ✅ **135개 수집 · 113 통과 · 22 xfail · 실패 0** (2026-09-28) | 없음 — 바로 추가 가능 |
+| 계약 테스트 | 🟡 착수 가능 | `jsonschema`·`httpx` 테스트 의존성 없음 |
+| mock 통합 테스트 | 🔴 지금은 의미 없음 | mock 카메라가 손 미검출만 발행 → **판정이 한 번도 안 일어남** (§2.3) |
+| 실물 E2E — web 없는 전 구간 | ✅ 2026-09-25 **7/7 성공** (데모 스크립트, 반응 시작 25~47ms) | — |
+| 실물 E2E — web 전 구간 | 🔴 불가 | web 판정 타이밍 ①-a 미구현, RPi5 쿨러 미장착 |
+| CI (GitHub Actions) | ⬜ 없음 (`.github/` 부재) | 저장소 관리자 권한, 테스트 의존성 정리 |
+| KPI 판정 성능 5개 | 🟡 오프라인 잠정 달성 (팀원 2명 105시도) | 외부인 ext03 미반영, 오프라인 판정 규칙이 운영과 다름 (§5.6) |
+| KPI 지연 2개 | 🔴 측정 전 | 시행 로그 CSV(web ②-a) 미구현, **측정 기준점 미결** (§5.6) |
+
+**핵심 결론**
+
+1. **단위 테스트와 CI unit job은 이번 주 안에 된다.** web 구현을 기다릴 필요가 없다.
+2. **mock 통합은 "판정 주입" 수단이 먼저다.** 추천은 가짜 vision 서버(stub)다(§2.3). vision 코드를 건드리지 않는다.
+3. **지연의 가장 큰 문제는 호출 순서와 재시도다.** `/command`(0.8초 대기)가 맨 앞이라 micro:bit·picar가 **약 0.85초 늦게** 반응하고, 재시도하면 AI Hand·picar가 **동작을 두 번** 한다(§4).
+4. **KPI는 재는 방법에 구멍이 있다.** 특히 판정 지연은 지금 방식대로면 **실제보다 작게** 기록된다(§5.6). 최종 시행 전에 회의로 확정해야 한다.
+5. **실물 실행은 네이티브가 기준이다**(README §4). `docker-compose.hw.yml`은 실물 전 구간에서 검증되지 않았다(§2.4).
+
+---
+
+## 1. 테스트 현황 (기준선)
+
+### 1.1 서비스별 테스트 수 (2026-09-28)
+
+| 서비스 | 테스트 파일 | 수 | 이미 검증하는 것 (새로 쓰지 않음) |
+| --- | --- | --- | --- |
+| web | `test_state_machine.py`, `test_judging_timing_spec.py` | 9 + 26 | `_post_with_retry`, `_poll_once`, 수료증 발급 / 판정 타이밍 ①-a·③·②-a 인수 테스트(22개 xfail) |
+| vision | `test_normalize.py`, `test_gate.py`, `test_classify.py`, `test_capture.py` | 21 + 7 + 4 + 3 | 정규화 불변성, 소속 게이트 분기, no_hand 경로, 캡처 루프 |
+| actuation | `test_controller.py` | 20 | GESTURE_MAP ↔ 스키마, mock execute, BLE 연결 실패, 동시 전송 직렬화 |
+| picar | `test_controller.py` | 45 | 속도 변환, I²C 바이트, LED 상태·소등, 정지 순서·재시도 |
+| data | — | 0 | — |
+
+**테스트가 없는 곳**: 전 서비스의 `app.py` 엔드포인트, vision `model_store`·`templates`·`smoothing`,
+actuation BLE 전송 실패 경로(`timeout`·`write_failed`·`microbit_unreachable`), picar `/health` degraded·자동 정지 타이머 실동작, data 전체, 통합 테스트 전부.
+
+**web 테스트가 앱 startup을 피하는 방식**: 폴링 스레드는 `app.py`의 startup 이벤트에서만 시작된다. 기존 테스트는
+`backend.state_machine`을 직접 import하거나, 새 `FastAPI()`에 라우터만 붙여 startup을 트리거하지 않는다
+(`test_judging_timing_spec.py:119-122`). 새 web 테스트도 이 방식을 따른다.
+
+### 1.2 2026-09-28에 정리한 불안정 원인 (테스트 파일만 수정)
+
+| 원인 | 조치 |
+| --- | --- |
+| vision `test_capture.py`가 import 시점에 테스트를 한 번 더 실행 | `__main__` 가드 |
+| 고정 `sleep(0.15)` | 상태가 바뀔 때까지 폴링(최대 2초) |
+| 셸 `CAMERA_MIRROR` 값에 따라 결과가 달라짐 | 테스트 안에서 고정 후 원복 |
+| `test_gate.py`가 가짜 게이트를 원복하지 않음 | 원래 함수까지 복원 + `teardown_function` |
+| `test_classify.py`의 `VALID_REASONS` 누락 2개 | 계약서 스키마 enum을 읽도록 변경 |
+| picar `sys.modules` 단언이 실행 순서에 의존 | 검사 구간에서만 모듈을 빼고 되돌림 |
+| `*_test.py` 수동 스크립트 3개가 수집됨 | `pytest.ini` `python_files = test_*.py` |
+| strict 빠진 xfail이 구현 뒤 조용히 XPASS | `pytest.ini` `xfail_strict = true` |
+
+검증: 전체 통과, 파일 순서 역순 실행 통과, `CAMERA_MIRROR=false` 통과, 스크립트 직접 실행 통과.
+
+### 1.3 테스트를 쓰면 드러날 구현 결함 (미조치)
+
+담당은 [14 §8](14_web_구현보고서.md) 분담을 따른다 — web 백엔드 `state_machine.py`는 **이동혁** 전담이다.
+
+| 서비스 | 결함 | 근거 | 담당 |
+| --- | --- | --- | --- |
+| web | `/latest`가 JSON이 아니면 `ValueError`를 못 잡아 **폴링 스레드가 죽음** (14 §3의 "폴링 건너뜀"과 다름) | `state_machine.py:242-243` | 이동혁 |
+| web | 본문 `status`를 보지 않고 HTTP 200이면 성공으로 셈 | `state_machine.py:177-201`, 03 §5-5 | 이동혁 (③) |
+| web·actuation | `/command` web 타임아웃 1.5초 < actuation ACK 대기 2.0초 → 재시도 시 **이중 전송**. `_post_with_retry`는 읽기 타임아웃·5xx·4xx·연결 실패를 구분하지 않고 2회까지 보낸다 | `state_machine.py:177-201`, `ble_bridge.py:39` | 이동혁 (③) |
+| actuation | BLE 회신을 보낸 명령과 대조하지 않음 → 늦게 온 이전 `OK{n}`을 다음 명령의 회신으로 받을 수 있음 | `ble_bridge.py:157-159` | 송승호 |
+| picar | `{"led":"on"}`처럼 형식이 틀린 요청에 **500** | `controller.py:398` | 송승호 |
+| vision | landmark에 `x` 키가 빠지면 `KeyError`가 그대로 올라옴 | `normalize.py:113` | 이동혁 |
+
+---
+
+## 2. 통합 테스트 계획
+
+### 2.1 세 층 구조
+
+| 층 | 무엇을 검증 | 어디서 | 실행 | 담당 에이전트 |
+| --- | --- | --- | --- | --- |
+| ① 계약 테스트 | 각 서비스 요청·응답이 `shared/schemas/*.json`과 03을 지키는가 | 프로세스 안(TestClient) | 개발 PC · CI | `sw-tester` |
+| ② mock 통합 | docker compose로 4개 서비스를 띄워 web → actuation·picar 흐름이 도는가 | 컨테이너 | 개발 PC · CI | `sw-tester` |
+| ③ 실물 E2E | RPi5·RPi4B에서 BLE·모터·LED로 시연 흐름이 도는가 | 실물 보드 (네이티브) | **수동** | `hw-tester` |
+
+### 2.2 ① 계약 테스트
+
+- **호출하는 쪽**(web): 보내는 본문을 스키마로 검증한다.
+- **호출받는 쪽**(vision·actuation·picar): 자기 `app.py` 응답을 스키마로 검증한다.
+- **각 서비스의 `tests/` 안에서만** 검증한다. vision·actuation·picar는 `src/app.py`를 최상위 모듈 `app`으로 import해서, 한 프로세스에서 같이 import하면 서로 덮어쓴다.
+- 03에 **없는** 인터페이스(`/latest`, `/reset`, `/health` 필드, `/result`·`/progress` 본문 형식, vision 호출 타임아웃)는 문서화가 먼저다. 문서가 없는 채로 테스트를 쓰면 현재 코드를 옮겨 적는 테스트가 된다.
+
+| 서비스 | 엔드포인트 | 대조할 스키마·문서 |
+| --- | --- | --- |
+| vision | `GET /latest`, `POST /predict` | `judgment_result.schema.json` (03 §4) |
+| actuation | `POST /command` | `aihand_command.schema.json` 요청, 03 §5-1·§5-5 응답 `status` |
+| actuation | `POST /result`, `POST /progress` | 03 §5-3 (HTTP 본문 형식은 03에 없음 — 문서화 먼저) |
+| picar | `POST /picar` | `picar_command.schema.json` 요청, 03 §5-2 응답 |
+| 전체 | `GET /health` | 03에 없음 — 문서화 먼저 |
+
+### 2.3 ② mock 통합 테스트
+
+#### 지금 막혀 있는 이유
+
+| 이유 | 근거 |
+| --- | --- |
+| `MOCK_CAMERA=true`면 **손 미검출 프레임만** 발행 → 약 3초 뒤 SC-04로 넘어갈 뿐 판정이 없음 | `capture.py:191-207` |
+| `/predict`는 `/latest`를 갱신하지 않음 → 밖에서 판정을 넣을 방법이 없음 | vision `app.py:96-99` |
+| 모델 번들 `svm_classifier.joblib`이 저장소에 없음(gitignore) | `.gitignore:42` |
+| actuation·picar mock은 `mocked`만 돌려주고 **호출을 받았는지 확인할 수단이 없음** | `ble_bridge.py:166`, picar `controller.py` |
+| compose에 healthcheck가 없음 → `docker compose up --wait`가 "실행됨"만 확인하고 "준비됨"은 보장하지 않음 | `docker-compose.yml` |
+
+#### 새로 필요한 기능
+
+| 기능 | 내용 | 담당 |
+| --- | --- | --- |
+| **판정 주입 (추천: stub vision)** | `/latest`·`/reset`·`/health` + 테스트용 `POST /_test/judgment`만 있는 작은 FastAPI를 `tests/integration/stubs/`에 둔다. CI용 compose에서 vision을 이것으로 바꾼다. vision 코드 무수정, mediapipe 이미지 빌드도 빠져 CI가 빨라진다. **대안**: vision에 `MOCK_CAMERA=true`일 때만 켜지는 주입 엔드포인트(vision 코드 수정) | 방식 결정 이동혁(R) · 승인 송승호(A) |
+| **mock 호출 기록** | `MOCK_HARDWARE=true`일 때만 `GET /_mock/history`로 받은 명령 목록 반환 | 송승호 |
+| **mock 장애 주입** | `MOCK_DELAY_MS`, `MOCK_FAIL=timeout\|error`로 지연·실패 흉내. ③ 재시도 규칙과 이중 전송 검증용. ⚠️ mock 경로는 BLE 전송 전에 반환하므로(`ble_bridge.py:166-168`) **BLE 잠금·재스캔 문제는 이것으로 검증할 수 없다** | 송승호 |
+| **healthcheck** | `docker-compose.ci.yml`에서 **4개 서비스 전부**에 `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (slim 이미지엔 curl 없음). 하나라도 빠지면 `--wait`가 그 서비스의 준비를 기다리지 않는다 | 공통 |
+| **실행 스위치** | 루트 `conftest.py`에 `--run-integration` 추가 (`--run-hw`와 같은 방식). 없으면 compose를 안 띄운 PC에서 `pytest`만 쳐도 실패 | 공통 |
+
+#### stub vision 인터페이스 (제안)
+
+| 엔드포인트 | 동작 |
+| --- | --- |
+| `GET /health` | `{"status": "ok", "service": "vision-stub"}` |
+| `GET /latest` | 마지막으로 주입된 판정(`judgment_result.schema.json` 형식). 주입 전에는 `{"is_reject": true, "reason": "no_hand", ...}` |
+| `POST /reset` | `{"status": "ok"}` + 호출 횟수 기록 |
+| `POST /_test/judgment` | 본문을 그대로 다음 `/latest` 응답으로 설정. 스키마 검증 후 저장 |
+| `GET /_test/calls` | `/reset` 호출 횟수·시각 (S2 검증용) |
+
+#### 시나리오
+
+| # | 시나리오 | 판정 기준 | 선행 조건 | 파일 (제안) |
+| --- | --- | --- | --- | --- |
+| S1 | 기동 | 4개 서비스 `/health` 정상, web `/api/state` devices 연결됨 | healthcheck | `tests/integration/test_s1_boot.py` |
+| S5 | 장치 장애·복구 | picar 컨테이너 정지 → web 계속 진행·devices unreachable → 재기동 → 복구 | 없음 | `test_s5_device_outage.py` |
+| S7 | 계약 | 모든 응답이 스키마 통과 | jsonschema | `test_s7_contract.py` |
+| S2 | 정답 1회 | 시작 → (①-a 시범·확인) → 정답 주입 → actuation·picar 호출 기록 확인 → 진행도 +1 → vision `/reset` 호출 | 판정 주입 · 호출 기록 · **①-a** | `test_s2_correct.py` |
+| S3 | 오답·미판정 | 오답(1초 유지)·below_tau·OOD 주입 / 손 미검출 3초 → SC-04 | 판정 주입 · ①-a | `test_s3_wrong_reject.py` |
+| S4 | 완주 | 7종 → summary → 수료증 발급 | S2 | `test_s4_complete.py` |
+| S6 | 지연·장애 | actuation 2초 지연 → `/command` **1회만** 전송 / picar 읽기 타임아웃 → **재시도 없음** | 장애 주입 · **③** | `test_s6_timeout_no_retry.py` |
+
+S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 명세 기준으로 미리 쓰되,
+[test_judging_timing_spec.py](../services/web/tests/test_judging_timing_spec.py)처럼 **구현 감지 조건부 strict xfail**로 건다(§3.4 #5).
+모든 통합 테스트에는 `@pytest.mark.integration`을 붙인다.
+
+### 2.4 ③ 실물 E2E
+
+#### 실행 방식
+
+- **기준 경로는 네이티브 4개 프로세스다**([README §4](../README.md)). 2026-09-25 전 구간 통합도 이 방식으로 했다.
+- `docker-compose.hw.yml`은 **actuation·picar 단독 검증에만** 쓴다. web의 `PICAR_URL`(`http://picar:8000`)을 덮어쓰지 않고, vision 이미지에는 picamera2가 없어서 compose로는 전 구간을 띄울 수 없다. hw.yml을 쓸 때만 네이티브 uvicorn 종료·`/run/dbus` 마운트를 확인한다.
+
+#### 자동 판정과 육안 확인
+
+| 구분 | 항목 |
+| --- | --- |
+| 자동 판정 (`pytest --run-hw -m hw`) | actuation `/health` `microbit_connected`, picar `/health` `hardware.i2c.reachable`, `/command` 7종 회신 `OK{n}`과 지연, `OK:CORRECT`·`OKP37` 회신, 주행 뒤 `motion_active=false` + `last_stop_error=null` |
+| 사람이 확인 | AI Hand 손모양(펌웨어는 각도와 무관하게 OK 회신), micro:bit O/X, LED 색·동시 점멸·2초 소등(결선이 없어도 `ok`), **바퀴가 실제로 멈췄는지**(`motion_active`는 타이머 상태일 뿐이라 바퀴가 돌아도 false일 수 있음, 13 §4), 바퀴 방향, 전원 차단 후 재연결 |
+| 알려진 한계 (실패로 판정 안 함) | G3≈G6·G4≈G7 육안 구분 불가(엄지 서보), micro:bit `music` 사용 금지(패닉 070) |
+
+#### hw 테스트 목록 (제안)
+
+| 파일 | 테스트 | 환경변수 |
+| --- | --- | --- |
+| `services/actuation/tests/test_hw_microbit.py` | `test_health_microbit_connected`, `test_command_replies_ok_n`(7종 파라미터, `reply == f"OK{n}"`, 각 1회), `test_command_under_1200ms`, `test_result_ack_under_300ms`, `test_progress_replies_okp` | `ACTUATION_URL` |
+| `services/picar/tests/test_hw_picar.py` | `test_health_i2c_reachable`, `test_stop_ok`, `test_drive_auto_stops`(2.5초 폴링, `last_stop_error is None`), `test_speed_capped_at_50` | `PICAR_URL` |
+| `services/vision/tests/test_hw_camera.py` | `test_camera_running_csi`, `test_result_fps_min` | `VISION_URL` |
+
+- 모두 `@pytest.mark.hw`. 주소는 환경변수로만 받는다.
+- teardown: picar는 stop + LED off를 보낸다. AI Hand는 별도 중립 명령이 없다(G5 주먹이 초기 자세 — 펌웨어 기준, hw 검토).
+- 측정 보조 스크립트: `aihand_test.py --auto --repeat 1`, `load_test.py`(RPi5에서 실행), `aihand_vision_picar_demo.py`.
+
+#### 시행 당일 절차 (제안 — 기동 순서는 README §4.2)
+
+**역할**: 학습자(카메라 앞) · 관찰자(AI Hand·LED·바퀴 육안 확인, **배터리 스위치 담당**) · 기록자(콘솔·육안 기록 양식)
+
+1. RPi5·RPi4B 재부팅 → 양쪽 `vcgencmd get_throttled`가 `0x0`인지 확인. 이 값은 한 번 선 비트가 부팅 전까지 남으므로 **재부팅 직후** 기록한다(13 §2). 쿨러 장착 여부도 기록.
+2. micro:bit 펌웨어: 저장소 `aihand_control.ts`를 **통째로** 플래시했는지와 일자를 기록(08 펌웨어 불일치, README §4.1).
+3. picar: 1회차는 바퀴를 띄우고, 이후 주행 공간 확보. **USB-C 어댑터 동시 연결 금지**(헤더 5V 역류 방지 없음). 배터리 스위치를 손 닿는 곳에 두고 누적 구동 시간 기록 시작(배터리 전압 측정 수단 없음, 13 §4).
+4. 기동: 터미널 1 RPi4B picar → 2 RPi5 actuation(먼저 `bluetoothctl show | grep Discovering` → `no`) → 3 vision `bash scripts/run_rpi5.sh` → 4 web(`PICAR_URL=http://192.168.50.10:8000`, `services/web` 폴더에서).
+5. README §4.3 health 4종 확인: vision `model.loaded: true`·`camera.state: running`, actuation `microbit_connected: true`, picar `hardware.i2c.reachable: true`·`max_speed_pct: 50`, web devices 3개 ok. 실물 모드 확인(`MOCK_HARDWARE=false`로 띄웠는지, 응답에 `mocked`가 없는지).
+6. AI Hand 화각 확인: 손을 치우고 AI Hand를 '정지' 자세로 둔 채 손 미검출이 나오는지(데모 스크립트의 화각 점검과 같은 방법).
+7. 모니터링: RPi5 `watch -n2 'vcgencmd measure_temp; vcgencmd get_throttled'`, RPi4B `watch -n1 vcgencmd get_throttled`.
+8. 종료: **역순 Ctrl+C**(web → vision → actuation → picar). picar는 **정지 상태에서만** 끈 뒤 배터리 스위치 OFF.
+
+**육안 기록 양식** (시도마다 1행, 06 §1-2에 첨부)
+
+| 시각 | 수신호 | AI Hand 손모양 (정상 / 알려진 한계 / 실패) | micro:bit O·X | LED 색·점멸·2초 소등 | 바퀴 방향·2초 뒤 정지 | 특이사항 |
+| --- | --- | --- | --- | --- | --- | --- |
+
+#### 안전·복구
+
+| 상황 | 조치 |
+| --- | --- |
+| **비상정지** | 관찰자가 **배터리 스위치 OFF**(RPi4B도 꺼짐, SD 손상 가능성 감수 — 08, README §4.2). 프로세스가 살아 있으면 RPi5에서 `/picar` stop 전송 |
+| 주행 중 프로세스 종료 | Ctrl+C·`docker stop`·`kill -9` **어떤 방식이든** 모터는 마지막 명령을 유지한다. 종료 시 정지 처리가 없고 자동 정지 타이머는 daemon 스레드다(picar `controller.py:193-195`, 11 §9) → 정지 상태에서만 끈다 |
+| 바퀴가 안 멈춤 | 배터리 OFF → `/health` `last_stop_error` 기록 → 해당 회차 중단 (08 I²C 정지 유실) |
+| micro:bit 끊김·리셋 | web 진행을 멈추고 `curl -X POST localhost:8002/progress -H 'Content-Type: application/json' -d '{"current":1,"total":7}'`로 재연결을 먼저 유도 → `microbit_connected: true` 확인 후 재개. 첫 명령이 재스캔으로 web 1.5초를 넘겨 이중 전송될 수 있다. 그래도 안 보이면 README §4.5·§4.6(`bluetoothctl disconnect <MAC>`, micro:bit 리셋) |
+| actuation을 `kill -9`로 끔 | BlueZ에 연결이 남아 다음 실행 때 micro:bit가 안 보인다 → micro:bit 리셋 또는 `bluetoothctl disconnect` (README §4.5) |
+| 서보 과부하 | 서보가 정격 초과(실측 7.46V, 11 §4.4)로 돈다. **반복 상한 수치는 어느 문서에도 없다.** 제안값: 세션당 연속 35동작 이하(2026-09-23 연속 검증 범위), 세션 사이 휴지 — §6.4 결정 대기 |
+
+#### CI 연결
+
+**하지 않는다.** RPi에 self-hosted runner를 붙이면 push마다 모터·서보가 움직이고, 공개 저장소라면 fork PR 코드가 보드에서 실행될 수 있다.
+
+### 2.5 pytest 규칙
+
+| 규칙 | 설정 위치 |
+| --- | --- |
+| `--import-mode=importlib` (actuation·picar의 같은 이름 `test_controller.py` 충돌 방지) | `pytest.ini` |
+| `python_files = test_*.py` — 수동 스크립트는 `test_` 접두어를 쓰지 않는다 | `pytest.ini` |
+| `xfail_strict = true` — 미구현 명세는 구현 감지 조건과 `raises=`로 좁혀 건다 | `pytest.ini` |
+| 마커 `unit` / `integration` / `hw` — ⚠️ **현재 마커가 붙은 테스트는 0개**다. 그래서 `-m "not integration"`은 지금은 아무것도 거르지 않는다. 계약·통합·hw 테스트를 쓸 때부터 붙인다 | `pytest.ini` |
+| `--run-hw` (구현됨), `--run-integration` (예정) | 루트 `conftest.py` |
+| 환경변수는 import 시점에 읽힌다 → `setenv`가 아니라 **모듈 속성을 monkeypatch** | 각 테스트 |
+| 모듈 전역을 바꾸면 반드시 원복, 고정 sleep 대신 마감시간 있는 폴링 | 각 테스트 |
+| web 테스트는 앱 startup(폴링 스레드)을 띄우지 않는다 (§1.1) | 각 테스트 |
+
+### 2.6 로컬 실행 명령
+
+| 목적 | 명령 (저장소 루트에서) |
+| --- | --- |
+| 전체 | `python -m pytest` |
+| 서비스 하나 | `python -m pytest services/web` |
+| 마지막 실패만 다시 | `python -m pytest --lf` |
+| 실물 (보드에서) | `python -m pytest --run-hw -m hw services/actuation` 등 — 환경변수로 주소 지정 |
+| mock 통합 (예정) | `docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait` 후 `python -m pytest tests/integration --run-integration` |
+| CI 실패 재현 | CI와 같은 Python 3.11 가상환경을 만들고 `pip install -r services/<svc>/requirements-test.txt` 후 같은 명령 (§3.4 #1) |
+
+---
+
+## 3. CI 계획 (GitHub Actions)
+
+저장소: `github.com/Lee35678/SafeSign_PhysicalAI` · 현재 `.github/` 없음.
+
+### 3.1 사전 조건
+
+| 조건 | 누가 |
+| --- | --- |
+| Settings → Actions 허용 | 저장소 관리자(Lee35678) |
+| 브랜치 보호: `dev`·`main` PR 머지 전 unit job 통과 필수 | 저장소 관리자 |
+| 비공개 저장소면 무료 한도 월 2,000분 → integration job은 PR·수동 실행 때만 | 팀 합의 |
+| 미커밋 파일 커밋: `conftest.py`, `pytest.ini`, `test_judging_timing_spec.py`, `.claude/agents/`, 이 문서 | 송승호 |
+| `.gitignore`에 `.pytest_cache/` 추가 (지금 무시되지 않아 딸려 들어갈 수 있음) | 송승호 |
+
+### 3.2 파일 구성
+
+```
+.github/workflows/ci.yml            # unit job + integration job
+docker-compose.ci.yml               # vision → stub 교체 + 4개 서비스 전부 healthcheck
+tests/integration/                  # S1~S7, stubs/vision_stub.py
+services/*/requirements-test.txt    # -r requirements.txt + pytest, httpx, jsonschema
+services/picar/requirements-hw.txt  # gpiozero, lgpio, smbus2 분리 (Dockerfile은 둘 다 설치)
+```
+
+- 이름을 `requirements-test.txt`로 하는 이유: vision에 웹캠 스크립트용 `requirements-dev.txt`(opencv, pillow)가 이미 있다.
+- 현재 pytest는 어느 requirements에도 없고, httpx는 web에만 있다. `requirements-test.txt`가 없으면 워크플로가 돌지 않으므로 **워크플로보다 먼저** 만든다.
+- 루트 `tests/integration/`을 수집하려면 `pytest.ini` `testpaths`에 `tests`를 추가한다.
+
+### 3.3 워크플로 초안
+
+```yaml
+name: ci
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false            # 한 서비스가 실패해도 나머지 결과는 보이게
+      matrix:
+        service: [web, actuation, picar, vision]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # Dockerfile(python:3.11-slim)과 같게
+          cache: pip
+      - run: pip install -r services/${{ matrix.service }}/requirements-test.txt
+      - run: pytest services/${{ matrix.service }} -m "not integration" --junitxml=report.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-${{ matrix.service }}
+          path: report.xml
+
+  integration:
+    needs: unit
+    if: github.event_name != 'push'   # PR·수동 실행 때만
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pytest httpx jsonschema
+      - run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait
+      - run: pytest tests/integration -m integration --run-integration
+      - if: failure()
+        run: docker compose logs --no-color > compose.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: compose-log, path: compose.log }
+      - if: always()
+        run: docker compose down -v
+```
+
+- 저장소 루트에서 `pytest services/<svc>`로 돌리므로 루트 `pytest.ini`·`conftest.py`가 그대로 적용된다.
+- 서비스별로 job을 나누는 이유는 의존성 충돌이다(data `numpy==1.26.4` 대 vision `numpy>=2`). data는 테스트가 생기면 matrix에 추가한다.
+
+### 3.4 첫 실행에서 실패할 가능성이 높은 곳
+
+| # | 원인 | 확인 상태 | 대응 |
+| --- | --- | --- | --- |
+| 1 | **고정 버전으로 한 번도 돌려 본 적 없음.** 지금까지는 호스트 Python 3.13·fastapi 0.141·bleak 3.0으로만 통과. CI는 3.11·fastapi 0.115·httpx 0.27·bleak 0.22 | 실측 (버전 차이). 3.12 전용 문법은 코드에 없음 | 드러나는 실패를 고친다 — CI의 목적 |
+| 2 | picar `lgpio==0.2.2.0`이 x86 러너에서 빌드 실패 | 추정 | `requirements-hw.txt`로 분리 (테스트는 mock 경로라 불필요) |
+| 3 | vision mediapipe·opencv가 `libGL.so.1`을 못 찾음. mediapipe 1.0.x는 호스트(3.13)에 설치돼 있지만 **3.11용 휠 여부는 미확인** | 추정 | `apt-get install -y libgl1 libglib2.0-0` 단계 추가, `requirements-test.txt` 작성 때 3.11 가상환경에서 먼저 설치해 본다 |
+| 4 | 미커밋 파일을 CI가 못 봄 | 확인 | §3.1 커밋 |
+| 5 | 스펙 인수 테스트의 xfail은 **구현 감지 조건부**다(`xfail(not PHASE_READY, strict=True)` 등, `test_judging_timing_spec.py:126-152`). 스펙 §8 이름대로 구현하면 조건이 바뀌어 **자동으로 일반 테스트가 된다 — 마커를 지울 필요 없음**. 빨간불이 나는 경우는 두 가지다: ① 감지는 됐는데 동작이 스펙과 다를 때(정상적인 실패), ② 이름이 스펙 §8과 달라 감지가 안 됐는데 동작은 맞을 때(strict XPASS) | 확인 (코드) | 구현 PR을 `dev`에 병합할 때(송승호, 14 §8 ⑪) 스펙 §8 이름과 대조한다 |
+
+### 3.5 운영 규칙 (제안)
+
+- unit job은 모든 PR·push에서, integration job은 PR·수동 실행에서만 돈다.
+- 실패하면 머지하지 않는다. 고칠 수 없으면 xfail(strict, 사유·`raises=` 명시)로 걸고 이슈로 남긴다.
+- 실물 E2E 결과는 CI가 아니라 06·13 리포트에 남긴다.
+- `dev` 병합은 송승호가 단위 테스트를 붙이며 한다(14 §8). 병합 순서는 이동혁 백엔드 → 조은수 프론트엔드 → 김지훈.
+
+---
+
+## 4. 지연 분석
+
+### 4.1 KPI 목표 (10_PRD §2.1)
+
+| 지표 | 목표 | 정의 |
+| --- | --- | --- |
+| 판정 지연 (P95) | ≤ 1.0초 | 손 정지 시점 → 시스템 판정 확정 |
+| 물리 피드백 지연 (P95) | ≤ 2.0초 | 손 정지 시점 → AI Hand + picar + micro:bit 중 가장 늦게 **완료**되는 시점 (**"시작"으로 재정의 검토 중**) |
+
+### 4.2 정답 한 번의 흐름 지연
+
+| # | 구간 | 값 | 구분 · 근거 (측정 조건) | 담당 |
+| --- | --- | --- | --- | --- |
+| 1 | 카메라 프레임 간격 | 최대 33ms (30fps) | 실측 · 11 §3 | 이동혁 |
+| 2 | 캡처 → 한 프레임 판정 (MediaPipe + SVM) | **39~72ms** | 실측 · 2026-09-25 web 없는 데모 7건, 쿨러 없음 (11 §9.3, 15) | 이동혁 |
+| 3 | N=3 연속 프레임 확정 | 약 75ms (판정 26.6fps 기준) | N 잠정(05 §8-0), 시간 추정 | 이동혁 |
+| 4 | web 폴링 대기 | 0~200ms (`VISION_POLL_INTERVAL_S=0.2`) | 코드값 | 이동혁 |
+| 5 | `/command` → 제스처 후 회신 | **0.79~0.83초** (49건 794~825ms, 중앙 806) — web은 그동안 대기 | 실측 · 2026-09-23 RPi5 네이티브 `aihand_test.py` (11 §4.5). 펌웨어는 마지막 손가락 명령 150ms 뒤 회신하므로 서보 이동이 끝나기 약 50ms 전일 수 있다(펌웨어 코드 기준, 육안 완료는 별도) | 송승호 |
+| 6 | `/result` → micro:bit ACK | 26~42ms (09-23) · 36~37ms (09-25 재검증). ACK를 먼저 보내고 O/X 1초는 백그라운드 표시 | 실측 · 11 §4.5 | 송승호 |
+| 7 | `/progress` → micro:bit ACK | **32~38ms** (09-23) · 38~39ms (09-25 재검증) | 실측 · 11 §4.5 | 송승호 |
+| 8 | `/picar` 왕복 (Wi-Fi + I²C 쓰기) | 13~21ms (09-24 AP 경유, 바퀴 띄운 벤치) · 19~21ms (09-25 AP 경유 데모) · P95 43~49ms (09-23 **공유기 경유** 바닥 주행 부하 시험). 응답은 I²C 쓰기가 끝난 뒤 온다 → "모터 명령 전달 시점"이며 바퀴 가속은 포함하지 않는다 | 실측 · 07, 11 §6·§9.3, 13 §4.1 · `controller.py:265-268` | 송승호 |
+| 9 | picar 주행 | 2.0초 뒤 자동 정지 | 잠정 | 송승호 |
+
+**호출 순서 문제**: web `_dispatch_feedback`은 5 → 6 → 7 → 8을 **차례대로** 보낸다. 그래서 `/command`의 0.8초가 끝나야
+micro:bit·picar가 반응을 시작한다(판정 후 약 0.85초). web 없는 데모에서는 판정 확정 → 마지막 장치 반응 시작이
+**25~47ms**였다(picar 19~21ms · micro:bit 25~47ms, 7건). 권장 순서는 **`/picar` → `/result` → `/command` → `/progress`**이고
+결정은 이동혁 몫이다(스펙 §7.3).
+
+### 4.3 합계 (추정)
+
+| 기준 | 현재 순서 | 권장 순서 | KPI |
+| --- | --- | --- | --- |
+| 판정 확정 (1~4) | 약 0.15~0.35초 | 같음 | ≤ 1.0초 ✅ |
+| 반응 **시작** | 약 1.2초 | 약 0.4초 | ≤ 2.0초 ✅ |
+| 반응 **완료** — picar 제외 (시행 로그 `feedback_done_ms` 정의) | 약 2.0~2.2초 (판정 + 손 0.8 + ACK + LED 1.0) | 약 1.2~1.4초 (LED와 손 동작이 겹침) | 현재 ❌ · 권장 ✅ |
+| 반응 **완료** — picar 주행 포함 (10_PRD 정의 그대로) | 2.0초 초과 | 2.0초 초과 | ❌ picar 주행 2초만으로 초과 |
+| 참고: 11 §8 계산 | 약 3.0초 — 판정을 KPI 예산 1.0초로 넣은 값 | — | — |
+
+- 권장 순서의 1.2~1.4초는 **LED 백그라운드 표시 중에 `G` 명령 지연이 늘지 않는다는 가정**이다. 실측한 적이 없다.
+- "완료" 기준이어도 **picar를 빼고 호출 순서를 바꾸면 달성 가능성이 있다.** 회의안건 안건 3의 판단 근거로 쓴다.
+
+### 4.4 타임아웃·재시도로 늘어나는 최악 지연
+
+web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 **최대 2회** 보낸다(`state_machine.py:177-201`).
+
+| 호출 | 1회 타임아웃 | 최악 | 문제 |
+| --- | --- | --- | --- |
+| `/command` | 1.5초 | **3.0초** | actuation ACK 대기 2.0초 > web 1.5초 → 재시도 시 **같은 동작 두 번**. ③(읽기 타임아웃 재시도 금지) 미구현 |
+| `/result`, `/progress` | 0.5초 | 1.0초씩 | `/command`가 BLE 잠금을 최대 2초 쥐면 연쇄 타임아웃 가능 (추측) |
+| `/picar` (정답일 때만 호출) | 0.5초 | 1.0초 | 읽기 타임아웃 뒤 재시도 → **주행 두 번** |
+| 판정 1회의 장치 호출 합계 | — | **정답 약 6초 · 오답 약 5초** | 그동안 폴링 스레드가 멈춤 |
+| vision `/latest` | **지정 안 됨** (httpx 기본 5초) | 5초 | vision이 멈추면 폴링도 5초씩 멈춤 |
+| 장치 `/health` 점검 | 1.5초 × 3개, 5초 간격 | 화면 장치 상태가 최대 약 5초 늦음 | 표시 지연 |
+
+### 4.5 설계상 대기 (일부러 둔 지연)
+
+| 대기 | 값 | KPI와의 관계 |
+| --- | --- | --- |
+| 오답 확정 전 유지 `WRONG_CONFIRM_S` | 1.0초 (스펙 §4, 미구현) | ⚠️ 오답을 판정 지연에 넣으면 P95가 반드시 1.0초 초과 |
+| SC-04 진입 (손 미검출) | 15회 연속 × 0.2초 = 3.0초 (잠정, 09) | 화면 전환 기준, KPI 무관 |
+| micro:bit O/X 표시 | 1.0초 | "완료" 기준 KPI의 구성 요소 |
+| AI Hand 손가락 간격 | 150ms × 5 | 100ms 이하는 서보 3개가 겹친다 — **전류 재계산·연속 검증 전에는 쓰지 않는다**(11 §4.4) |
+| picar 주행 · LED 유지 | 2.0초 (잠정) | picar를 "완료"에 넣으면 KPI 초과 |
+| vision `/reset` 뒤 N프레임 재누적 | 약 75ms (추정) | 작음 |
+
+### 4.6 기동·복구 지연
+
+| 상황 | 지연 | 근거 |
+| --- | --- | --- |
+| actuation 기동 시 BLE 연결 | 스캔 최대 5초(`SCAN_TIMEOUT_S`) + `BleakClient.connect()`(타임아웃 미지정, bleak 기본값 10초로 추정) | `ble_bridge.py:38·58·70-72` |
+| BLE가 끊긴 상태에서 명령 도착 | **잠금을 쥔 채** 스캔 + 연결 → **15초 이상 걸릴 수 있음**(추정). 쓰기가 실패하면 한 번 더 연결. web 1.5초 타임아웃을 크게 넘김 | `ble_bridge.py:129-155` |
+| 다른 창의 `bluetoothctl scan on` | BLE 연결 자체가 타임아웃 | 08 |
+| compose 기동 순서 | healthcheck 없음 → 처음 몇 초 web이 장치를 미연결로 봄 | `docker-compose.yml` |
+| RPi5 열 스로틀링 (86.2°C, `0xe0008`, 09-25 web 전 구간 중) | 판정 fps 저하 → §4.2의 1~3 증가 | 11 §2.1, 08, 쿨러 미장착 |
+
+### 4.7 해결 우선순위
+
+| 순위 | 문제 | 해결 | 담당 | 검증 |
+| --- | --- | --- | --- | --- |
+| 1 | `/command` 이중 전송 · `/picar` 이중 주행 | ③ 구현 (읽기 타임아웃 재시도 금지) | 이동혁 | 스펙 인수 테스트 + S6 (mock 장애 주입) |
+| 2 | micro:bit·picar 0.85초 늦은 반응 | 호출 순서 변경 | 이동혁 | 시행 로그 `feedback_ms` |
+| 3 | 판정 지연 측정 기준점 | §5.6 #1 결정 | 팀 | — |
+| 4 | 물리 피드백 시작 대 완료 | §5.6 #3 결정 | 팀 | — |
+| 5 | BLE 끊김 시 잠금을 쥔 채 스캔·연결 | 재연결을 요청 경로 밖으로, 또는 잠금 전 빠른 실패 | 송승호 | **가짜 bleak 단위 테스트** + hw 테스트(micro:bit 리셋 뒤 첫 명령). mock 경로로는 검증 불가 |
+| 6 | vision `/latest` 타임아웃 미지정 · 비JSON 미처리 | 폴링 간격에 맞는 타임아웃, `ValueError` 처리 | 이동혁 | 단위 테스트 |
+| 7 | 열 스로틀링 | 액티브 쿨러 장착 | 송승호 | 재부팅 뒤 `get_throttled`, 판정 fps 재측정 |
+
+---
+
+## 5. KPI 측정 방법
+
+### 5.1 정의와 계산
+
+| KPI | 목표 | 계산 | 필요한 데이터 |
+| --- | --- | --- | --- |
+| 정답률 | ≥ 92% | 정답 / 전체 시도 | 시도마다 정답 클래스 · 예측 클래스 |
+| 오분류율 | ≤ 3% | 다른 수신호로 판정 / 전체 시도 | 같음 |
+| 미판정률 | ≤ 5% | 미판정(τ 미달·OOD) / 전체 시도 | 같음 |
+| Macro F1 | ≥ 0.90 | 신호 7종 F1 평균 (negative 제외, 05 §7-1) | 혼동행렬 7 × 8 (예측 7종 + negative 열) |
+| 치명 오분류 | 0건 | "정지"가 다른 판정으로 간 건수 — **정의가 세 갈래로 나뉨** (§5.6 #4) | 혼동행렬 "정지" 행 |
+| 판정 지연 | P95 ≤ 1.0초 | 값을 모아 95번째 백분위수 (`numpy.percentile(x, 95)`) | 시도마다 시각 |
+| 물리 피드백 지연 | P95 ≤ 2.0초 | 같음 | 시도마다 장치별 응답 시각 |
+
+앞의 세 비율은 **배타적이라 합이 100%**다. 시행 로그 `outcome`과의 대응: `correct` → 정답, `wrong` → 오분류, `below_tau`·`out_of_distribution` → 미판정.
+
+### 5.2 측정 경로 두 가지
+
+| | A. 오프라인 (vision 단독) | B. 온라인 (실물 전 구간) |
+| --- | --- | --- |
+| 방법 | `record_dataset.py` 촬영(테이크마다 3프레임 JSON) → `evaluate_kpi.py` | 학습자가 web에서 7종 수행 → 판정 확정마다 CSV 1행 (스펙 §7) → 06 1부·2부 |
+| 잴 수 있는 것 | 판정 성능 5개 | 7개 전부 |
+| 현황 | 팀원 2명(JH·me01) **105시도 잠정**: 정답 97.1% · 오분류 0% · 미판정 2.9% · F1 0.985 · 치명 0 (05 §7-3). **외부인 ext03 70테이크 미반영**. 자체 촬영 건수(JH 234 · me01 129 · ext03 210)는 04 §2-4와 일치 | web ①-a·②-a 미구현, 쿨러 미장착 |
+| 한계 | 지연 측정 불가(JSON에 캡처 시각 없음). 결과를 화면에 출력만 함(혼동행렬·CSV 파일 없음). **판정 규칙이 운영과 다름**(§5.6 #7). 모델 번들이 저장소에 없어 다른 PC에서 재계산하려면 번들을 따로 받아야 함 | 과도 자세·손 미검출·SC-04는 기록 안 함 → 오프라인과 모수가 다름 |
+
+**web 없는 데모 CSV로 대신 쓸 수 있는 범위** — [aihand_vision_picar_demo.py](../services/actuation/scripts/aihand_vision_picar_demo.py)의
+`RECORD_FIELDS`(`:244-246`, 17개)는 스펙 §7.2 앞쪽 17열과 **이름이 같다.** 하지만 다음이 다르다.
+
+| 차이 | 영향 |
+| --- | --- |
+| `outcome`이 `correct`·`wrong`·`timeout`·`skip` 네 가지뿐이다. `below_tau`·OOD는 안내만 하고 계속 기다리다 `timeout`으로 접힌다 | **미판정률을 데모 CSV로 계산할 수 없다**(`timeout`에 진짜 미판정과 단순 시간 초과가 섞임) |
+| `aihand_ok`·`aihand_ms`, `feedback_done_ms`, `*_status`, `picar_led_ok`, `mocked`, `subject` 열이 없다 | 완료 기준 지연, 실물 여부 판별, 인물 단위 비교 불가 |
+| 데모는 판정을 기다리는 동안 picar가 순항한다 | 데모의 `picar_ms`는 "동작 시작"이 아니라 "수신호 동작으로 전환한 시점" |
+| 저장소에 있는 `services/actuation/aihand_vision_picar_20260925_215425.csv`(7행)는 `observe_ms` 열이 없는 **옛 형식**이다 | 병합할 때 열을 맞춰야 함 |
+
+→ 데모 CSV는 **공통 지연 열(`vision_latency_ms`·`picar_ms`·`microbit_ms`·`feedback_ms`)을 web 결과와 비교하는 용도**로만 쓴다.
+
+### 5.3 시행 로그의 지연 열 (요약, 원본은 [스펙 §7.2](proposals/web_판정_타이밍_스펙.md))
+
+원점은 `t_dec`(판정 확정 시각)다.
+
+| 열 | 계산 | 의미 |
+| --- | --- | --- |
+| `vision_latency_ms` | vision 응답 `latency_ms` | 판정 지연으로 쓰는 값 (**마지막 프레임 기준 — §5.6 #1**) |
+| `picar_ms` | `t_dec` → `/picar` 응답 | picar 반응 시작 (모터 명령 전달 시점) |
+| `microbit_ms` | `t_dec` → `/result` 응답 | micro:bit 반응 시작 |
+| `aihand_ms` | `t_dec` → `/command` 응답 | AI Hand 동작 완료 (펌웨어 기준) |
+| `feedback_ms` | `max(picar_ms, microbit_ms)` | 물리 피드백 **시작** 기준 |
+| `feedback_done_ms` | `max(aihand_ms, microbit_ms + 1000)` | 물리 피드백 **완료** 기준 (picar 주행 제외) |
+| `mocked` | 장치 응답에 `mocked`가 하나라도 있으면 `true` | `true` 행은 **실물 KPI에서 제외** |
+| `subject` | `LOG_SUBJECT` | 대상자별 비교. 대상자마다 web 재기동 |
+
+시작·완료를 둘 다 기록하므로 "완료" 정의가 나중에 정해져도 **다시 잴 필요가 없다.**
+
+### 5.4 시행 규모 (05 §7-2 — 검산 완료)
+
+| 목적 | 필요 시행 | 계산 |
+| --- | --- | --- |
+| 정답률 ±5%p 오차(95% 신뢰) | 최소 **113회** | 1.96² × 0.92 × 0.08 / 0.05² ≈ 113.1 |
+| "오분류율 ≤ 3%" 주장 (오분류 0건 유지, Wilson 95% 상한) | **125회** | 상한 z²/(n+z²): n=105 → 3.53%, 120 → 3.10%, 125 → 2.98% |
+| "치명 오분류 0건" 주장 | 정지만 **30회 이상** | 05 §7-2 권장 |
+| 팀 계획(초안) | 팀원 4명 × 7종 × 5회 + 외부인 1~2명 × 7종 × 10회 = **210~280회** | — |
+
+⚠️ **온라인으로 210~280회를 시행하면 서보가 420~560동작 이상 움직인다**(시도마다 시범 `/command` + 판정 뒤 `/command`).
+서보는 정격 초과 전압으로 돌고 있어(11 §4.4) 추가 고장 위험이 크다. 판정 성능은 오프라인으로 확정하고 온라인은 지연 측정용 소규모로 하는 안(회의안건 안건 5)의 근거가 된다.
+
+### 5.5 실물 측정 절차 (온라인)
+
+1. **사전 점검** — §2.4 "시행 당일 절차" 1~7을 그대로 따른다. 추가로 기록할 것:
+   - `curl :8001/health`의 모델 번들 메타데이터(`trained_at`, `sklearn_version`, `best_params`)를 06 §1-1에 기록. `repo_commit`은 Colab 노트북으로 학습한 번들에만 있다.
+   - 기준 커밋, 호출 순서, τ·N 값, 쿨러 여부, 재부팅 직후 `get_throttled`
+   - 실물 모드 확인: actuation·picar를 `MOCK_HARDWARE=false`로 띄웠는지, vision `camera.state: running`. web CSV에서는 `mocked` 열이 전부 `false`여야 한다(데모 CSV에는 이 열이 없다)
+2. **시행**: 대상자마다 `LOG_SUBJECT` 설정 후 web 재기동 → 7종 × n회, 정지는 추가 반복 → 육안 기록 양식 작성 → 특이사항은 06 §1-3에 즉시 기록
+3. **집계**: §5.7 규칙대로 → 혼동행렬(`sklearn.metrics.confusion_matrix`) → F1 · 치명 오분류 → 지연 열 P95 · 히스토그램 → 대상자별 정답률
+4. **집계 스크립트가 없다** → §5.8 명세대로 작성 (14 §8 ②-b 조은수, `evaluator` 에이전트 지원)
+
+### 5.6 측정 방법 미결 사항 → [회의안건_KPI측정방법](proposals/회의안건_KPI측정방법.md)
+
+| # | 문제 | 영향 | 추천 (잠정치) |
+| --- | --- | --- | --- |
+| 1 | `latency_ms`는 **한 프레임**의 캡처→판정 시간이다(`classify.py:120-130`). vision `_cognition_loop`가 매 프레임 이 값을 그대로 `/latest`에 담고, N프레임 연속 확인은 별도로 한다(vision `app.py:44-65`). 그래서 N프레임 채우는 시간·폴링 대기가 빠진다. "손 정지 시점"은 시스템이 모른다 | KPI가 실제보다 좋게 나옴 | 연속 판정 첫 프레임 캡처 시각을 스키마 선택 필드로 추가, monotonic 시계 (잠정: 현행 + 한계 명시) |
+| 2 | 오답은 1초 유지해야 확정 | 오답을 넣으면 P95가 반드시 1초 초과 | 판정 지연 모수 = 정답만 |
+| 3 | 물리 피드백 시작 대 완료 | picar 주행을 넣으면 불가. picar를 빼고 권장 순서면 약 1.2~1.4초(추정, §4.3) | 시작으로 판정 + 완료 참고치 병기 |
+| 4 | 치명 오분류 정의가 **세 갈래**: 01·10_PRD "정지를 다른 신호/클래스로 판정"(negative 포함 여부 불명) · 05 §7-1 "negative 포함"(근거로 01을 인용하지만 01에는 그 문구가 없음) · `evaluate_kpi.py:110-111` **미판정 제외**(= A안). `evaluator` 정의도 코드와 같다 | 정지→미판정을 치명으로 셀지 | 신호 7종만 — **코드는 이미 이 방식이라 05 §7-1 문구만 고치면 된다** (현재 결과는 어느 쪽이든 0건) |
+| 5 | KPI를 어느 경로로 확정하나 · SC-04 처리 | 두 경로의 수치를 섞으면 안 됨 | 판정 성능 5개 = 오프라인(외부인 포함), 지연 2개 = 온라인, SC-04는 별도 집계 |
+| 6 | 06 §2-4 "팀원(train/val) 대 외부인(test)" 틀이 04 §4와 다름 | 틀린 설명 | "팀원 대 외부인, 둘 다 평가용"으로 수정 (결정 불필요) |
+| 7 | `evaluate_kpi.py`는 3프레임 중 확정된 것의 **최빈값**(`:55-71`), 운영은 **3연속 같은 판정**. 코드 주석·05 §7-3은 "같은 방식"이라고 적음 | 오프라인이 더 느슨 → 정답률 높게, 미판정률 낮게 나올 수 있음. **모델 번들이 저장소에 없어 정량 비교는 아직 못 함** | 번들을 가진 사람이 두 규칙을 기존 데이터로 비교 후 결정 (잠정: 현행 + 차이 명시) |
+
+### 5.7 집계 규칙 (제안 — `evaluator` 정의와 같게)
+
+| 항목 | 규칙 |
+| --- | --- |
+| 제외 | `mocked=true` 행 전체 제외. 데모 CSV의 `timeout`·`skip`은 분모에서 빼고 건수만 따로 적는다. web은 과도 자세를 원래 기록하지 않는다(스펙 §7.1). **행을 지우지 않고** 제외 기준과 건수를 보고서에 적는다 |
+| 합계 확인 | 정답률 + 오분류율 + 미판정률 = 100%인지 확인 |
+| 표본 수 표기 | 세부 구간(촬영자별·클래스별 등)이 n<30이면 수치 옆에 "(n=…)"를 붙인다 |
+| 신뢰구간 | 오분류·치명 오분류처럼 **"0건" 주장에는 Wilson 95% 상한을 항상 병기**한다 |
+| 달성 판정 | 점추정이 목표를 만족해도 Wilson 상한이 목표를 넘으면 **"잠정 달성"**으로 표기한다(05 §7-3 방식을 06에도 적용) |
+| subject 값 | 오프라인 `subject_id`와 온라인 `LOG_SUBJECT`를 **같은 ID 체계**(JH·me01·ext03 …)로 쓴다. 06 §2-4에서 두 경로를 이어 보려면 필요하다 |
+| 경로 병기 | 06 §2-1 표에 "경로"(오프라인/온라인) 열을 추가한다. 판정 성능 5개는 오프라인, 지연 2개는 온라인 값을 채우고, 온라인 판정 성능은 참고치로 병기한다 |
+| 12 §0과의 관계 | 06 최종 수치가 12 §0과 다르면 12 §0은 "1차(잠정)"로 두고 06이 최신본임을 각주로 적는다. 두 결과를 합치지 않는다 |
+| 재현성 | 숫자마다 입력 CSV 경로 · 행 수 · 필터 조건 · 스크립트를 남긴다 |
+
+### 5.8 집계 스크립트 명세 (제안, 미작성)
+
+| 항목 | 내용 |
+| --- | --- |
+| 위치 | `services/web/scripts/aggregate_kpi.py` (오프라인 `evaluate_kpi.py`와 짝을 이루는 온라인용) |
+| 입력 | `services/web/logs/web_trials_*.csv`(UTF-8 BOM), 비교용 데모 CSV `services/actuation/aihand_vision_picar_*.csv` |
+| 출력 | 콘솔 요약표(§5.7 규칙 적용, 제외 건수 포함), 06 §2-1 요약표 · §2-2 혼동행렬 PNG(정지 행 강조) · §2-3 지연 히스토그램 PNG(`vision_latency_ms`·`feedback_ms`·`feedback_done_ms`) · §2-4 대상자별 표 |
+| 담당 | 조은수(14 §8 ②-b), `evaluator` 에이전트 지원 |
+| 함께 고칠 것 | `evaluate_kpi.py`도 결과를 화면 출력만 한다 → 같은 형식의 표·혼동행렬을 파일로 내도록 (이동혁) |
+
+---
+
+## 6. 할 일
+
+담당 구분은 [01 RACI](01_프로젝트계획서.md)와 [14 §8](14_web_구현보고서.md) 분담을 따른다. 다른 사람 몫은 **제안**이다.
+목표일은 14 §8 일정(10-01까지 전부 `dev`, 10-02 재시험 ⑥, 10-03~04 KPI 실측·06 집계)에 맞춘 제안값이다.
+
+### 6.1 송승호 담당
+
+| # | 할 일 | 목표 | 선행 | 에이전트 |
+| --- | --- | --- | --- | --- |
+| 1 | `.gitignore`에 `.pytest_cache/` 추가, `conftest.py`·`pytest.ini`·테스트 정리분·`.claude/agents/`·이 문서·회의안건 커밋 | 09-28(월) | — | 직접 |
+| 2 | 서비스별 `requirements-test.txt`, picar `requirements-hw.txt` 분리 (Dockerfile 반영). 3.11 가상환경에서 먼저 설치해 본다 | 09-29(화) | — | `sw-tester` |
+| 3 | `.github/workflows/ci.yml` unit job → 초록불 (§3.4 #1~#3 해결) | 09-29(화) | 2, 관리자 Actions 허용 | `sw-tester` |
+| 4 | [test_judging_timing_spec.py](../services/web/tests/test_judging_timing_spec.py) 보완: `test_changing_wrong_class_restarts_the_hold`의 시간 여유 60ms 확대, xfail에 `raises=` 지정 | 09-29(화) | — | `sw-tester` |
+| 5 | web 단위 테스트 ⑪: 구현 브랜치가 올라오면 병합 전에 붙이고 스펙 §8 이름과 대조 (§3.4 #5) | 이동혁 백엔드 9/30 → 10-01 | 이동혁 ①-a·②-a·③ | `sw-tester` |
+| 6 | actuation·picar mock에 호출 기록(`/_mock/history`)·장애 주입(`MOCK_DELAY_MS`, `MOCK_FAIL`) | 09-30(수) | — | 직접 |
+| 7 | actuation·picar 계약 테스트 (TestClient + jsonschema) | 09-30(수) | 2 | `sw-tester` |
+| 8 | `docker-compose.ci.yml`(4개 healthcheck), vision stub(§2.3 인터페이스), `--run-integration`, S1·S5·S7 → integration job 추가 | 10-01(목) | 판정 주입 방식 결정 | `sw-tester` |
+| 9 | picar 형식 오류 500 수정, BLE 회신 대조 여부 결정 (§1.3) | 10-01(목) | — | 직접 |
+| 10 | BLE 끊김 시 잠금을 쥔 채 스캔·연결하는 문제 (§4.7 #5) — 가짜 bleak 단위 테스트로 검증 | 10-01(목) | — | 직접 + `sw-tester` |
+| 11 | RPi5 액티브 쿨러 장착 → 재부팅 뒤 `get_throttled`·판정 fps 재측정 | ⑥ 재시험(10-02) 전 | 부품 | `hw-tester` |
+| 12 | **AP 경유 부하 주행 반복 측정** — `load_test.py`를 **RPi5에서** `--url http://192.168.50.10:8000`으로 실행(PC에서는 50번 대역에 닿지 않음, 07). AP 경유 왕복은 13~21·19~21ms로 이미 쟀고, 안 잰 것은 부하 주행 반복뿐이다 | 10-01(목) | — | `hw-tester` |
+| 13 | 실물 hw 테스트(§2.4 목록)·당일 절차·비상정지 절차 준비. web ①-a와 무관한 장치 테스트라 먼저 한다 | 10-01(목) | — | `hw-tester` |
+| 14 | web 전 구간 재시험 ⑥ (조은수와 함께) — §2.4 당일 절차로 | 10-02(금) | ①-a·①-b 병합, 쿨러 | `hw-tester` |
+| 15 | KPI 측정방법 회의 진행 (안건 5·2 결정권자) | ⑥ 전 정기 회의 | 회의 전 준비 | `pm` |
+| 16 | 08 리스크 레지스터에 새 리스크 후보 반영 (§6.5) | 회의 후 | 15 | `pm` |
+
+### 6.2 승인 대기 (송승호가 A)
+
+| 항목 | R | 필요 시점 | 늦어지면 막히는 것 |
+| --- | --- | --- | --- |
+| mock 통합의 판정 주입 방식 (stub 대 vision 훅) | 이동혁 | 6.1 #8 전 (10-01) | S2~S4 |
+| KPI 확정 경로·시도 범위 (§5.6 #5) | 조은수 | 10-03 KPI 실측 전 | 06 2부 전체 |
+| 판정 지연 모수 (§5.6 #2) | 조은수 | ②-a 구현 전 | 시행 로그 열 확정 |
+| 오프라인 판정 규칙 (§5.6 #7) | 이동혁 | ext03 반영 전 | 오프라인 KPI 확정 |
+| 집계 규칙 (§5.7) | 조은수 | 10-03 전 | 06 2부 수치 |
+
+### 6.3 다른 사람 담당 (제안 / 확인 필요)
+
+| 담당 | 할 일 | 근거 |
+| --- | --- | --- |
+| **이동혁** (vision R · web 백엔드 전담) | ①-a 판정 타이밍 · ②-a 시행 로그 CSV · ③ 본문 status 판정·재시도 규칙 — **스펙 §8 이름대로** 구현 | 14 §8 |
+| 이동혁 | 호출 순서 결정·반영(스펙 §7.3), `/latest` 비JSON 처리·vision 호출 타임아웃 지정 | §4.7 #2·#6 |
+| 이동혁 | 판정 주입 방식 의견, ext03 반영 오프라인 KPI 재계산, 두 판정 규칙 비교(모델 번들 보유), `evaluate_kpi.py` 결과 파일 출력 | §2.3, §5.6 #7, §5.8 |
+| 이동혁 | normalize `KeyError` 처리, vision `requirements-test.txt`, (결정 시) 스키마 필드 추가, 05 §7-1 치명 오분류 문구 정정 | §1.3, §5.6 #1·#4 |
+| 이동혁 | 문서 불일치 정리: data 8종(negative 포함) 대 vision 7종, 특징 차원 설명(63차원 대 joint23), `train_svm.py` 게이트 기본값 주석 | vision·data 점검 결과 |
+| **조은수** (web 프론트 · 성능측정 R) | ①-b 판정 타이밍 화면, ②-b 로그 검증·KPI 집계(§5.7·§5.8), ⑥ 재시험(송승호와), ⑦ 14 보고서, ⑧ 화면 캡처 | 14 §8 |
+| 조은수 | 06 §2-4 표 틀 수정, 06 §2-1에 "경로" 열 추가, 06 §1-1 환경 기록에 온도·호출 순서·커밋 추가 | §5.6 #6, §5.7 |
+| 조은수 | 06 §1-3 이슈 표의 담당 표기 갱신 — 판정 타이밍·본문 status 행이 "조은수"로 남아 있지만 14 §8에서 백엔드는 이동혁으로 분담됨 | 06 §1-3, 14 §8 |
+| **김지훈** (data R · web ⑨⑩) | ⑩ 수신호 예시 사진 7장, ⑨ 결과 내보내기 | 14 §8 |
+| 김지훈 | data 테스트(데이터셋 JSON 스키마 검증) · 자체 촬영 데이터 확인: 좌표 6자리 반올림 안 됨, ext03 210건 `variant` 누락, ext03 `정지_t09` handedness 혼재 | 04 §2-4·§6 |
+| **저장소 관리자 (Lee35678)** | Settings → Actions 허용, `dev`·`main` 브랜치 보호 | §3.1 |
+| 전원 | 03에 빠진 인터페이스(`/latest`, `/reset`, `/health`, `/result`·`/progress` 본문) 문서화 여부 — 문서 대조는 `spec-keeper` | §2.2 |
+
+### 6.4 결정 대기
+
+| 안건 | 결정권자 | 필요 시점 | 늦어지면 막히는 것 |
+| --- | --- | --- | --- |
+| 장치 호출 순서 변경 (스펙 §7.3) | 이동혁 | ②-a 구현 전 | 물리 피드백 KPI, S2 검증 내용 |
+| 물리 피드백 "시작" 대 "완료" (picar 변경안 안건 2) | 전원 | 10-03 전 | KPI 달성 여부 판정 |
+| 판정 지연 기준점 · 스키마 필드 추가 (§5.6 #1) | 전원 | ②-a 구현 전 | 판정 지연 KPI 신뢰성 |
+| 치명 오분류 정의 통일 (§5.6 #4) | 이동혁 | 10-03 전 | 06 §2-2 |
+| **서보 반복 상한 수치와 온라인 시행 규모** (§2.4, §5.4) | 송승호 | ⑥ 재시험(10-02) 전 | 서보 추가 고장, 온라인 시행 계획 |
+| BLE 회신 대조를 고칠지, 알려진 한계로 둘지 | 송승호 | 10-01 | 실물 안정성 |
+| picar 주행 쓰기 재시도, `MOTION_DURATION_S` 2.0초 확정 | 송승호 | ⑥ 전 | 13 §5 #7 |
+
+**회의 전 준비 (제안)**: ext03 반영 KPI·두 판정 규칙 비교(이동혁), 호출 순서 의견·②-a 구현 일정(이동혁), 집계 규칙 초안(조은수).
+
+### 6.5 08 리스크 레지스터 반영 후보
+
+| 리스크 | 가능성 | 영향 | 대응 | 상태 |
+| --- | --- | --- | --- | --- |
+| 고정 버전(Docker Python 3.11)으로 테스트를 돌린 적 없음 | 중간 | 시연 보드에서만 드러나는 실패 | CI unit job (§3) | 미착수 |
+| mock과 실물의 동작 괴리 (mock은 `mocked`만 반환, 지연·실패 없음) | 높음 | mock 통과가 실물 동작을 보장 못 함 | mock 장애 주입 + 실물 E2E (§2.3·§2.4) | 미착수 |
+| 판정 지연이 실제보다 작게 기록됨 | 확정(코드) | KPI 근거 신뢰성 | §5.6 #1 결정 | 확인 중 |
+| 오프라인 판정 규칙이 운영보다 느슨 | 확정(코드) | 오프라인 KPI 과대평가 가능 | §5.6 #7 비교 | 확인 중 |
+| `/command`·`/picar` 재시도로 이중 동작 | 확정(코드) | 시연 중 AI Hand·picar 오동작 | ③ 구현 | 대응 중 (이동혁) |
+| **온라인 KPI 시행의 서보 누적 구동** — 시도당 `/command` 2회 이상 × 210~280회 = 420~560동작 | 높음 | 정격 초과(124%) 서보 추가 고장 → 시연 불가 | 판정 성능은 오프라인, 온라인은 지연 측정용 소규모, 세션 상한 | 미착수 |
+| **실물 E2E 실행 방식 미통일** — hw.yml은 실물 전 구간 미검증, web `PICAR_URL` 오버라이드 없음 | 중간 | 시행 당일 기동 실패 | 네이티브로 통일(§2.4) | 미착수 |
+| 주행 중 프로세스 종료 시 모터 계속 회전 (종료 시 정지 처리 없음) | 중간 | 차체 돌진·낙하 | 정지 상태에서만 종료, 관찰자가 배터리 스위치 담당 (§2.4) | 방침 확정 대기 |
+
+---
+
+## 7. 변경 이력
+
+| 버전 | 일자 | 내용 |
+| --- | --- | --- |
+| v0.2 | 2026-09-28 | `sw-tester`·`hw-tester`·`evaluator` 검토 반영. **정정**: web 백엔드 담당을 14 §8대로 이동혁으로(①-a·②-a·③), `/progress` 실측 32~38·38~39ms, web 없는 데모 반응 시작 25~47ms(마지막 장치 기준), `/command` 회신 시점 단서, 완료 기준 합계 재계산(picar 제외 현재 2.0~2.2 · 권장 1.2~1.4초), 100ms 간격 문구, BLE 재연결 시간(스캔 + 연결), 실물 실행 방식을 네이티브로, `motion_active` 판정에 육안 정지 확인 추가, 장치 호출 합계(정답 6·오답 5초), 스펙 xfail은 구현 감지 조건부라 마커 제거 불필요(§3.4 #5), 데모 CSV는 공통 지연 열만 비교 가능, 치명 오분류 정의 3갈래(코드는 이미 A안), 측정 절차의 `get_throttled`·`repo_commit`·`mocked` 확인 방법, AP 경유 측정 범위. **추가**: 계약 테스트 대상표, stub vision 인터페이스, 시나리오별 파일명, 실물 hw 테스트 목록, 시행 당일 절차·역할·육안 기록 양식·안전·복구, 로컬 실행 명령(§2.6), 마커 사용 현황, 표본 계산 검산, 온라인 시행의 서보 누적 위험, 집계 규칙(§5.7)·집계 스크립트 명세(§5.8), 할 일 일정을 14 §8에 맞춤, 결정 대기·리스크 후보 추가 |
+| v0.1 | 2026-09-28 | 최초 작성. 테스트 준비 상태 점검(서비스 4개 병렬 조사), 테스트 불안정 원인 정리 결과, 통합 테스트 3층 구조·시나리오 S1~S7, GitHub Actions 계획, 지연 분석, KPI 측정 방법과 미결 사항 7건(회의안건 연계), 담당별 할 일 |
