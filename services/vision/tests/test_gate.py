@@ -33,14 +33,24 @@ def _unit(vec) -> np.ndarray:
     return v / np.linalg.norm(v)
 
 
+_ORIGINAL_GET_GATE = model_store.get_open_set_gate
+
+
 def _install_gate(monkey: dict) -> None:
     """model_store.get_open_set_gate 를 가짜로 바꿔치기."""
     model_store.get_open_set_gate = lambda: monkey  # type: ignore[assignment]
 
 
 def _restore() -> None:
+    # 캐시만 비우면 가짜 게이트가 모듈에 남아, 뒤에 도는 다른 테스트 파일까지 가짜를 쓰게 된다
+    model_store.get_open_set_gate = _ORIGINAL_GET_GATE  # type: ignore[assignment]
     model_store._gate_cache = None
     model_store._gate_cache_key = None
+
+
+def teardown_function(_fn) -> None:
+    """pytest가 테스트마다 부른다 — 단언이 실패해 _restore()까지 못 가도 원복되게."""
+    _restore()
 
 
 def _fake_gate(threshold: float = 0.9) -> dict:

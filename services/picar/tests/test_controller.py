@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -191,9 +192,24 @@ def test_diagnose_exposes_motion_duration():
     assert controller.diagnose(mock=True)["motion_duration_s"] == controller.MOTION_DURATION_S
 
 
+@contextmanager
+def _hardware_modules_forgotten():
+    """다른 테스트가 먼저 smbus2/gpiozero를 import했어도 이 호출이 새로 불러오는지만 보게 한다.
+
+    이게 없으면 "sys.modules에 없음" 단언이 테스트 실행 순서에 따라 깨진다. 끝나면 되돌려서
+    앞서 import한 쪽이 쥔 모듈 객체와 어긋나지 않게 한다.
+    """
+    saved = {n: sys.modules.pop(n) for n in ("smbus2", "gpiozero") if n in sys.modules}
+    try:
+        yield
+    finally:
+        sys.modules.update(saved)
+
+
 def test_diagnose_does_not_touch_hardware_in_mock():
-    controller.diagnose(mock=True)
-    assert "smbus2" not in sys.modules
+    with _hardware_modules_forgotten():
+        controller.diagnose(mock=True)
+        assert "smbus2" not in sys.modules
 
 
 # ── execute() 전체 경로 ───────────────────────────────────────────────────────
@@ -226,9 +242,10 @@ def test_execute_survives_missing_fields():
 
 def test_mock_mode_never_imports_hardware_libraries():
     """mock 경로가 실수로 실물 라이브러리를 건드리면 개발 PC에서 테스트가 깨진다."""
-    controller.execute(_command("left", 60, red="blink"), mock=True)
-    assert "smbus2" not in sys.modules
-    assert "gpiozero" not in sys.modules
+    with _hardware_modules_forgotten():
+        controller.execute(_command("left", 60, red="blink"), mock=True)
+        assert "smbus2" not in sys.modules
+        assert "gpiozero" not in sys.modules
 
 
 if __name__ == "__main__":  # pytest 없이도 돌려볼 수 있게

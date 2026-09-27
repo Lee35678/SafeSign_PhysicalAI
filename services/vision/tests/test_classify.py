@@ -16,16 +16,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import json  # noqa: E402
+
 from cognition import classify  # noqa: E402
 
 REQUIRED_KEYS = {"predicted_class", "confidence", "match_score", "is_reject", "latency_ms"}
-VALID_REASONS = {
-    classify.REASON_NO_HAND,
-    classify.REASON_NORMALIZE_FAILED,
-    classify.REASON_MODEL_NOT_LOADED,
-    classify.REASON_INFERENCE_ERROR,
-    classify.REASON_BELOW_TAU,
-}
+# 코드 상수를 나열하면 새 reason이 생길 때마다 여기가 뒤처진다(out_of_distribution 누락 전력) —
+# 계약서 스키마의 enum을 기준으로 삼는다
+_SCHEMA = (Path(__file__).resolve().parents[3] / "shared" / "schemas"
+           / "judgment_result.schema.json")
+VALID_REASONS = set(
+    json.loads(_SCHEMA.read_text(encoding="utf-8"))["properties"]["reason"]["enum"]
+)
 
 
 def _assert_schema(result: dict) -> None:

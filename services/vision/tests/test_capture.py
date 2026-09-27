@@ -69,8 +69,14 @@ def _reset():
 def test_frames_flow_to_landmark_frame():
     _reset()
     cam, lm = FakeCamera(), FakeLandmarker()
-    capture.run_capture_loop(camera_factory=lambda: cam, landmarker_factory=lambda: lm,
-                             image_factory=lambda rgb: rgb, max_frames=5)
+    # 셸에 CAMERA_MIRROR=false가 남아 있어도 결과가 같게 기본값(true)으로 고정한다
+    mirror = capture.CAMERA_MIRROR
+    capture.CAMERA_MIRROR = True
+    try:
+        capture.run_capture_loop(camera_factory=lambda: cam, landmarker_factory=lambda: lm,
+                                 image_factory=lambda rgb: rgb, max_frames=5)
+    finally:
+        capture.CAMERA_MIRROR = mirror
     assert len(lm.calls) == 5
     ts = [t for _, t in lm.calls]
     assert all(b > a for a, b in zip(ts, ts[1:])), f"타임스탬프가 단조 증가하지 않음: {ts}"
@@ -97,7 +103,12 @@ def test_camera_failure_does_not_kill_service():
     th = threading.Thread(target=capture.run_capture_loop, args=(stop,),
                           kwargs={"camera_factory": broken}, daemon=True)
     th.start()
-    time.sleep(0.15)
+    # 고정 sleep 대신 상태가 바뀔 때까지 기다린다 — 부하가 걸린 PC에서 0.15초로는 모자랄 수 있다
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if capture.get_status()["state"] == "error" and capture.get_latest_landmark_frame():
+            break
+        time.sleep(0.01)
     st = capture.get_status()
     f = capture.get_latest_landmark_frame()
     stop.set()
@@ -114,10 +125,11 @@ def test_no_hand_result():
     assert f["hand_detected"] is False and f["landmarks"] == [] and f["timestamp"] == 123
 
 
-_passed = []
-for _n, _f in sorted(globals().copy().items()):
-    if _n.startswith("test_") and callable(_f):
-        _f()
-        _passed.append(_n)
-        print(f"  ok  {_n}")
-print(f"{len(_passed)}개 통과")
+if __name__ == "__main__":  # 가드가 없으면 pytest 수집(import) 때도 전부 한 번 더 돈다
+    _passed = []
+    for _n, _f in sorted(globals().copy().items()):
+        if _n.startswith("test_") and callable(_f):
+            _f()
+            _passed.append(_n)
+            print(f"  ok  {_n}")
+    print(f"{len(_passed)}개 통과")
