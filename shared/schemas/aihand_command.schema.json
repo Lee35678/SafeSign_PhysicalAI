@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AiHandCommand",
-  "description": "교육 상태머신(web) -> actuation. document/03_인터페이스계약서_v2 §5-1 참고. servo_angles 초기 기본값(펴짐=170, 굽힘=10, 손목중립=90)은 05_모델카드_v3 §8-0 근거, 실물 캘리브레이션 전 잠정치.",
+  "description": "교육 상태머신(web) -> actuation. document/03_인터페이스계약서 §5-1 참고. actuation은 target_signal로 micro:bit 펌웨어 제스처 G1~G7을 고르고 servo_angles는 쓰지 않는다(2026-09-21 BLE 전환 이후) — 하위 호환을 위해 필수 필드로만 남아 있다. 기본값(펴짐=170, 굽힘=10, 손목중립=90)의 출처는 03 §5-1.",
   "type": "object",
   "required": ["command", "target_signal", "servo_angles"],
   "properties": {
@@ -9,18 +9,18 @@
     "target_signal": {
       "type": "string",
       "enum": ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"],
-      "description": "수신호 이름 (통합 7종 중 하나, 02_설계문서_v2 §4)"
+      "description": "수신호 이름 (통합 7종 중 하나, 02_설계문서 §4)"
     },
     "servo_angles": {
       "type": "object",
       "required": ["thumb", "index", "middle", "ring", "pinky", "wrist_rotation"],
       "properties": {
-        "thumb": { "type": "integer", "minimum": 0, "maximum": 180 },
-        "index": { "type": "integer", "minimum": 0, "maximum": 180 },
-        "middle": { "type": "integer", "minimum": 0, "maximum": 180 },
-        "ring": { "type": "integer", "minimum": 0, "maximum": 180 },
-        "pinky": { "type": "integer", "minimum": 0, "maximum": 180 },
-        "wrist_rotation": { "type": "integer", "minimum": 0, "maximum": 180, "default": 90, "description": "이번 7종은 항상 정면(중립 90) — 좌우 회전 미사용, 02_설계문서_v2 §4 참고사항 4" }
+        "thumb": { "type": "integer", "minimum": 10, "maximum": 170 },
+        "index": { "type": "integer", "minimum": 10, "maximum": 170 },
+        "middle": { "type": "integer", "minimum": 10, "maximum": 170 },
+        "ring": { "type": "integer", "minimum": 10, "maximum": 170 },
+        "pinky": { "type": "integer", "minimum": 10, "maximum": 170 },
+        "wrist_rotation": { "type": "integer", "minimum": 0, "maximum": 180, "default": 90, "description": "이번 7종은 항상 정면(중립 90) — 좌우 회전 미사용, 02_설계문서 §4 참고 사항 4" }
       }
     }
   }

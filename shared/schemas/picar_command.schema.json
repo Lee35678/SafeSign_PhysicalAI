@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "PicarCommand",
-  "description": "교육 상태머신(web, RPi5) -> picar 서비스 (Raspberry Pi 4B 8GB, Wi-Fi/HTTP). document/03_인터페이스계약서_v2 §5-2 참고. picar가 주행하면 카메라도 함께 이동하는 문제 때문에 컴퓨트 보드를 분리했다(2026-09-18) — 실제 네트워크 메시지이며, 타임아웃 500ms + 1회 재시도 정책을 따른다.",
+  "description": "교육 상태머신(web, RPi5) -> picar 서비스 (Raspberry Pi 4B 8GB, Wi-Fi/HTTP). document/03_인터페이스계약서 §5-2 참고. picar가 주행하면 카메라도 함께 이동하는 문제 때문에 컴퓨트 보드를 분리했다(2026-09-18) — 실제 네트워크 메시지이며, 타임아웃 500ms + 1회 재시도 정책을 따른다.",
   "type": "object",
   "required": ["command", "target_signal", "motor", "led"],
   "properties": {
@@ -18,7 +18,7 @@
       "required": ["action", "speed"],
       "properties": {
         "action": { "type": "string", "enum": ["stop", "forward", "backward", "left", "right"] },
-        "speed": { "type": "integer", "minimum": 0, "maximum": 100, "description": "%, slow 명령은 정상보다 낮은 고정값 — ⚠️ 실측 후 확정" }
+        "speed": { "type": "integer", "minimum": 0, "maximum": 50, "description": "%. 확정값: 서행 20, 좌/우회전·후진 40, 정지류 0 (2026-09-23 바닥 주행, 13_picar_하드웨어_검증리포트 §4.5). 상한 50은 picar 서비스의 PICAR_MAX_SPEED 기본값과 같다(2026-09-27) — 한쪽을 바꾸면 다른 쪽도 함께 바꿀 것. 서비스는 상한 초과 요청을 잘라내고 응답 speed_capped_from에 원래 값을 남긴다" }
       }
     },
     "led": {
