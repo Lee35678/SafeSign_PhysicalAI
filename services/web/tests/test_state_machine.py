@@ -22,6 +22,24 @@ def _reset_session(state: str = "training") -> None:
     sm._session.clear()
     sm._session.update(sm._fresh_session())
     sm._session["state"] = state
+    # web 할 일 ①-a 이후 세션은 시범 단계("demo")로 시작한다 — 여기 테스트는 판정 분기를 보므로 판정 단계로 둔다.
+    # ①-a 전에는 "phase" 키가 없어 아무 일도 하지 않는다(test_judging_timing_spec.py 참고).
+    if "phase" in sm._session:
+        sm._session["phase"] = "judging"
+
+
+def _poll_until_confirmed(client, polls: int = 2) -> None:
+    """오답은 같은 클래스가 WRONG_CONFIRM_S 이상 유지돼야 확정된다(①-a) — 유지 시간을 0으로 두고 두 번 본다.
+    ①-a 전에는 첫 폴링에서 바로 확정되고, 두 번째는 중복 방지(_last_dispatched)로 무시된다."""
+    saved = getattr(sm, "WRONG_CONFIRM_S", None)
+    if saved is not None:
+        sm.WRONG_CONFIRM_S = 0.0
+    try:
+        for _ in range(polls):
+            sm._poll_once(client)
+    finally:
+        if saved is not None:
+            sm.WRONG_CONFIRM_S = saved
 
 
 class _FakeResponse:
@@ -53,7 +71,9 @@ class _FakeVisionClient:
 def test_post_with_retry_ok_on_2xx():
     with patch("backend.state_machine.httpx.post", return_value=_FakeResponse(200, {"a": 1})):
         result = sm._post_with_retry("http://x/y", {}, 1.0)
-    assert result == {"ok": True, "body": {"a": 1}}
+    # 통째 비교하지 않는다 — ②-a·③에서 응답 시간·본문 status 같은 필드가 붙는다
+    assert result["ok"] is True
+    assert result["body"] == {"a": 1}
 
 
 def test_post_with_retry_fails_on_5xx_not_silently_ok():
@@ -104,7 +124,7 @@ def test_poll_once_wrong_does_not_advance_or_call_picar():
             "predicted_class": "서행", "confidence": 0.9, "match_score": 80,
             "is_reject": False, "latency_ms": 5,
         })
-        sm._poll_once(client)
+        _poll_until_confirmed(client)
 
     assert sm._session["curriculum_index"] == 0
     assert sm._session["last_result"]["outcome"] == "wrong"

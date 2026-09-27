@@ -189,3 +189,22 @@ micro:bit 순, 반응 시작 19~47ms)와 같은 KPI를 재도 web만 나빠진�
 - `/result`(ACK 26~42ms)를 `/command`(0.8초) 앞에 두면 micro:bit O/X가 바로 뜬다.
 - 학습 흐름상 문제 없음: 정답 연출(picar·LED)과 AI Hand 정답 자세가 거의 동시에 보인다.
 - 결정·구현은 이동혁(①-a·②-a와 같은 함수). 바꾸면 14 §3.3 표도 함께 고친다.
+
+## 8. 테스트가 기대하는 이름 — 구현 계약 (web 할 일 ⑪, 2026-09-28 송승호)
+
+`services/web/tests/test_judging_timing_spec.py`가 ①-a·②-a·③을 **구현 전에 먼저** 고정해 둔 인수 테스트다(22개).
+지금은 "예상된 실패(xfail)"로 표시되고, **아래 이름대로 구현하면 자동으로 실제 테스트로 바뀐다** — 마커를 지울 필요가 없다.
+스펙대로 만든 검증용 구현으로 22개 전부 통과하는 것을 확인했다(2026-09-28, 저장소에는 넣지 않음).
+
+| 무엇 | 이름 · 형태 | 감지 |
+| --- | --- | --- |
+| 단계 | `_fresh_session()["phase"]` = `"demo"` 로 시작, 판정 중 `"judging"`. `GET /api/state`에도 `phase` | ①-a 묶음 활성화 |
+| 확인 API | `POST /api/confirm` — `demo`일 때만 받고, vision reset은 **`httpx.post(f"{VISION_URL}/reset", ...)`** 로 | |
+| 오답 유지 | 모듈 상수 **`WRONG_CONFIRM_S`**(기본 1.0) — **호출 시점에 읽기**(테스트가 0.2초로 바꿔 끼운다) | |
+| 판정 루프 | `_poll_once(vision_client)` 시그니처 유지. 세션 키 `last_result`·`attempts`·`camera_fail_streak`·`curriculum_index` 유지 | |
+| 전송 결과 | `_session["last_dispatch"]`의 `aihand`·`result`·`progress`·`picar` 키, 각각 `{"ok": bool, ...}` (필드 추가는 자유) | ③ 묶음: picar `partial` → `ok: False`가 되면 활성화 |
+| 시행 로그 | 모듈 속성 **`TRIAL_LOG_DIR`**(`Path`) — **쓰는 시점에 읽기**. 파일 `web_trials_*.csv`, UTF-8 BOM, 앞 17열은 데모 `RECORD_FIELDS` 순서 | ②-a 묶음 활성화 |
+
+- 장치 호출은 전부 `httpx.post`로 한다(테스트가 이것 하나만 바꿔 끼운다). 시범 `/command`는 백그라운드 스레드로 보내도 된다 — 테스트가 최대 3초 기다린다.
+- 기존 `test_state_machine.py` 9개는 ①-a 이후에도 통과하도록 미리 맞춰 뒀다(판정 단계로 시작, 오답은 두 번 폴링).
+- 실행: `cd services/web && python -m pytest tests -q -rxX` — `XFAIL`이 사라지고 전부 `passed`면 완료. 구현 중 실패하는 테스트는 **스펙과 다른 곳**을 가리킨다.
