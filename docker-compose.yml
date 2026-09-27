@@ -37,7 +37,7 @@ services:
     # 실제 micro:bit(BLE) 연결은 docker-compose.hw.yml 오버라이드로 켠다 (RPi5 전용 — 호스트 D-Bus 소켓 마운트).
 
   # picar 전용 컨트롤러. 실물 배포 시 picar 차체에 탑재된 별도의 Raspberry Pi 4B 8GB에서 실행되며,
-  # web과는 Wi-Fi(HTTP)로 통신한다 (02_설계문서_v2 §1-1 — picar가 주행하면 카메라도 함께 이동해버리는
+  # web과는 Wi-Fi(HTTP)로 통신한다 (02_설계문서 §1-1 — picar가 주행하면 카메라도 함께 이동해버리는
   # 문제 때문에 vision/actuation(RPi5)과 물리적으로 분리했다, 2026-09-18). 로컬 개발에서는 이 docker
   # 네트워크가 그 Wi-Fi 구간을 대신한다.
   picar:

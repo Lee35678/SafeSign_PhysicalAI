@@ -13,7 +13,7 @@
       "format_version": 2,
       "model": sklearn Pipeline(StandardScaler + CalibratedClassifierCV(SVC)),
       "classes": ["정지", ..., "주의"],   # 7종. negative는 학습 클래스가 아니다 (안건 2 A)
-      "tau": 0.75,                      # 05_모델카드_v3 §8-1 절차로 고른 값
+      "tau": 0.75,                      # 05_모델카드 §8-1 절차로 고른 값
       "n_frames": 3,                    # §3-6 판정 안정화 기본값
       "match_score_calibration": {"sim_min": 0.x, "sim_max": 0.y},
       "metadata": {

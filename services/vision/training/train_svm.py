@@ -8,11 +8,11 @@
 (2026-09-21).
 
 문서 근거
-  - 정규화/특징: document/05_모델카드_v3.md §3-5  (src/cognition/normalize.py를 그대로 import해
+  - 정규화/특징: document/05_모델카드.md §3-5  (src/cognition/normalize.py를 그대로 import해
     학습과 추론이 같은 코드를 쓰게 한다 — train-serve skew 방지)
   - SVM 채택 근거·학습 방법: 같은 문서 §5, §6
   - τ 결정 절차: 같은 문서 §8-1  (이 스크립트의 `choose_tau`가 1~5단계를 그대로 구현)
-  - KPI: document/01_프로젝트계획서_v4.md
+  - KPI: document/01_프로젝트계획서.md
 
 소속 게이트 (open-set, 2026-09-22 추가)
   분류기의 확률은 7종 안에서 정규화된다(합=1). 그래서 7종이 아닌 손모양이 들어와도 "그나마 가장
@@ -43,7 +43,7 @@
       landmark63+orient6  77.11%  MacroF1 0.736
       joint23 + landmark63 (86차원)  82.99%   <- 좌표를 섞으면 오히려 낮아진다
 
-  근거: Aiman & Ahmad (2023), document/제스처_오분류_해경방안_논문편.md 전략 ③.
+  근거: Aiman & Ahmad (2023), document/archive/제스처_오분류_해결방안_논문편.md 전략 ③.
 
 비용 민감 학습 (--critical-weight, Zadrozny 2003)
   정지 오분류는 안전상 치명적이라 KPI 목표가 0건이다. 정지 표본에 가중을 주어 경계를 그쪽으로
@@ -82,7 +82,7 @@ from cognition.normalize import (  # noqa: E402
     to_feature_vector,
 )
 
-# document/02_설계문서_v2 §4 확정 7종. negative는 학습하지 않는다 (안건 2 A).
+# document/02_설계문서 §4 확정 7종. negative는 학습하지 않는다 (안건 2 A).
 SIGN_CLASSES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
 CRITICAL_CLASS = "정지"          # 이 클래스의 오분류는 치명 오분류 (KPI 0건)
 TAU_GRID = [round(float(x), 2) for x in np.arange(0.50, 0.96, 0.05)]
@@ -189,7 +189,7 @@ def load_cached(data_dir: Path, mode: str, per_class: int | None,
 # ---------------------------------------------------------------- τ 결정
 
 def choose_tau(y_true: np.ndarray, proba: np.ndarray, classes: np.ndarray) -> dict:
-    """05_모델카드_v3 §8-1 절차 1~5를 그대로 구현.
+    """05_모델카드 §8-1 절차 1~5를 그대로 구현.
 
     2) τ 후보마다 confidence < τ를 미판정 처리하고 정답률/오분류율 재계산
     3) 치명 오분류(정지 -> 타 클래스)가 있는 후보는 제외
@@ -265,7 +265,7 @@ def main() -> int:
     print("=" * 74)
     if mode == FEATURE_MODE_ORIENTED:
         print("  [주의] 손 방향 축이 켜져 있습니다. 공개 데이터만으로 학습하면 클래스별 촬영 각도")
-        print("         차이를 학습할 수 있습니다(04_데이터셋명세서_v2 §3). 자체 촬영 데이터로")
+        print("         차이를 학습할 수 있습니다(04_데이터셋명세서 §3). 자체 촬영 데이터로")
         print("         검증한 뒤에 쓰세요 — 회의안건_2026-09-21 안건 3.")
 
     t0 = time.time()
@@ -391,7 +391,7 @@ def main() -> int:
         print(f"      주요 오분류: {dict(errs.most_common(5))}")
 
     # ---- τ (05 §8-1) ----------------------------------------------------
-    print("\n[6] τ 결정 — 05_모델카드_v3 §8-1 절차")
+    print("\n[6] τ 결정 — 05_모델카드 §8-1 절차")
     res = choose_tau(y, proba, classes)
     print(f"      {'τ':>6}{'정답률':>10}{'오분류':>9}{'미판정':>9}{'치명':>7}  판정")
     for r in res["grid"]:
@@ -455,7 +455,7 @@ def main() -> int:
             "centroids": {str(c): centroids[c].tolist() for c in classes},
         }
         print("      => 예측 클래스의 임계값보다 낮으면 negative(미판정)로 처리한다.")
-        print("         reason='out_of_distribution'. 03_인터페이스계약서_v2 §4 참고.")
+        print("         reason='out_of_distribution'. 03_인터페이스계약서 §4 참고.")
     else:
         print("\n[7-1] 소속 게이트 끔 (--gate-percentile 0)")
 

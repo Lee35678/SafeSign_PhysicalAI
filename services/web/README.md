@@ -2,12 +2,12 @@
 
 RACI: 웹 **R**, 성능측정 **R**
 
-`document/09_화면목록_v2.md`의 SC-01~SC-07 화면 흐름을 상태머신으로 구현하고, vision(`GET /latest`)·
+`document/09_화면목록.md`의 SC-01~SC-07 화면 흐름을 상태머신으로 구현하고, vision(`GET /latest`)·
 actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) · **picar(`POST /picar`,
 별도 서비스, Raspberry Pi 4B 8GB, Wi-Fi)** 를 호출해 화면에 반영합니다. picar는 actuation과 다른
 서비스/보드이므로 `PICAR_URL`로 따로 호출하고, 타임아웃(500ms)+1회 재시도 후 실패하면 picar 없이
-진행합니다 (03_인터페이스계약서_v2 §5-2·§7 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
-보드를 분리했습니다, 02_설계문서_v2 §1-1).
+진행합니다 (03_인터페이스계약서 §5-2·§7 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
+보드를 분리했습니다, 02_설계문서 §1-1).
 
 > **2026-09-22 갱신**: SC-01~SC-06 전체 흐름을 `/api/state` 폴링 기반으로 구현했다(SC-07은 프론트엔드가
 > 최초 로드 시 상태를 보고 판단). below_tau/out_of_distribution 구분, SC-04(카메라 인식 실패) 자동
@@ -42,7 +42,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   인쇄(PDF 저장)를 제공한다. 카메라 실시간 영상 미리보기는 vision에 프레임 스트리밍 엔드포인트가 없어
   자리표시자만 표시한다(§ "아직 확정 안 된 것" 참고).
 
-## 화면 ↔ 상태 매핑 (09_화면목록_v2.md 참고, 2026-09-18 갱신)
+## 화면 ↔ 상태 매핑 (09_화면목록.md 참고, 2026-09-18 갱신)
 
 | 화면ID | 상태머신 state | 비고 |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 | SC-07 | `reentry` | 세션 이어하기 미구현 — 항상 처음부터 재시작 |
 
 관리자 화면(구 SC-08 신규 수신호 등록)은 없습니다 — 경량 분류기(SVM) 채택으로 해당 기능 자체가
-범위에서 제외되었습니다 (03_인터페이스계약서_v2 §6).
+범위에서 제외되었습니다 (03_인터페이스계약서 §6).
 
 ## 아직 확정 안 된 것
 
@@ -64,7 +64,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 - [x] ~~프론트엔드(`main.js`)가 `/api/state`를 폴링해 SC-01~SC-07 화면을 실제로 전환하도록 연결~~ →
   2026-09-22 구현
 - [x] ~~`picar_command`의 `motor.speed` 값~~ → 2026-09-23 바닥 주행 테스트로 확정: 서행 20,
-  좌/우회전·후진 40, 정지/확인_완료/주의 0 (13_picar_하드웨어_검증리포트_v1.md §4.5). picar 서비스가
+  좌/우회전·후진 40, 정지/확인_완료/주의 0 (13_picar_하드웨어_검증리포트.md §4.5). picar 서비스가
   50 초과를 잘라내지만(`speed_capped_from`) 안전망일 뿐
 - [x] ~~SC-04(camera_fail) 진입 조건~~ → `CAMERA_FAIL_STREAK_THRESHOLD`(연속 15회, ~3초) 잠정치로
   2026-09-22 구현. 실측 후 조정 필요
@@ -73,7 +73,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   match_score 구간별 잠정치(1~3회)로 구현. 실측/교육 설계 확정 필요
 - [ ] SC-03 카메라 실시간 영상 미리보기 — vision이 프레임 스트리밍 엔드포인트를 제공하지 않아 현재는
   자리표시자만 표시. vision 담당과 스트리밍 방식(MJPEG/WebSocket 등) 협의 필요
-- [ ] `확인_완료` AI Hand 자세 — 10_PRD_v2/03_인터페이스계약서_v2는 "주먹"으로 확정(2026-09-20)했지만
+- [ ] `확인_완료` AI Hand 자세 — 10_PRD/03_인터페이스계약서는 "주먹"으로 확정(2026-09-20)했지만
   실제 actuation 코드(controller.py/firmware)는 아직 "엄지만 펴기"로 남아 있는 known gap. 웹 화면은
   확정된 스펙("주먹")을 표시하므로, actuation 코드가 갱신되기 전까지는 화면 설명과 실물 AI Hand
   동작이 다를 수 있음 — actuation 담당 확인 필요

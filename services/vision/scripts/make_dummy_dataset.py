@@ -8,7 +8,7 @@
   1. `train_svm_colab.ipynb`가 기대하는 폴더/JSON 형식을 눈으로 확인
   2. 정규화 → 학습 → 번들 저장 → 추론 로딩까지 한 바퀴 돌려보기 (services/vision/tests 참고)
 
-생성 형식 (04_데이터셋명세서_v2 §6 폴더 구조안):
+생성 형식 (04_데이터셋명세서 §6 폴더 구조안):
     {out}/{class_name}/{subject_id}_{index}.json
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ SIGN_CLASSES = [
     "negative",
 ]
 
-# 02_설계문서_v2 §4 "AiHand 표현"을 손가락 펴짐(True)/굽힘(False)으로 옮긴 것
+# 02_설계문서 §4 "AiHand 표현"을 손가락 펴짐(True)/굽힘(False)으로 옮긴 것
 # 순서: [엄지, 검지, 중지, 약지, 소지]
 FINGER_STATE = {
     "정지": [True, True, True, True, True],
@@ -41,7 +41,7 @@ FINGER_STATE = {
     "확인_완료": [False, False, False, False, False],    # 2026-09-20 따봉→주먹 변경
     "후진": [False, True, False, False, False],
     "주의": [False, False, False, False, True],
-    # negative는 "손은 있으나 7종이 아닌 자세"다(04_데이터셋명세서_v2 §1). 확인_완료가 주먹이 되면서
+    # negative는 "손은 있으나 7종이 아닌 자세"다(04_데이터셋명세서 §1). 확인_완료가 주먹이 되면서
     # 겹치지 않도록 엄지+중지라는 7종에 없는 조합을 쓴다.
     "negative": [True, False, True, False, False],
 }

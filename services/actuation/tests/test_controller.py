@@ -5,7 +5,7 @@
 일치하는지 고정한다. 실제 BLE는 건드리지 않는다(mock=True 경로만).
 
 프로토콜 근거: shared/schemas/microbit_protocol.md ·
-document/03_인터페이스계약서_v2.md §5-3 · 펌웨어 src/firmware/aihand_control.ts
+document/03_인터페이스계약서.md §5-3 · 펌웨어 src/firmware/aihand_control.ts
 
 `pytest-asyncio`를 쓰지 않기 위해 async 함수는 `asyncio.run()`으로 감싼다
 (actuation/requirements.txt에 테스트 전용 의존성을 추가하지 않으려는 의도).
@@ -46,7 +46,7 @@ def test_gesture_numbers_are_unique_and_one_to_seven():
 
 
 def test_gesture_map_order_matches_prd_table():
-    """10_PRD_v2 §3.2 표 순서 = G1~G7. 순서가 밀리면 엉뚱한 제스처가 나간다."""
+    """10_PRD §3.2 표 순서 = G1~G7. 순서가 밀리면 엉뚱한 제스처가 나간다."""
     assert controller.GESTURE_MAP == {
         "정지": 1,
         "서행": 2,

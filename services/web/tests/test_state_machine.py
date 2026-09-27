@@ -114,7 +114,7 @@ def test_poll_once_wrong_does_not_advance_or_call_picar():
 
 
 def test_poll_once_below_tau_vs_out_of_distribution_messages_differ():
-    """03_인터페이스계약서_v2 §4, 2026-09-22 추가 — 자세를 다듬으라는 안내(below_tau)와 다른
+    """03_인터페이스계약서 §4, 2026-09-22 추가 — 자세를 다듬으라는 안내(below_tau)와 다른
     수신호를 하고 있다는 안내(out_of_distribution)는 서로 다른 메시지를 써야 한다."""
     for reason, expected_message in (
         ("below_tau", "조금 더 정확히 해주세요"),

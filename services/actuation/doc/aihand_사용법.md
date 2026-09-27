@@ -2,7 +2,7 @@
 
 > 처음 세팅하는 사람이 **이 문서만 보고** AI Hand를 움직일 수 있게 쓴 실습 가이드입니다.
 > 설계 근거·제약의 배경은 [services/actuation/README.md](../README.md)와
-> [document/11_하드웨어설계서_v1.md](../../../document/11_하드웨어설계서_v1.md) §4를 보세요.
+> [document/11_하드웨어설계서.md](../../../document/11_하드웨어설계서.md) §4를 보세요.
 >
 > 대상: micro:bit v2 + Startbit/Hiwonder 확장보드 + AI Hand(손가락 서보 5개), 조작 PC는 Windows 기준.
 

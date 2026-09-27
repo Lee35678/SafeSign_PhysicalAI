@@ -10,8 +10,8 @@
   "P<current><total>"(진행 표시, 둘 다 한 자리 숫자, LED 표시 없이 "OKP<current><total>\n"만 회신 —
   진행 표시는 web 화면 쪽 담당)을 처리한다. BTN(버튼 입력)은 아직 펌웨어에 구현되어 있지 않다.
 - 손가락 서보 동시 구동 시 전류 급증으로 BLE 연결이 끊길 수 있어(세션 6), 쓰기 실패 시 재연결 후
-  1회 재시도한다 (03_인터페이스계약서_v2 §7의 "타임아웃+1회 재시도" 정책과 동일 기조).
-  이 현상은 전원 구조로 설명된다(document/11_하드웨어설계서_v1.md §4.4) — 7.5V 3A 어댑터 하나가
+  1회 재시도한다 (03_인터페이스계약서 §7의 "타임아웃+1회 재시도" 정책과 동일 기조).
+  이 현상은 전원 구조로 설명된다(document/11_하드웨어설계서.md §4.4) — 7.5V 3A 어댑터 하나가
   Hiwonder 확장보드를 거쳐 micro:bit와 서보 6개를 **같은 레일에서** 먹인다. 손가락 서보(LFD-01)
   구속 전류가 개당 700mA라 5개를 동시에 기동하면 3.5A로 어댑터 용량(3A)을 넘기고, 레일이
   주저앉으면 같은 레일의 micro:bit가 브라운아웃되어 BLE SoftDevice가 죽는다(패닉 070).
@@ -36,7 +36,7 @@ UART_TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # 알림용 (micro:bit ->
 log = logging.getLogger("uvicorn.error")  # uvicorn 콘솔에 그대로 찍히도록
 
 SCAN_TIMEOUT_S = 5.0
-ACK_TIMEOUT_S = 2.0  # 물리 피드백 지연 KPI(P95<=2.0초, 10_PRD_v2 §3 참고) 기준
+ACK_TIMEOUT_S = 2.0  # 물리 피드백 지연 KPI(P95<=2.0초, 10_PRD §3 참고) 기준
 
 _client: "BleakClient | None" = None
 _reply_event: "asyncio.Event | None" = None

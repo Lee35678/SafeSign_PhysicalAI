@@ -4,8 +4,8 @@
 
 **왜 필요한가.** 지금 학습 데이터 27,735건은 전부 공개 데이터셋이고 촬영자 정보가 없어
 `subject_id`가 전부 `"public"` 하나다. 인물 단위로 나눌 수 없으니 거기서 나온 점수는
-"처음 보는 사람에게도 통한다"는 증거가 못 된다(04_데이터셋명세서_v2 §4).
-**01_프로젝트계획서_v4의 KPI 5개 항목은 이 스크립트로 모은 데이터로만 측정할 수 있다.**
+"처음 보는 사람에게도 통한다"는 증거가 못 된다(04_데이터셋명세서 §4).
+**01_프로젝트계획서의 KPI 5개 항목은 이 스크립트로 모은 데이터로만 측정할 수 있다.**
 
 **이건 학습 데이터가 아니라 시험 데이터다.** 학습은 공개 데이터로 하고, 여기서 모은 것은
 손대지 않은 채 최종 KPI 측정에만 쓴다. 그래서 분량이 적어도 된다(외부인 1~2명 × 7종 × 10회).
@@ -38,7 +38,7 @@
     Q/ESC  종료 (지금까지 찍은 것은 남는다)
 
 출력: `services/data/datasets/self_recorded/{클래스}/*.json`
-      형식은 공개 데이터(04_데이터셋명세서_v2 §6)와 동일해서 `train_svm.py --data`로 바로 읽힌다.
+      형식은 공개 데이터(04_데이터셋명세서 §6)와 동일해서 `train_svm.py --data`로 바로 읽힌다.
 """
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ from camera_source import (  # noqa: E402
     open_camera,
 )
 
-# 02_설계문서_v2 §4 확정 7종 + 손가락 패턴(엄지·검지·중지·약지·소지, ● 폄 / ○ 접음).
+# 02_설계문서 §4 확정 7종 + 손가락 패턴(엄지·검지·중지·약지·소지, ● 폄 / ○ 접음).
 # 외부인은 수신호를 모르므로 화면에 이 패턴을 같이 띄워 준다.
 SIGN_SHAPES = [
     ("정지", "●●●●●", "다섯 손가락 모두 펴기"),
@@ -98,7 +98,7 @@ def _now_iso() -> str:
 def save_sample(out_dir: Path, class_name: str, subject_id: str, frame: dict,
                 take: int, seq: int, orientation: str, device: str = "laptop_webcam",
                 variant: str = "normal") -> Path:
-    """공개 데이터와 같은 형식으로 1건 저장 (04_데이터셋명세서_v2 §6)."""
+    """공개 데이터와 같은 형식으로 1건 저장 (04_데이터셋명세서 §6)."""
     folder = out_dir / class_name
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"{subject_id}_{class_name}_t{take:02d}_f{seq}"

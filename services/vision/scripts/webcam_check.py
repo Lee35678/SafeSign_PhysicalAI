@@ -64,7 +64,7 @@ from perception.camera_source import (  # noqa: E402 — CSI(picamera2)·USB(Ope
     add_camera_args, has_display, list_cameras, open_camera,
 )
 
-# 05_모델카드_v3 §1: MediaPipe Hand Landmarker 공식 모델 번들 (Apache License 2.0)
+# 05_모델카드 §1: MediaPipe Hand Landmarker 공식 모델 번들 (Apache License 2.0)
 LANDMARKER_URL = (
     "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
     "hand_landmarker/float16/1/hand_landmarker.task"
@@ -322,7 +322,7 @@ def main() -> None:
 
     options = HandLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=str(landmarker_path)),
-        running_mode=RunningMode.LIVE_STREAM,       # 운영과 동일 (05_모델카드_v3 §3-2)
+        running_mode=RunningMode.LIVE_STREAM,       # 운영과 동일 (05_모델카드 §3-2)
         num_hands=1,
         min_hand_detection_confidence=0.5,
         min_hand_presence_confidence=0.5,

@@ -1,11 +1,11 @@
 """수신호 템플릿 DB 조회 + cosine similarity 기반 match_score 산출.
 
-document/03_인터페이스계약서_v2.md §4 (`match_score`), 05_모델카드_v3 §2 참고.
+document/03_인터페이스계약서.md §4 (`match_score`), 05_모델카드 §2 참고.
 분류 결과(predicted_class)와 일치율(match_score)은 **분리 설계**다 — "무엇으로 판정했는가"는 SVM이,
 "얼마나 비슷한가"는 템플릿과의 코사인 유사도가 답한다.
 
 템플릿 DB(`sign_templates` 테이블)는 services/data의 seed_templates.py가 학습 데이터로 **오프라인
-시드**한다(수신호 등록 기능은 범위 제외 — 03_인터페이스계약서_v2 §6). 이 모듈은 읽기 전용이다.
+시드**한다(수신호 등록 기능은 범위 제외 — 03_인터페이스계약서 §6). 이 모듈은 읽기 전용이다.
 DB나 템플릿이 아직 없으면 match_score=0으로 안전하게 동작한다.
 """
 from __future__ import annotations
@@ -80,7 +80,7 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 def similarity_to_score(similarity: float, calibration: Optional[dict] = None) -> int:
     """코사인 유사도 -> 0~100 점수.
 
-    05_모델카드_v3 §2는 "percentile 매핑"을 요구한다. 실측 데이터가 있어야 분포를 알 수 있으므로,
+    05_모델카드 §2는 "percentile 매핑"을 요구한다. 실측 데이터가 있어야 분포를 알 수 있으므로,
     학습 노트북이 검증셋에서 뽑은 (sim_min, sim_max) = (같은 클래스 유사도의 5·95 퍼센타일)을
     번들에 실어 보내고, 여기서는 그 구간을 0~100으로 선형 매핑한다.
     보정값이 없으면(모델 없음/구버전 번들) 유사도를 그대로 0~100으로 매핑한다.

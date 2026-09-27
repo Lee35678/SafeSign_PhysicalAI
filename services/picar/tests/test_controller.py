@@ -6,7 +6,7 @@ RPi4B·picar 실물이 아직 없으므로, 실물이 도착했을 때 "코드�
 되지 않아야 한다).
 
 프로토콜 근거: services/picar/README.md "모터 I2C 프로토콜" ·
-document/03_인터페이스계약서_v2.md §5-2 · Yahboom `YB_Pcb_Car.py`
+document/03_인터페이스계약서.md §5-2 · Yahboom `YB_Pcb_Car.py`
 
 실행:
     cd services/picar && python -m pytest tests -q
@@ -32,7 +32,7 @@ def test_speed_0_and_100_map_to_range_ends():
 
 
 def test_speed_confirmed_values():
-    """2026-09-23 바닥 주행으로 확정한 값들 (13_picar_하드웨어_검증리포트_v1 §4.5)."""
+    """2026-09-23 바닥 주행으로 확정한 값들 (13_picar_하드웨어_검증리포트 §4.5)."""
     assert controller._speed_pct_to_byte(20) == 51    # 서행
     assert controller._speed_pct_to_byte(40) == 102   # 좌/우회전·후진
     assert controller._speed_pct_to_byte(50) == 128   # 상한

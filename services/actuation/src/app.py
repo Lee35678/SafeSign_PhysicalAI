@@ -5,11 +5,11 @@
 micro:bit 하드웨어 UART가 1개뿐이라 서보 초기화 시 USB 시리얼이 죽는 제약이 실측으로 확인되어
 (doc/aihand_gesture_checklist_final.md 세션 1), RPi5 <-> micro:bit 통신은 USB 시리얼이 아니라
 BLE(Nordic UART Service)로 이루어진다(2026-09-21, shared/schemas/microbit_protocol.md·
-document/03_인터페이스계약서_v2.md §5-3에 갱신 반영됨).
+document/03_인터페이스계약서.md §5-3에 갱신 반영됨).
 
 picar는 이 서비스가 아니라 **별도 서비스(services/picar, Raspberry Pi 4B 8GB)** 에서 담당한다 —
 picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에 컴퓨트 보드를 분리했다
-(document/02_설계문서_v2 §1-1, 2026-09-18). 상태머신(web)이 picar_command는 이 서비스가 아니라
+(document/02_설계문서 §1-1, 2026-09-18). 상태머신(web)이 picar_command는 이 서비스가 아니라
 services/picar의 `/picar` 엔드포인트로 직접(Wi-Fi) 전송한다.
 
 입력 스키마: shared/schemas/aihand_command.schema.json

@@ -2,27 +2,27 @@
 
 산업 안전 수신호 교육용 피지컬 AI (AI Hand + picar + micro:bit + Raspberry Pi 5 + Raspberry Pi 4B 8GB)
 
-**개발 착수 시 반드시 먼저 읽을 문서**: [document/10_PRD_v2.md](document/10_PRD_v2.md) — 번호 문서를
+**개발 착수 시 반드시 먼저 읽을 문서**: [document/10_PRD.md](document/10_PRD.md) — 번호 문서를
 종합한 최신 요구사항입니다. 문서 전체 지도는 [document/README.md](document/README.md)에 있습니다.
 
 ---
 
 ## 1. 디렉터리 구조 (담당자별 컨테이너 분리)
 
-`document/10_PRD_v2.md` §4 시스템 아키텍처와 `document/01_프로젝트계획서_v4.md` §역할 및 책임(RACI)을 기준으로 5개 서비스로
+`document/10_PRD.md` §4 시스템 아키텍처와 `document/01_프로젝트계획서.md` §역할 및 책임(RACI)을 기준으로 5개 서비스로
 나눴습니다. 각자 자기 서비스 폴더 안에서만 작업하면 다른 사람 코드와 충돌 없이 개발할 수 있고,
 마지막에 `docker compose up`으로 전부 합쳐서 로컬 통합 구동을 확인합니다.
 
 ```
 SafeSign_PhysicalAI/
-├── document/              # 기획/설계/계약 문서 (README.md = 색인, 10_PRD_v2.md = 종합본)
+├── document/              # 기획/설계/계약 문서 (README.md = 색인, 10_PRD.md = 종합본)
 ├── services/
 │   ├── vision/             ← 이동혁 담당 (Perception + Cognition, 판정로직 R) — Raspberry Pi 5
 │   ├── actuation/          ← 송승호 담당 (AI Hand + micro:bit, 하드웨어 R) — Raspberry Pi 5
 │   ├── picar/              ← 송승호 담당 (picar 전용 컨트롤러, 하드웨어 R) — Raspberry Pi 4B 8GB (신규)
 │   ├── web/                ← 조은수 담당 (프론트엔드 + 교육 상태머신 백엔드, 웹 R)
 │   └── data/                ← 김지훈 담당 (데이터 수집 스크립트 + 수신호 템플릿 DB, 데이터수집 R)
-├── shared/                 # 5개 서비스 공통: 03_인터페이스계약서_v2 기반 스키마 (필드명 그대로 코드 변수명에 사용)
+├── shared/                 # 5개 서비스 공통: 03_인터페이스계약서 기반 스키마 (필드명 그대로 코드 변수명에 사용)
 ├── docker-compose.yml      # 5개 서비스 통합 실행
 ├── .env.example
 └── .gitignore
@@ -30,7 +30,7 @@ SafeSign_PhysicalAI/
 
 담당 외 서비스도 A/C/I 역할로 참고는 하되, 실제 코드 작업은 본인 폴더 위주로 진행하고
 인터페이스는 `shared/schemas/`에 정의된 스키마로만 주고받으세요. 스키마를 바꿔야 하면
-`shared/schemas/` 파일과 `document/03_인터페이스계약서_v2.md`를 함께 갱신하고 팀에 공유합니다.
+`shared/schemas/` 파일과 `document/03_인터페이스계약서.md`를 함께 갱신하고 팀에 공유합니다.
 
 ## 2. 확정된 하드웨어/아키텍처 (2026-09-18, PRD §1.3·§11 기준)
 
@@ -95,9 +95,9 @@ docker compose --profile tools run --rm data-tools python src/seed_templates.py
 | RPi5 | vision | `services/vision` | 8001 | `localhost` |
 | RPi5 | web | `services/web` | 8000 | PC에서 `http://<RPi5 eth0 주소>:8000` |
 
-- RPi5 ↔ RPi4B 무선(AP) 구성은 [document/네트워크설정법.md](document/네트워크설정법.md)를 먼저 끝낸다.
+- RPi5 ↔ RPi4B 무선(AP) 구성은 [document/07_네트워크설정법.md](document/07_네트워크설정법.md)를 먼저 끝낸다.
 - **PC ↔ RPi5 유선(UTP) 대역은 현장마다 다르다.** 조건은 하나 — picar AP 대역 `192.168.50.x`와 겹치지 않을 것
-  (`document/11_하드웨어설계서_v1.md` §6.1). web은 `0.0.0.0`에 뜨므로 코드는 바꿀 필요가 없다.
+  (`document/11_하드웨어설계서.md` §6.1). web은 `0.0.0.0`에 뜨므로 코드는 바꿀 필요가 없다.
 
 ### 4.1 최초 1회 준비
 
@@ -269,7 +269,7 @@ picar는 끝나면 배터리 스위치를 내린다(정상 종료가 필요하�
 
 더 자세한 내용: [services/actuation/README.md](services/actuation/README.md)(BLE 문제 해결) ·
 [services/vision/README.md](services/vision/README.md)(카메라) · [services/picar/README.md](services/picar/README.md)(모터·LED·속도) ·
-[document/네트워크설정법.md](document/네트워크설정법.md)(AP·SSH).
+[document/07_네트워크설정법.md](document/07_네트워크설정법.md)(AP·SSH).
 
 ## 5. Git / 브랜치 전략 (제안)
 
@@ -281,8 +281,8 @@ picar는 끝나면 배터리 스위치를 내린다(정상 종료가 필요하�
 
 ## 6. 문서 연동 체크
 
-- 서비스 간 메시지 필드/스키마 변경 시 → `document/03_인터페이스계약서_v2.md` 갱신
-- 아키텍처/범위가 바뀌면 → `document/10_PRD_v2.md`도 함께 갱신 (개별 문서만 고치고 PRD를 방치하지 않기)
-- 통합 7종 수신호 목록은 `document/02_설계문서_v2.md` §4·§4-1 · `document/04_데이터셋명세서_v2.md` §1 ·
+- 서비스 간 메시지 필드/스키마 변경 시 → `document/03_인터페이스계약서.md` 갱신
+- 아키텍처/범위가 바뀌면 → `document/10_PRD.md`도 함께 갱신 (개별 문서만 고치고 PRD를 방치하지 않기)
+- 통합 7종 수신호 목록은 `document/02_설계문서.md` §4·§4-1 · `document/04_데이터셋명세서.md` §1 ·
   `shared/schemas/aihand_command.schema.json` · `shared/schemas/picar_command.schema.json`에서
   동일하게 유지

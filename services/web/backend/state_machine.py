@@ -1,4 +1,4 @@
-"""교육 상태머신 (09_화면목록_v2.md SC-01~SC-07 대응).
+"""교육 상태머신 (09_화면목록.md SC-01~SC-07 대응).
 
 담당: 조은수 (웹 R, 성능측정 R)
 
@@ -19,7 +19,7 @@
 - actuation(RPi5, ACTUATION_URL)의 POST /command(AI Hand) · /result · /progress(micro:bit) 호출
 - **picar(RPi4B 8GB, PICAR_URL)의 POST /picar를 별도로 직접 호출** — actuation을 거치지 않는다.
   picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에 컴퓨트 보드를 분리했다
-  (02_설계문서_v2 §1-1, 2026-09-18).
+  (02_설계문서 §1-1, 2026-09-18).
 - vision의 POST /reset을 호출해 다음 수신호를 위한 N프레임 연속판정 누적을 초기화한다
   (vision/src/app.py 문서화: "다음 수신호로 넘어갈 때 웹 상태머신이 호출").
 
@@ -34,7 +34,7 @@
   /result·/progress는 실측 26~42ms라 0.5초. 최악 대기시간 = 1.5x2 + 0.5x2 + 0.5x2 + picar 0.5x2 ≈ 6초
   (기존 2.0초 일괄 시 13초). 이전에 채택했던 C안(일괄 0.6초)은 /command가 전부 timeout 나서 철회됐다.
 
-관리자/등록 관련 상태 없음 — 수신호 등록 기능은 범위에서 제외됨 (03_인터페이스계약서_v2 §6).
+관리자/등록 관련 상태 없음 — 수신호 등록 기능은 범위에서 제외됨 (03_인터페이스계약서 §6).
 
 SC-05(요약)/SC-06(수료증) 화면의 세부 레이아웃, SC-02(커리큘럼 확인) 화면 문구 등 시각 디자인은
 프론트엔드(frontend/) 책임이며, 이 모듈은 그 화면들이 필요로 하는 상태값·집계 데이터까지만 만든다.
@@ -59,12 +59,12 @@ POLL_INTERVAL_S = float(os.getenv("VISION_POLL_INTERVAL_S", "0.2"))
 DEVICE_HEALTH_INTERVAL_S = float(os.getenv("DEVICE_HEALTH_INTERVAL_S", "5.0"))
 DEVICE_HEALTH_TIMEOUT_S = 1.5
 
-# 손 미검출(no_hand/normalize_failed)이 연속 몇 회 지속되면 SC-04로 전환할지 — 09_화면목록_v2.md가
+# 손 미검출(no_hand/normalize_failed)이 연속 몇 회 지속되면 SC-04로 전환할지 — 09_화면목록.md가
 # "임계값 필요"라고만 표시하고 수치는 정의하지 않아, POLL_INTERVAL_S 0.2초 기준 약 3초에 해당하는
 # 잠정치를 둔다. 실측 후 조정 대상(TBD).
 CAMERA_FAIL_STREAK_THRESHOLD = 15
 
-# SC-01~SC-07 상태값. 09_화면목록_v2.md 표와 동기화 유지.
+# SC-01~SC-07 상태값. 09_화면목록.md 표와 동기화 유지.
 # 구 SC-02(분야 선택)·SC-08(관리자 등록)은 아키텍처 변경으로 제거됨.
 STATES = [
     "landing",             # SC-01
@@ -76,28 +76,28 @@ STATES = [
     "reentry",             # SC-07 — 이어하기 없음, 항상 처음부터 재시작 안내만 (프론트엔드가 판단)
 ]
 
-# 커리큘럼 순서 — 10_PRD_v2.md §3.2 표 순서. 학습 순서 자체는 TBD(교육 설계 확정 필요), 우선
+# 커리큘럼 순서 — 10_PRD.md §3.2 표 순서. 학습 순서 자체는 TBD(교육 설계 확정 필요), 우선
 # PRD 표 순서를 기본값으로 둔다.
 CURRICULUM = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
 
-# SC-02/SC-03 표시용 설명. 10_PRD_v2.md §3.2 · 수신호에 따른 picar 동작.md 기준(2026-09-20 확정본).
+# SC-02/SC-03 표시용 설명. 10_PRD.md §3.2 · 수신호에 따른 picar 동작.md 기준(2026-09-20 확정본).
 CURRICULUM_INFO = {
     "정지": {"aihand": "다섯 손가락 펴기 + 정면", "picar": "정지 + 양쪽 적색 LED 점등"},
     "서행": {"aihand": "검지 + 중지 펴기 + 정면", "picar": "감속 주행 + 양쪽 황색 LED 점멸"},
     "좌회전_유도": {"aihand": "엄지 + 검지 펴기", "picar": "좌회전 주행 + 좌측 황색 LED 점멸"},
     "우회전_유도": {"aihand": "엄지 + 소지 펴기 (2026-09-20 변경: 약지→소지)",
                 "picar": "우회전 주행 + 우측 황색 LED 점멸"},
-    # 10_PRD_v2 §3.2·03_인터페이스계약서_v2 표는 "다섯 손가락 접기(주먹)"으로 확정(2026-09-20 팀 승인)했으나,
+    # 10_PRD §3.2·03_인터페이스계약서 표는 "다섯 손가락 접기(주먹)"으로 확정(2026-09-20 팀 승인)했으나,
     # 실제 actuation 코드(controller.py DEFAULT_SERVO_ANGLES·firmware gesture5)는 아직 이전 값인
     # "엄지만 펴기"로 남아 있다 — actuation 쪽 동기화가 필요한 미해결 gap(2026-09-21 팀 확인,
-    # 03_인터페이스계약서_v2 §5-1 changelog에도 명시). 여기서는 팀이 확정한 최종 스펙을 표시한다.
+    # 03_인터페이스계약서 §5-1 changelog에도 명시). 여기서는 팀이 확정한 최종 스펙을 표시한다.
     "확인_완료": {"aihand": "다섯 손가락 접기(주먹) + 정면", "picar": "적색·황색 LED 번갈아 2회 점멸 후 소등"},
     "후진": {"aihand": "검지만 펴기", "picar": "후진 주행"},
     "주의": {"aihand": "소지(새끼손가락)만 펴기", "picar": "정지 + 양쪽 황색 LED 점멸"},
 }
 
 # target_signal -> picar_command.schema.json 페이로드. `수신호에 따른 picar 동작.md` 기준.
-# motor.speed는 2026-09-23 바닥 주행 테스트로 확정(13_picar_하드웨어_검증리포트_v1.md §4.5):
+# motor.speed는 2026-09-23 바닥 주행 테스트로 확정(13_picar_하드웨어_검증리포트.md §4.5):
 # 서행 20, 좌/우회전·후진 40. 60은 "너무 빠름"으로 기각, picar 서비스가 50 초과를 잘라내지만
 # (응답 motor.speed_capped_from) 안전망일 뿐이므로 처음부터 이 값을 보낸다.
 PICAR_COMMANDS = {
@@ -131,7 +131,7 @@ CAMERA_FAIL_REASONS = {"no_hand", "normalize_failed"}
 HOLD_REASONS = {"below_tau", "out_of_distribution"}  # SC-03b, 메시지만 다름
 SILENT_REASONS = {"awaiting_consecutive_frames", "model_not_loaded", "inference_error"}
 
-# SC-03b 안내 문구 (03_인터페이스계약서_v2 §4, 2026-09-22 추가: below_tau/out_of_distribution 구분)
+# SC-03b 안내 문구 (03_인터페이스계약서 §4, 2026-09-22 추가: below_tau/out_of_distribution 구분)
 OUTCOME_MESSAGES = {
     "wrong": "다시 시도하세요",
     "below_tau": "조금 더 정확히 해주세요",
@@ -167,7 +167,7 @@ def _current_target_signal() -> "str | None":
 
 
 def _recommended_retry_count(match_score: int) -> int:
-    """권장 재도전 횟수(SC-03b) — 09_화면목록_v2.md가 표시 항목으로 요구하나 산식은 어느 문서에도
+    """권장 재도전 횟수(SC-03b) — 09_화면목록.md가 표시 항목으로 요구하나 산식은 어느 문서에도
     정의돼 있지 않다. match_score 구간별 잠정치(TBD)이며 실측 후 팀 확정 필요."""
     if match_score >= 70:
         return 1
@@ -178,7 +178,7 @@ def _recommended_retry_count(match_score: int) -> int:
 
 def _post_with_retry(url: str, json: dict, timeout_s: float) -> dict:
     """실패해도 예외를 삼키고 계속 진행하되, 결과는 호출부에 돌려준다
-    (03_인터페이스계약서_v2 §7 — 장치 실패가 학습 흐름을 막지 않는 정책은 유지).
+    (03_인터페이스계약서 §7 — 장치 실패가 학습 흐름을 막지 않는 정책은 유지).
 
     httpx.post()는 4xx/5xx에 예외를 던지지 않으므로 status_code를 직접 확인한다 — 이전 구현은
     반환값을 버려 서버 오류를 성공으로 셌다(2026-09-21 web_picar_통신_신뢰성_개선안.md §1-1)."""

@@ -1,7 +1,7 @@
 """수집한 사진 -> 랜드마크 JSON 변환 (학습 데이터 생성).
 
 담당: 김지훈
-근거/사용법: services/data/README.md · document/04_데이터셋명세서_v2.md
+근거/사용법: services/data/README.md · document/04_데이터셋명세서.md
 
 이 스크립트가 하는 일:
     클래스별 사진 폴더  ->  MediaPipe로 손 관절 21개 좌표 추출
@@ -13,7 +13,7 @@
 입력 폴더 구조 (폴더 이름은 아래 FOLDER_TO_CLASS의 키 중 하나):
     <src>/정지/*.jpg   <src>/서행/*.jpg   ...
 
-출력 (04_데이터셋명세서_v2 §6 · make_dummy_dataset.py와 동일 형식):
+출력 (04_데이터셋명세서 §6 · make_dummy_dataset.py와 동일 형식):
     <out>/{class_name}/{subject_id}_{index}.json
     {"class_name":..., "subject_id":..., "handedness":"Left|Right",
      "landmarks":[{"id":0,"x":..,"y":..,"z":..}, ... 21개], "source":{...}}
@@ -34,7 +34,7 @@ import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-# 05_모델카드_v3 §1에 기재된 공식 모델 번들 (Apache License 2.0)
+# 05_모델카드 §1에 기재된 공식 모델 번들 (Apache License 2.0)
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
     "hand_landmarker/float16/1/hand_landmarker.task"
@@ -42,7 +42,7 @@ MODEL_URL = (
 DEFAULT_MODEL = Path(__file__).resolve().parents[1] / "models" / "hand_landmarker.task"
 DEFAULT_OUT = Path(__file__).resolve().parents[1] / "datasets" / "processed"
 
-# 04_데이터셋명세서_v2 §1 확정 클래스명 (학습 노트북이 이 이름만 인식한다)
+# 04_데이터셋명세서 §1 확정 클래스명 (학습 노트북이 이 이름만 인식한다)
 SIGN_CLASSES = [
     "정지",
     "서행",
@@ -71,7 +71,7 @@ FOLDER_TO_CLASS = {
 }
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-MIN_PER_CLASS = 300  # 04_데이터셋명세서_v2 §2 클래스당 목표
+MIN_PER_CLASS = 300  # 04_데이터셋명세서 §2 클래스당 목표
 
 
 def ensure_model(path: Path) -> Path:
@@ -103,7 +103,7 @@ def extract(landmarker, path: Path):
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     result = landmarker.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
 
-    # 05_모델카드_v3 §3-4: 카메라 거리 변화에 강한 world landmarks 채택
+    # 05_모델카드 §3-4: 카메라 거리 변화에 강한 world landmarks 채택
     if not result.hand_world_landmarks:
         return None
     world = result.hand_world_landmarks[0]
@@ -185,7 +185,7 @@ def main() -> None:
         # 열지 못한다 (Windows 사용자명이 한글이면 반드시 이 방식이어야 한다).
         base_options=mp_python.BaseOptions(model_asset_buffer=ensure_model(Path(args.model)).read_bytes()),
         running_mode=vision.RunningMode.IMAGE,
-        num_hands=1,  # 05_모델카드_v3 §3-3: 학습자 1명의 손 1개만
+        num_hands=1,  # 05_모델카드 §3-3: 학습자 1명의 손 1개만
         min_hand_detection_confidence=0.3,
         min_hand_presence_confidence=0.3,
         min_tracking_confidence=0.3,
@@ -247,7 +247,7 @@ def main() -> None:
         print("검출률이 30% 이상이면 --probe 없이 다시 실행해 전체 변환을 진행하세요.")
         return
 
-    print(f"\n클래스별 확보 장수 (04_데이터셋명세서_v2 §2 기준 {MIN_PER_CLASS}장 이상 필요):")
+    print(f"\n클래스별 확보 장수 (04_데이터셋명세서 §2 기준 {MIN_PER_CLASS}장 이상 필요):")
     shortage = []
     for cls in targets:
         if cls not in stats:

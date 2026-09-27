@@ -28,7 +28,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-# 03_인터페이스계약서_v2 §2의 운영값은 1920x1080/60fps지만, 확인·촬영 도구는 같은 보드에서
+# 03_인터페이스계약서 §2의 운영값은 1920x1080/60fps지만, 확인·촬영 도구는 같은 보드에서
 # MediaPipe까지 돌리므로 기본을 낮춰 잡는다. 운영 해상도로 보려면 --size 1920x1080.
 DEFAULT_SIZE = (1280, 720)
 DEFAULT_FPS = 30

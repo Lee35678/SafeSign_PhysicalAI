@@ -1,8 +1,8 @@
 """picar 모터+LED 제어. 이 서비스는 **Raspberry Pi 4B 8GB(picar 차체 탑재)** 에서 실행된다.
 
-document/02_설계문서_v2 §1-1, §3-2 참고 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
+document/02_설계문서 §1-1, §3-2 참고 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
 picar 전용 컴퓨트 보드(RPi4B)로 분리했다(2026-09-18). RPi5의 교육 상태머신이 Wi-Fi(HTTP)로 이 서비스의
-`/picar` 엔드포인트를 호출한다 — document/03_인터페이스계약서_v2 §5-2 참고.
+`/picar` 엔드포인트를 호출한다 — document/03_인터페이스계약서 §5-2 참고.
 
 핀 배정 근거: document/hardware_pinmap.md "Raspbot_pinmap" 표(2026-09-21 확인).
 
@@ -84,7 +84,7 @@ DIR_FORWARD = 1
 MOTION_DURATION_S = float(os.getenv("PICAR_MOTION_DURATION_S", "2.0"))
 
 # 속도 상한(%). 2026-09-23 바닥 주행에서 60은 "너무 빠름"으로 기각, 50이 상한으로 확정됐다
-# (13_picar_하드웨어_검증리포트_v1 §4.5 — 서행 20 / 좌우회전·후진 40). 호출 측(web·데모 스크립트)이
+# (13_picar_하드웨어_검증리포트 §4.5 — 서행 20 / 좌우회전·후진 40). 호출 측(web·데모 스크립트)이
 # 무엇을 보내든 **이 값을 넘겨 모터를 돌리지 않는다** — 속도는 여러 곳에 흩어져 있어 한 곳이 옛 값을
 # 보내도 차가 튀어나가지 않게 하는 마지막 안전망이다. 넘은 요청은 잘라서 실행하고 응답에 표시한다.
 MAX_SPEED_PCT = max(0, min(100, int(os.getenv("PICAR_MAX_SPEED", "50"))))
@@ -340,7 +340,7 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
 
     LED가 미배선(황색 2개)이거나 I2C가 실패해도 가능한 부분은 처리하고 결과를 함께 돌려준다 —
     호출하는 쪽(web 상태머신)이 picar 실패로 학습 흐름을 막지 않는 정책이기 때문
-    (03_인터페이스계약서_v2 §7).
+    (03_인터페이스계약서 §7).
     """
     led = picar_command.get("led", {})
     motor = picar_command.get("motor", {})

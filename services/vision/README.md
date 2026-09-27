@@ -9,8 +9,8 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
   → 템플릿 cosine similarity → match_score(0~100)
 ```
 
-근거 문서: `document/05_모델카드_v3.md`(모델 카드) · `document/02_설계문서_v2.md` §1-1·§4 ·
-`document/03_인터페이스계약서_v2.md` §2~4 · `document/10_PRD_v2.md`
+근거 문서: `document/05_모델카드.md`(모델 카드) · `document/02_설계문서.md` §1-1·§4 ·
+`document/03_인터페이스계약서.md` §2~4 · `document/10_PRD.md`
 
 ---
 
@@ -27,7 +27,7 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
   (같은 문서 §2-3).
 - **손 방향 축(69차원)은 구현돼 있지만 꺼져 있다.** 손을 기울여도 100%가 나와 켤 근거가 없다.
 - **모델이 없어도 서비스는 뜬다.** 데이터·카메라가 아직 없으므로 기본 동작은 "항상 미판정"이다
-  (`reason: model_not_loaded`). 배선·통합 검증을 먼저 하라는 PRD 우선순위(10_PRD_v2 §11)에 맞춘 설계.
+  (`reason: model_not_loaded`). 배선·통합 검증을 먼저 하라는 PRD 우선순위(10_PRD §11)에 맞춘 설계.
 - **왜 이런 알고리즘/전처리인지**는 [`MODEL_TRAINING.md`](MODEL_TRAINING.md)에 정리했다.
 
 ## 2. 디렉터리
@@ -73,14 +73,14 @@ tests/                           카메라 없이 도는 단위 테스트 (정�
 
 `judgment_result`에는 `reason` 필드가 붙는다 — 웹이 **SC-04(카메라 인식 실패: `no_hand`,
 `normalize_failed`)** 와 **SC-03b(재시도 유도: `below_tau`, `awaiting_consecutive_frames`)** 를
-구분하는 근거다 (03_인터페이스계약서_v2 §4).
+구분하는 근거다 (03_인터페이스계약서 §4).
 
 ## 4. 하드웨어/실행 방식 확정 사항
 
 - **카메라**: Raspberry Pi Camera Module 3, CSI 직결(범용 USB 웹캠 아님), **1920×1080 @ 60fps (Binned Mode)**
-- **MediaPipe 실행 모드**: `LIVE_STREAM`(비동기 콜백) — 캡처가 추론을 기다리지 않아 실시간에 유리 (05_모델카드_v3 §3-2)
+- **MediaPipe 실행 모드**: `LIVE_STREAM`(비동기 콜백) — 캡처가 추론을 기다리지 않아 실시간에 유리 (05_모델카드 §3-2)
 - **RPi5는 카메라 추론 + AI Hand/micro:bit 담당**. picar는 별도 보드(RPi4B 8GB, `services/picar`)가
-  Wi-Fi로 받아 구동한다 — picar가 움직이면 카메라도 같이 움직이는 문제 때문 (10_PRD_v2 §1.3)
+  Wi-Fi로 받아 구동한다 — picar가 움직이면 카메라도 같이 움직이는 문제 때문 (10_PRD §1.3)
 - **τ=0.75, N=3프레임**은 실측 전 초기 기본값. 학습을 돌리면 번들에 든 τ가 자동 적용된다
   (환경변수 `CONFIDENCE_THRESHOLD`로 덮어쓰기 가능)
 
@@ -223,7 +223,7 @@ python training/train_svm.py               # 학습 → models/ 에 번들 + 템
 ### ④ KPI 측정 (자체 촬영 데이터)
 
 ```bash
-python scripts/record_dataset.py --subject-id ext01     # 촬영 (팀원 안내: document/촬영안내_KPI데이터.md)
+python scripts/record_dataset.py --subject-id ext01     # 촬영 (팀원 안내: document/archive/촬영안내_KPI데이터.md)
 python scripts/evaluate_kpi.py                          # KPI 5개 지표 계산
 ```
 
@@ -251,5 +251,5 @@ python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 �
 - [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — **RPi5 실물 확인 대기**
 - [ ] RPi5 실물에서 `result_fps` · 판정 지연 P95 측정 (mediapipe aarch64 휠 설치 여부 포함)
 - [x] ~~`hand_landmarker.task` 모델 번들 다운로드 → `models/`~~ (git 에 포함)
-- [ ] 실측 후 τ·N프레임 재검증, 05_모델카드_v3 §7-3 실측 표 채우기
+- [ ] 실측 후 τ·N프레임 재검증, 05_모델카드 §7-3 실측 표 채우기
 - [ ] `/latest` 폴링 → WebSocket 전환 검토 (지연 KPI 여유 없을 때)

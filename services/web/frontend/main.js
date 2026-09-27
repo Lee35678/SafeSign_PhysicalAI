@@ -1,4 +1,4 @@
-// SC-01~SC-07 화면 전환 + /api/state 폴링 (09_화면목록_v2.md).
+// SC-01~SC-07 화면 전환 + /api/state 폴링 (09_화면목록.md).
 "use strict";
 
 const POLL_MS = 400;
@@ -45,7 +45,7 @@ async function init() {
   const state = await apiGet("/api/state");
   renderDeviceStatus(state.devices);
   if (state.state && state.state !== "landing") {
-    // 09_화면목록_v2 SC-07: 학습 중 이탈 후 재접속 — 세션 이어하기 미구현, 항상 처음부터.
+    // 09_화면목록 SC-07: 학습 중 이탈 후 재접속 — 세션 이어하기 미구현, 항상 처음부터.
     show("screen-reentry");
   } else {
     show("screen-landing");
@@ -150,7 +150,7 @@ function showOverlay(result) {
     }, 2000);
   } else {
     // wrong / below_tau / out_of_distribution 모두 SC-03b, 메시지만 다르다
-    // (03_인터페이스계약서_v2 §4 — 자세를 다듬으라는 뜻과 다른 수신호를 하고 있다는 뜻을 구분).
+    // (03_인터페이스계약서 §4 — 자세를 다듬으라는 뜻과 다른 수신호를 하고 있다는 뜻을 구분).
     overlay.className = "overlay wrong";
     overlay.innerHTML = `
       <h2>${result.message ?? "다시 시도하세요"}</h2>

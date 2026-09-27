@@ -10,11 +10,11 @@ RACI: 하드웨어·로봇동작 **R** (services/actuation과 동일 담당자, 
 처음에는 RPi5가 카메라 추론과 picar 구동을 모두 맡는 구조였습니다. 그런데 picar가 실제로 주행하면
 그 위의 카메라도 함께 움직여, **학습자가 판정을 받을 때마다 카메라(picar)를 따라가서 다시 손을
 보여줘야 하는 문제**가 생겼습니다. 그래서 picar 구동만 별도의 Raspberry Pi 4B 8GB로 분리하고,
-카메라·AI Hand·micro:bit는 RPi5에 그대로 두었습니다 (`document/02_설계문서_v2.md` §1-1 참고).
+카메라·AI Hand·micro:bit는 RPi5에 그대로 두었습니다 (`document/02_설계문서.md` §1-1 참고).
 
 ## 담당 범위
 
-- `src/controller.py` — 모터(전진/후진/정지/좌우회전) + LED(적색×2, 황색×2) 제어. `document/11_하드웨어설계서_v1.md` 부록 A의 Raspbot 핀맵 표(2026-09-22 재확인) 기준:
+- `src/controller.py` — 모터(전진/후진/정지/좌우회전) + LED(적색×2, 황색×2) 제어. `document/11_하드웨어설계서.md` 부록 A의 Raspbot 핀맵 표(2026-09-22 재확인) 기준:
   - **모터**: Pi의 raw GPIO가 아니라 I2C(SCL=BCM3, SDA=BCM2)로 하위 코프로세서를 거쳐 구동.
     **명령 프로토콜 확보 완료(2026-09-21)** — 아래 "모터 I2C 프로토콜" 참고
   - **LED**: 보드 내장 LED는 적색(BCM21)·청색(BCM20) 2개뿐이라 설계가 요구하는 적색×2+황색×2를
@@ -59,7 +59,7 @@ Yahboom 공식 드라이버 라이브러리 `YB_Pcb_Car.py`에서 확보했습�
 - **슬레이브 주소 `0x16`** (Raspbot 오리지널 기준)
 - ⚠️ **Raspbot V2는 `0x2B`를 씁니다.** 실물에서 반드시 `i2cdetect -y 1`로 먼저 확인하고, 다르면
   `RASPBOT_I2C_ADDR` 환경변수로 덮어쓰세요.
-- 우리 보드가 오리지널로 추정되는 근거: `11_하드웨어설계서_v1.md` 부록 A에서 초음파·부저·LED·트래킹이 전부
+- 우리 보드가 오리지널로 추정되는 근거: `11_하드웨어설계서.md` 부록 A에서 초음파·부저·LED·트래킹이 전부
   Pi GPIO 직결인데, V2는 이 주변장치들까지 MCU가 I2C로 관장합니다.
 - 스키마의 `motor.speed`는 `0~100(%)`, 코프로세서는 `0~255`라 `controller.py`가 변환합니다.
 
@@ -92,14 +92,14 @@ Yahboom 공식 드라이버 라이브러리 `YB_Pcb_Car.py`에서 확보했습�
 (실물 주행 후 조정 대상).
 - `src/app.py` — FastAPI 진입점 (`/health`, `/picar`)
 
-입력 스키마: `shared/schemas/picar_command.schema.json`. `document/03_인터페이스계약서_v2.md` §5-2에
+입력 스키마: `shared/schemas/picar_command.schema.json`. `document/03_인터페이스계약서.md` §5-2에
 정의된 필드명 그대로 사용하세요.
 
 ## 호출하는 쪽 (services/web)과의 계약
 
 - 전송: `POST http://<RPi4B_IP>:8000/picar` (docker-compose 로컬 개발 시 `http://picar:8000/picar`)
 - **타임아웃/재시도/폴백은 호출하는 쪽(web)이 책임집니다** — 이 서비스는 단순히 명령을 받아 실행할
-  뿐, ACK나 재전송 로직을 갖지 않습니다 (03_인터페이스계약서_v2 §5-2·§7 확정 정책).
+  뿐, ACK나 재전송 로직을 갖지 않습니다 (03_인터페이스계약서 §5-2·§7 확정 정책).
 
 ## MOCK_HARDWARE 모드
 
@@ -134,7 +134,7 @@ python -m pytest tests -q        # 18개
 > 그 상태에서 **USB-C 어댑터를 동시에 꽂지 마세요** — 헤더 5V 핀에는 역류 방지가 없습니다.
 > 어댑터를 쓰려면 배터리 스위치를 내리고 꽂습니다. **GND는 항상 공통 유지**(I2C 기준 전위).
 > 배터리는 3S 11.1V·2200mAh이며 **9.0V 미만으로 내려가면 안 됩니다.**
-> 근거: `document/11_하드웨어설계서_v1.md` §7.1
+> 근거: `document/11_하드웨어설계서.md` §7.1
 
 ```bash
 # 1) I2C 활성화 확인 + 슬레이브 주소 실측 (여기서 0x16이 아니면 RASPBOT_I2C_ADDR로 덮어쓸 것)
@@ -173,9 +173,9 @@ curl -s -X POST http://localhost:8000/picar -H "Content-Type: application/json" 
 - [x] ~~picar 전원 계통 분리 여부~~ → **차체 배터리 단일 계통으로 확정(2026-09-22)**: 배터리가
   강압을 거쳐 헤더 5V로 Pi까지 공급. 어댑터 테더링이 없어 주행 시연이 가능해짐
 - [ ] ⚠️ **모터 노이즈가 Wi-Fi에 영향 주는지** — 단일 계통이라 경로가 존재한다. 벤치에서
-  `vcgencmd get_throttled`와 모터 구동 중 Wi-Fi 왕복으로 실측 (11_하드웨어설계서_v1 §7.1.3)
+  `vcgencmd get_throttled`와 모터 구동 중 Wi-Fi 왕복으로 실측 (11_하드웨어설계서 §7.1.3)
 - [x] ~~RPi5 ↔ RPi4B Wi-Fi IP 구성(고정 IP/mDNS)~~ → **RPi5를 AP로 두는 1:1 직결 + 고정 IP**
-  (RPi5 `192.168.50.1` / picar `192.168.50.10`) — 11_하드웨어설계서_v1 §6.1
+  (RPi5 `192.168.50.1` / picar `192.168.50.10`) — 11_하드웨어설계서 §6.1
 
 ## 로컬 실행
 

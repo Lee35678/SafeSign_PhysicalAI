@@ -1,7 +1,7 @@
 """분류 경로 스모크 테스트 (모델 파일 없이도 서비스가 안전하게 동작하는지).
 
 데이터 수집 전이라 실제 모델이 없는 상태에서도 vision 서비스가 죽지 않고 "미판정"으로 응답해야
-카메라~Actuation 배선 검증을 계속할 수 있다 (10_PRD_v2 §11 우선순위).
+카메라~Actuation 배선 검증을 계속할 수 있다 (10_PRD §11 우선순위).
 
 **카메라를 쓰지 않는다.** 학습된 모델을 실제 손으로 확인하려면 `scripts/webcam_check.py`를 쓸 것.
 
@@ -58,7 +58,7 @@ def test_malformed_landmarks_are_rejected_not_crash():
 
 
 def test_classes_match_documents():
-    """02_설계문서_v2 §4 확정 7종과 순서까지 동일해야 한다.
+    """02_설계문서 §4 확정 7종과 순서까지 동일해야 한다.
 
     negative는 **학습 클래스가 아니다** (2026-09-21 회의 안건 2 A) — τ 미달 시 출력 라벨로만 쓴다.
     """
@@ -75,7 +75,7 @@ def test_classes_match_documents():
 
 
 def test_tau_default():
-    """모델·환경변수가 없으면 05_모델카드_v3 §8-0 초기 기본값 0.75."""
+    """모델·환경변수가 없으면 05_모델카드 §8-0 초기 기본값 0.75."""
     tau = classify.effective_tau()
     assert 0.0 < tau <= 1.0
 

@@ -1,9 +1,9 @@
 """정규화된 특징벡터 -> SVM 분류(7클래스) + 템플릿 대비 cosine similarity -> judgment_result.
 
 문서 근거:
-- 분류기/특징: document/05_모델카드_v3.md §3-5(정규화), §5(SVM 채택 근거), §6(학습 방법)
+- 분류기/특징: document/05_모델카드.md §3-5(정규화), §5(SVM 채택 근거), §6(학습 방법)
 - τ(신뢰도 임계값): §8-0 초기 기본값 0.75, §8-1 실측 확정 절차
-- 출력 스키마: document/03_인터페이스계약서_v2.md §4 / shared/schemas/judgment_result.schema.json
+- 출력 스키마: document/03_인터페이스계약서.md §4 / shared/schemas/judgment_result.schema.json
 
 **negative는 학습 클래스가 아니다** (2026-09-21 회의 안건 2 A안).
 "손은 있는데 7종 중 아무것도 아닌 자세"는 종류가 무한해서 하나의 클래스로 학습시킬 수 없고,
@@ -31,7 +31,7 @@ from cognition.normalize import (
 
 logger = logging.getLogger(__name__)
 
-# document/02_설계문서_v2 §4 확정 7종 (04_데이터셋명세서_v2 §1과 동일 순서 유지).
+# document/02_설계문서 §4 확정 7종 (04_데이터셋명세서 §1과 동일 순서 유지).
 # 분류기가 실제로 학습하는 클래스 목록이다 — negative는 여기 없다 (안건 2 A).
 SIGN_CLASSES = [
     "정지",
@@ -44,10 +44,10 @@ SIGN_CLASSES = [
 ]
 
 # 미판정(reject) 시 predicted_class에 넣는 라벨. 학습 클래스가 아니라 **출력 전용 값**이다.
-# Macro F1 계산에서도 제외된다 (05_모델카드_v3 §7-1).
+# Macro F1 계산에서도 제외된다 (05_모델카드 §7-1).
 NEGATIVE_CLASS = "negative"
 
-# judgment_result.reason 코드 (03_인터페이스계약서_v2 §4).
+# judgment_result.reason 코드 (03_인터페이스계약서 §4).
 # 웹 상태머신이 SC-04(카메라 인식 실패)와 SC-03b(오답/미판정)를 구분하는 데 쓴다.
 REASON_NO_HAND = "no_hand"                 # 손 미검출 -> SC-04 후보
 REASON_NORMALIZE_FAILED = "normalize_failed"  # 랜드마크는 왔지만 정규화 불가 -> SC-04 후보
@@ -56,7 +56,7 @@ REASON_INFERENCE_ERROR = "inference_error"
 REASON_BELOW_TAU = "below_tau"             # 신뢰도 부족 -> 재시도 유도(SC-03b)
 REASON_OUT_OF_DISTRIBUTION = "out_of_distribution"  # 7종 어디에도 속하지 않는 손모양 -> 1단계 게이트
 
-# 05_모델카드_v3 §8-0 초기 기본값. 환경변수 > 모델 번들 > 이 기본값 순으로 우선한다.
+# 05_모델카드 §8-0 초기 기본값. 환경변수 > 모델 번들 > 이 기본값 순으로 우선한다.
 _DEFAULT_TAU = 0.75
 _ENV_TAU: Optional[float] = (
     float(os.environ["CONFIDENCE_THRESHOLD"]) if os.getenv("CONFIDENCE_THRESHOLD") else None
@@ -73,7 +73,7 @@ def gate_check(feature: np.ndarray, predicted_class: str) -> tuple[bool, float]:
     분류기의 확률은 7종 안에서 정규화되므로(합=1) 7종이 아닌 손모양도 "그나마 가장 비슷한"
     클래스에서 높은 confidence를 받는다. 실측상 학습에 없던 손모양의 83%가 τ를 통과했고
     그중 77%는 confidence 0.90 이상이었다 — τ로는 막을 수 없는 구조적 한계다
-    (05_모델카드_v3 §3-7).
+    (05_모델카드 §3-7).
 
     그래서 예측 클래스 중심과의 코사인 유사도를 클래스별 임계값과 비교한다. 임계값이
     클래스마다 다른 이유는 절대값 범위가 클래스별로 다르기 때문이다(주의의 이상치 중앙값
@@ -121,7 +121,7 @@ def _elapsed_ms(started_perf: float, landmark_frame: dict) -> int:
     """판정 지연(ms).
 
     프레임에 `captured_at_ms`(벽시계 기준 캡처 시각)가 있으면 캡처~판정 완료까지를 재고,
-    없으면 이 함수 내부 처리 시간만 잰다. KPI(판정 지연 P95 ≤ 1.0초, 01_프로젝트계획서_v4)는
+    없으면 이 함수 내부 처리 시간만 잰다. KPI(판정 지연 P95 ≤ 1.0초, 01_프로젝트계획서)는
     전자 기준이므로 perception이 captured_at_ms를 채워주는 것이 정확하다.
     """
     captured_at = landmark_frame.get("captured_at_ms")
@@ -131,7 +131,7 @@ def _elapsed_ms(started_perf: float, landmark_frame: dict) -> int:
 
 
 def predict(landmark_frame: dict) -> dict:
-    """landmark_frame -> judgment_result (03_인터페이스계약서_v2 §4).
+    """landmark_frame -> judgment_result (03_인터페이스계약서 §4).
 
     N프레임 연속 판정(smoothing)은 호출 측(app.py)에서 적용한다 — 이 함수는 단일 프레임 판정만 한다.
     """

@@ -1,9 +1,9 @@
 """Raspberry Pi Camera Module 3(CSI) -> MediaPipe HandLandmarker(LIVE_STREAM) -> LandmarkFrame.
 
 담당: 이동혁
-하드웨어: Raspberry Pi Camera Module 3, CSI 직결, RPi5 (document/02_설계문서_v2 §1-1).
+하드웨어: Raspberry Pi Camera Module 3, CSI 직결, RPi5 (document/02_설계문서 §1-1).
 실행 모드: LIVE_STREAM 비동기 콜백 — VIDEO 동기 루프 대비 캡처가 추론을 기다리지 않음
-(document/05_모델카드_v3 §3-2 근거).
+(document/05_모델카드 §3-2 근거).
 
 카메라 여는 부분은 `perception/camera_source.py`(CSI=picamera2, USB=OpenCV)를 쓴다. 촬영 도구
 record_dataset.py 와 같은 코드라 **데이터를 찍은 경로와 판정하는 경로가 같다.**
@@ -20,7 +20,7 @@ record_dataset.py 와 같은 코드라 **데이터를 찍은 경로와 판정하
   CAMERA_SWAP_RB   true면 빨강/파랑 채널을 바꾼다 (색이 뒤집혀 보일 때)
   CAMERA_AUTOFOCUS false면 Camera Module 3 연속 AF 를 끈다
 
-해상도를 03_인터페이스계약서_v2 §2 의 1920x1080@60 대신 1280x720@30 으로 두는 이유:
+해상도를 03_인터페이스계약서 §2 의 1920x1080@60 대신 1280x720@30 으로 두는 이유:
   같은 RPi5 에서 MediaPipe 까지 돌려야 한다. MediaPipe 는 어차피 내부에서 작게 줄여 추론하므로
   1080p 를 받아도 정확도 이득이 적고, 색 변환·복사 비용만 늘어난다(camera_source 와 같은 판단).
   계약값으로 돌리려면 CAPTURE_SIZE=1920x1080 CAPTURE_FPS=60.
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 MOCK_CAMERA = os.getenv("MOCK_CAMERA", "true").lower() == "true"
 MODEL_PATH = os.getenv("HAND_LANDMARKER_MODEL", "models/hand_landmarker.task")
 
-# 03_인터페이스계약서_v2 §2 확정값 (참고용 — 실제 기본값은 아래 CAPTURE_*)
+# 03_인터페이스계약서 §2 확정값 (참고용 — 실제 기본값은 아래 CAPTURE_*)
 CONTRACT_WIDTH, CONTRACT_HEIGHT, CONTRACT_FPS = 1920, 1080, 60
 
 CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "csi").lower()
@@ -95,7 +95,7 @@ def _on_result(result, output_image, timestamp_ms: int) -> None:
     """HandLandmarker LIVE_STREAM 콜백 — mediapipe가 내부 스레드에서 호출한다.
 
     landmark_frame.schema.json 형식으로 변환해 최신 프레임으로 publish한다.
-    - `hand_world_landmarks`(실세계 3D) 사용: 카메라 거리 변화에 강함 (05_모델카드_v3 §3-4)
+    - `hand_world_landmarks`(실세계 3D) 사용: 카메라 거리 변화에 강함 (05_모델카드 §3-4)
     - `handedness`: 정규화 단계의 좌우 손 통일(미러링)에 필요 (§3-5 4번)
     - `captured_at_ms`: 판정 지연(P95 ≤ 1.0초) 측정을 위한 벽시계 기준 캡처 시각
     """
@@ -212,11 +212,11 @@ def run_capture_loop(stop: Optional[threading.Event] = None, *,
                      image_factory: Callable = None, max_frames: int = 0) -> None:
     """카메라 캡처 + MediaPipe LIVE_STREAM 전달 루프. app.py가 백그라운드 스레드로 실행한다.
 
-    ⚠️ 프레임 타임스탬프는 반드시 단조 증가해야 한다 (LIVE_STREAM 요구사항, 05_모델카드_v3 §3-2).
+    ⚠️ 프레임 타임스탬프는 반드시 단조 증가해야 한다 (LIVE_STREAM 요구사항, 05_모델카드 §3-2).
 
     LIVE_STREAM 은 추론이 밀리면 들어온 프레임을 스스로 버린다(flow limit). 그래서 캡처를 추론
     속도에 맞춰 늦출 필요가 없고, 카메라는 제 속도로 돌린다. 실제 추론 속도는 get_status() 의
-    result_fps 로 본다 — 판정 지연 P95 ≤ 1.0초(01_프로젝트계획서_v4)가 안 나오면 여기부터 점검.
+    result_fps 로 본다 — 판정 지연 P95 ≤ 1.0초(01_프로젝트계획서)가 안 나오면 여기부터 점검.
 
     camera_factory / landmarker_factory / image_factory / max_frames 는 테스트용이다.
     """
