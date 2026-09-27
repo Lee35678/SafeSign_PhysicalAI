@@ -34,7 +34,7 @@
 
 | 문서 | 결정권자 | 상태 |
 | --- | --- | --- |
-| [picar_주행시간_스키마_변경안](proposals/picar_주행시간_스키마_변경안.md) | 전원 (`shared/schemas/` 변경) | ⬜ 미결 — `duration_ms` 필드 추가 여부, KPI "완료" 정의 |
+| [picar_주행시간_스키마_변경안](proposals/picar_주행시간_스키마_변경안.md) | 전원 (`shared/schemas/` 변경) | 🟡 안건 1·3 결정(2026-09-27: `duration_ms` 미채택, 동시 점멸 확정) — **KPI "완료" 정의만 미결** |
 | [web_판정_타이밍_스펙](proposals/web_판정_타이밍_스펙.md) | 조은수 (web 담당) | 🟡 구현 중 — SC-03 시범 → 보기 → 판정 순서 |
 
 ## archive/ — 회의·일회성 자료, 적용 완료된 변경안
