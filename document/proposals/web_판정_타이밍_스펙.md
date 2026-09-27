@@ -134,3 +134,58 @@ web은 **판정이 나온 뒤에만** AI Hand를 움직이고, 움직인 직후 
 - [ ] 오답 시 재시범 + 예시 사진 + 버튼이 다시 나온다
 - [ ] 7종 전 구간(SC-01 → SC-05) 끊김 없이 완료
 - [ ] 단위 테스트(송승호): 시범 단계 판정 무시, 확인 시 `/reset` 호출, 오답 1초 미만 무시·1초 이상 확정
+
+## 7. 시행 로그 CSV — 열 정의 (web 할 일 ②-a, 2026-09-28 송승호)
+
+`06_테스트·평가리포트` §1-2의 원본 데이터다. 혼동행렬(§2-2)·지연 P95(§2-3)·인물 단위 비교(§2-4)가 전부 이 파일에서 나온다.
+**열 이름은 web 없는 데모 스크립트 CSV(`services/actuation/scripts/aihand_vision_picar_demo.py` `RECORD_FIELDS`)와 같게** 해서
+web 유무 결과를 한 표로 비교한다. web에만 있는 값은 뒤에 붙인다.
+
+### 7.1 언제 한 줄을 쓰나
+
+- **판정이 확정될 때마다 1행** — 정답, 오답(1초 유지 통과), `below_tau`/OOD(스펙 §5에서 확정 대상으로 정한 경우).
+  과도 자세(1초 미만)·미검출·과도기 사유는 쓰지 않는다.
+- 쓰는 즉시 `flush`한다 — 시연 중 web이 죽어도 그때까지의 행은 남아야 한다.
+- 위치: `services/web/logs/web_trials_<시작시각 YYYYMMDD_HHMMSS>.csv` (web 기동마다 새 파일, UTF-8 BOM — 엑셀용).
+  `services/web/logs/`는 `.gitignore`에 추가한다(시행 로그는 결과 정리 후 필요한 것만 문서에 붙인다).
+
+### 7.2 열
+
+시각 기준점: `t_demo`(시범 `/command` 전송), `t_demo_done`(그 응답), `t_confirm`(확인 버튼), **`t_dec`(판정 확정 — 지연의 원점)**.
+
+| 열 | 값 | 데모 CSV와 |
+| --- | --- | --- |
+| `time` | 판정 확정 시각 ISO 8601 (ms) | 같음 |
+| `signal` | 목표 수신호(`target_signal`) — **정답 클래스** | 같음 |
+| `attempt` | 이 수신호의 시도 번호(1부터) | 같음 |
+| `outcome` | `correct` · `wrong` · `below_tau` · `out_of_distribution` | 같음(데모는 `timeout`·`skip`도 있음) |
+| `predicted` | vision `predicted_class` — **예측 클래스** | 같음 |
+| `match_score` · `confidence` | vision 응답 그대로 | 같음 |
+| `vision_latency_ms` | vision 응답 `latency_ms` 그대로 — **판정지연** | 같음 |
+| `demo_ok` · `demo_ms` | 이 시도 직전 시범 `/command`의 판정(03 §5-5)과 `t_demo → t_demo_done` | 같음 |
+| `observe_ms` | `t_demo_done → t_confirm` — 학습자가 시범을 **본 시간**(버튼을 누르기까지) | 같음(데모는 고정 `OBSERVE_S`) |
+| `listen_ms` | `t_confirm → t_dec` — 학습자가 **따라 하는 데 걸린 시간** | 같음 |
+| `picar_ok` · `picar_ms` | 정답일 때만. 판정(03 §5-5)과 `t_dec → /picar 응답` = **반응 시작**(주행은 이후 2초) | 같음 |
+| `microbit_ok` · `microbit_ms` | `/result`의 판정과 `t_dec → /result 응답` = **반응 시작**(LED O/X 1초는 회신 뒤) | 같음 |
+| `feedback_ms` | `max(picar_ms, microbit_ms)` — **반응 시작 기준 물리 피드백 지연** | 같음 |
+| `aihand_ok` · `aihand_ms` | 판정 뒤 `/command`(정답 `correct_pose` / 오답 `demo`)의 판정과 `t_dec → 응답` = 손 동작 **완료** | web만 |
+| `feedback_done_ms` | `max(aihand_ms, microbit_ms + 1000)` — **완료 기준 물리 피드백 지연**(LED 표시 1초 포함, picar 주행 제외) | web만 |
+| `aihand_status` · `microbit_status` · `picar_status` | 본문 `status`/`reason` 원문(예: `ok`, `timeout`, `error:write_failed`, `partial:i2c_failed`) | web만 |
+| `picar_led_ok` | picar `led.*.status`가 전부 `ok`/`mocked`인지 | web만 |
+| `mocked` | 셋 중 하나라도 `mocked`면 `true` — 실물 KPI 행에서 걸러낸다 | web만 |
+| `subject` | 대상자 ID — 환경변수 `LOG_SUBJECT`(대상자마다 web 재기동). 없으면 빈 값 | web만 |
+
+> **"완료" 정의가 미결**이어도(picar 변경안 안건 2) 반응 시작(`feedback_ms`)과 완료(`feedback_done_ms`)를 둘 다 남기므로
+> 어느 쪽으로 정해져도 다시 잴 필요가 없다.
+
+### 7.3 ⚠️ 권장: 판정 뒤 장치 호출 순서
+
+지금 `_dispatch_feedback`은 **`/command` → `/result` → `/progress` → `/picar`** 순서로 차례대로 보낸다. `/command`는 손 동작이
+끝나야 회신하므로(약 0.8초), **micro:bit와 picar는 판정 후 약 0.85초가 지나서야 반응을 시작**한다. web 없는 데모(picar →
+micro:bit 순, 반응 시작 19~47ms)와 같은 KPI를 재도 web만 나빠진다.
+
+→ **`/picar` → `/result` → `/command` → `/progress`** 순서를 권한다.
+- picar는 Wi-Fi·다른 보드라 micro:bit 순서 제약(명령을 하나씩 처리)과 무관하다 — 맨 앞에 둔다.
+- `/result`(ACK 26~42ms)를 `/command`(0.8초) 앞에 두면 micro:bit O/X가 바로 뜬다.
+- 학습 흐름상 문제 없음: 정답 연출(picar·LED)과 AI Hand 정답 자세가 거의 동시에 보인다.
+- 결정·구현은 이동혁(①-a·②-a와 같은 함수). 바꾸면 14 §3.3 표도 함께 고친다.
