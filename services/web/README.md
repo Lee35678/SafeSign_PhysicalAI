@@ -59,7 +59,9 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 
 ## 아직 확정 안 된 것
 
-- [ ] SC-03 화면 분할 단위 (시범/인식 동시 표시 여부) — vision 담당과 협의
+- [x] ~~SC-03 화면 분할 단위 (시범/인식 동시 표시 여부)~~ → 2026-09-27 결정: 한 화면 안에서 **시범 단계 →
+  판정 단계** (예시 사진 + 확인 버튼(스페이스바), 오답 1초 유지). `document/09_화면목록.md`,
+  `document/proposals/web_판정_타이밍_스펙.md` — 구현은 web 할 일 ①(`document/14_web_구현보고서.md` §8)
 - [x] ~~vision `/latest` 폴링 주기~~ → 0.2초로 우선 구현(`VISION_POLL_INTERVAL_S`), 실측 후 조정
 - [x] ~~프론트엔드(`main.js`)가 `/api/state`를 폴링해 SC-01~SC-07 화면을 실제로 전환하도록 연결~~ →
   2026-09-22 구현
@@ -73,10 +75,10 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   match_score 구간별 잠정치(1~3회)로 구현. 실측/교육 설계 확정 필요
 - [ ] SC-03 카메라 실시간 영상 미리보기 — vision이 프레임 스트리밍 엔드포인트를 제공하지 않아 현재는
   자리표시자만 표시. vision 담당과 스트리밍 방식(MJPEG/WebSocket 등) 협의 필요
-- [ ] `확인_완료` AI Hand 자세 — 10_PRD/03_인터페이스계약서는 "주먹"으로 확정(2026-09-20)했지만
-  실제 actuation 코드(controller.py/firmware)는 아직 "엄지만 펴기"로 남아 있는 known gap. 웹 화면은
-  확정된 스펙("주먹")을 표시하므로, actuation 코드가 갱신되기 전까지는 화면 설명과 실물 AI Hand
-  동작이 다를 수 있음 — actuation 담당 확인 필요
+- [x] ~~`확인_완료` AI Hand 자세 gap (문서는 "주먹", actuation 코드는 "엄지만 펴기")~~ → 2026-09-25 해소:
+  actuation `gesture5`를 주먹으로 수정·재플래시(`d3a209e`). 화면 설명과 실물 AI Hand 동작이 일치한다
+- [x] ~~`확인_완료` picar LED 설명~~ → "번갈아 2회 점멸 후 소등"에서 **"정지 + 적색·황색 LED 전부 동시 점멸"**로
+  정정(2026-09-27 확정). LED는 2초 뒤 picar가 스스로 끈다(2026-09-28)
 - [ ] SC-06 수료증 — 현재 `<canvas>` 기반 PNG/인쇄만 제공. 정식 이미지/PDF 템플릿 디자인은 별도 확정 필요
 
 ## 로컬 실행

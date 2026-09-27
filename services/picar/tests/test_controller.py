@@ -366,3 +366,93 @@ def test_stop_ignores_a_garbage_speed():
 
 def test_diagnose_exposes_speed_cap():
     assert controller.diagnose(mock=True)["max_speed_pct"] == controller.MAX_SPEED_PCT
+
+
+# ── LED 자동 소등 (2026-09-28 — 정지 계열 명령 뒤 LED가 다음 명령까지 남던 문제) ──────────
+class _FakeBoard:
+    """gpiozero LEDBoard 대역 — 마지막 상태만 기억한다."""
+
+    def __init__(self):
+        self.state = "off"
+
+    def on(self):
+        self.state = "on"
+
+    def off(self):
+        self.state = "off"
+
+    def blink(self, **_):
+        self.state = "blink"
+
+
+def _fake_gpio(monkeypatch) -> dict:
+    """실물 경로(mock=False)를 하드웨어 없이 태운다 — LED는 가짜 보드, 정지는 no-op."""
+    boards: dict = {}
+
+    def _get(name, pins):
+        boards.setdefault(name, _FakeBoard())
+        controller._leds[name] = boards[name]
+        return boards[name]
+
+    monkeypatch.setattr(controller, "_leds", {})
+    monkeypatch.setattr(controller, "_get_led", _get)
+    monkeypatch.setattr(controller, "_write_stop_retrying", lambda: None)
+    return boards
+
+
+def _stop_cmd(red: str = "on", yl: str = "off", yr: str = "off") -> dict:
+    return {"command": "stop", "target_signal": "정지",
+            "motor": {"action": "stop", "speed": 0},
+            "led": {"red": red, "yellow_left": yl, "yellow_right": yr}}
+
+
+def test_default_led_hold_matches_motion_duration():
+    """차가 멈추는 시점에 LED도 꺼지도록 기본값을 주행 자동 정지와 맞춘다."""
+    assert controller.LED_HOLD_S == controller.MOTION_DURATION_S
+
+
+def test_lit_command_reports_led_hold():
+    assert controller.execute(_stop_cmd(red="on"), mock=True)["led_hold_s"] == controller.LED_HOLD_S
+
+
+def test_all_off_command_schedules_no_led_hold():
+    assert controller.execute(_stop_cmd(red="off"), mock=True)["led_hold_s"] is None
+
+
+def test_led_hold_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(controller, "LED_HOLD_S", 0.0)
+    assert controller.execute(_stop_cmd(red="on"), mock=True)["led_hold_s"] is None
+
+
+def test_leds_turn_off_after_hold(monkeypatch):
+    """정지(적색 on) 뒤 LED_HOLD_S가 지나면 3채널이 전부 꺼져야 한다 — 이게 없으면 다음 수신호까지 남는다."""
+    import time
+
+    boards = _fake_gpio(monkeypatch)
+    monkeypatch.setattr(controller, "LED_HOLD_S", 0.05)
+
+    controller.execute(_stop_cmd(red="on", yl="blink"), mock=False)
+    assert boards["led_red"].state == "on" and boards["led_yellow_left"].state == "blink"
+
+    time.sleep(0.3)
+    assert {b.state for b in boards.values()} == {"off"}
+
+
+def test_stale_off_timer_does_not_turn_off_a_newer_command(monkeypatch):
+    """이전 명령의 소등 타이머가 늦게 발동해도 새 명령의 LED는 그대로여야 한다."""
+    boards = _fake_gpio(monkeypatch)
+    monkeypatch.setattr(controller, "LED_HOLD_S", 60.0)  # 테스트 중에는 실제로 발동하지 않게
+
+    controller.execute(_stop_cmd(red="on"), mock=False)
+    old_gen = controller._led_gen
+    controller.execute(_stop_cmd(red="off", yl="blink", yr="blink"), mock=False)  # 주의
+
+    controller._leds_off_if_current(old_gen)  # 이전 세대 타이머가 발동한 상황
+
+    assert boards["led_yellow_left"].state == "blink"
+    assert boards["led_yellow_right"].state == "blink"
+    controller._led_off_timer.cancel()
+
+
+def test_diagnose_exposes_led_hold():
+    assert controller.diagnose(mock=True)["led_hold_s"] == controller.LED_HOLD_S

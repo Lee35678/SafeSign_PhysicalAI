@@ -55,6 +55,19 @@ SDA=BCM2)로 그 코프로세서에 명령만 보낸다. 그 명령 프로토콜
   어두워서 2026-09-22 교체했다. **150Ω 이하로는 내리지 말 것** — 8.7mA로 한도를 넘는다.
 - 위 4개 핀은 `USED_BCM_PINS`(Raspbot 점유)와 충돌하지 않는다 —
   `tests/test_controller.py`가 이를 자동 검사한다.
+
+## LED 자동 소등 (2026-09-28)
+
+스키마에는 LED를 **켜는** 값만 있고 끄는 시점이 없다. 그대로 두면 정지 계열(정지·확인_완료·주의)
+명령 뒤 LED가 다음 명령이 올 때까지 켜진 채 남아, 다음 수신호를 학습하는 동안에도 이전 LED가 보인다
+(08_리스크레지스터 "LED 잔류"). 그래서 LED를 하나라도 켠 명령 뒤 `LED_HOLD_S`(기본 = 주행 자동 정지와
+같은 2초)가 지나면 **3채널을 전부 끈다.** 주행 명령이면 차가 멈추는 시점에 LED도 함께 꺼진다.
+
+- web에서 끄는 명령을 따로 보내지 않는 이유: 자동 정지와 같다 — 그 명령이 유실되면 LED가 남는다.
+  picar가 스스로 끄면 web은 고칠 것이 없다.
+- 새 명령이 오면 이전 소등 예약은 무효다. 이미 발동한 타이머가 새 명령의 LED를 끄지 않도록
+  세대 번호(`_led_gen`)로 확인한다.
+- `PICAR_LED_HOLD_S`로 조정하고, 0 이하이면 자동 소등을 끈다(다음 명령까지 유지 — 예전 동작).
 """
 from __future__ import annotations
 
@@ -84,6 +97,10 @@ DIR_FORWARD = 1
 # 실물 주행 후 팀이 확정할 잠정값이다(위 docstring 참고).
 MOTION_DURATION_S = float(os.getenv("PICAR_MOTION_DURATION_S", "2.0"))
 
+# LED를 켠 명령 뒤 자동 소등까지의 시간(초). 기본은 주행 자동 정지와 같게 — 차가 멈출 때 LED도 꺼진다.
+# 0 이하이면 자동 소등을 하지 않는다(위 docstring "LED 자동 소등" 참고).
+LED_HOLD_S = float(os.getenv("PICAR_LED_HOLD_S", str(MOTION_DURATION_S)))
+
 # 속도 상한(%). 2026-09-23 바닥 주행에서 60은 "너무 빠름"으로 기각, 50이 상한으로 확정됐다
 # (13_picar_하드웨어_검증리포트 §4.5 — 서행 20 / 좌우회전·후진 40). 호출 측(web·데모 스크립트)이
 # 무엇을 보내든 **이 값을 넘겨 모터를 돌리지 않는다** — 속도는 여러 곳에 흩어져 있어 한 곳이 옛 값을
@@ -105,6 +122,11 @@ _auto_stop_timer: "threading.Timer | None" = None
 
 # gpiozero LED 객체는 가비지 컬렉션되면 핀이 해제되므로 모듈 전역에 붙들어 둔다.
 _leds: dict = {}
+
+# LED 자동 소등 — 명령마다 세대 번호를 올리고, 타이머는 자기 세대일 때만 끈다.
+_led_lock = threading.Lock()
+_led_gen = 0
+_led_off_timer: "threading.Timer | None" = None
 
 
 # ── I2C 저수준 ────────────────────────────────────────────────────────────────
@@ -293,6 +315,31 @@ def _apply_led(name: str, state: str, mock: bool) -> dict:
     return {"status": "ok", "led": name, "pins": list(pins), "state": state}
 
 
+def _leds_off_if_current(gen: int) -> None:
+    """타이머 스레드에서 호출 — 그 사이 새 명령이 왔으면(세대가 바뀌었으면) 아무것도 하지 않는다.
+
+    이미 만들어진 채널만 끈다(한 번도 켠 적 없는 채널은 꺼져 있다). GPIO 실패는 삼킨다 —
+    LED가 남는 것은 교육 혼선일 뿐이고, 타이머 스레드가 죽으면 이후 소등이 전부 멈춘다.
+    """
+    with _led_lock:
+        if gen != _led_gen:
+            return
+        for led in _leds.values():
+            try:
+                led.off()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _schedule_leds_off(gen: int) -> None:
+    global _led_off_timer
+    if _led_off_timer is not None:
+        _led_off_timer.cancel()
+    _led_off_timer = threading.Timer(LED_HOLD_S, _leds_off_if_current, args=(gen,))
+    _led_off_timer.daemon = True
+    _led_off_timer.start()
+
+
 # ── 진단 (GET /health 용) ─────────────────────────────────────────────────────
 def _probe_i2c() -> dict:
     """코프로세서가 실제로 ACK하는지 확인하는 **비파괴 프로브**.
@@ -326,6 +373,7 @@ def diagnose(mock: bool = True) -> dict:
         "leds": {n: list(pins) for n, pins in PIN_MAP.items()},
         "leds_unassigned": [n for n, pins in PIN_MAP.items() if not pins],
         "motion_duration_s": MOTION_DURATION_S,
+        "led_hold_s": LED_HOLD_S,
         "max_speed_pct": MAX_SPEED_PCT,
         "motion_active": _auto_stop_timer is not None and _auto_stop_timer.is_alive(),
         # 🔴 정지 실패는 "차가 계속 달린다"는 뜻이다. None이 아니면 즉시 확인할 것.
@@ -343,14 +391,20 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
     호출하는 쪽(web 상태머신)이 picar 실패로 학습 흐름을 막지 않는 정책이기 때문
     (03_인터페이스계약서 §7).
     """
+    global _led_gen
     led = picar_command.get("led", {})
     motor = picar_command.get("motor", {})
 
-    led_result = {
-        "red": _apply_led("led_red", led.get("red", "off"), mock),
-        "yellow_left": _apply_led("led_yellow_left", led.get("yellow_left", "off"), mock),
-        "yellow_right": _apply_led("led_yellow_right", led.get("yellow_right", "off"), mock),
-    }
+    states = {ch: led.get(ch, "off") for ch in ("red", "yellow_left", "yellow_right")}
+    lit = any(s != "off" for s in states.values())
+    # 켜는 도중에 이전 명령의 소등 타이머가 끼어들지 않게 LED 적용과 세대 갱신을 한 번에 묶는다
+    with _led_lock:
+        _led_gen += 1
+        gen = _led_gen
+        led_result = {ch: _apply_led(f"led_{ch}", s, mock) for ch, s in states.items()}
+    led_hold_s = LED_HOLD_S if lit and LED_HOLD_S > 0 else None
+    if led_hold_s is not None and not mock:
+        _schedule_leds_off(gen)
 
     try:
         motor_result = _apply_motor(motor.get("action", "stop"), motor.get("speed", 0), mock)
@@ -363,4 +417,5 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
         "target_signal": picar_command.get("target_signal"),
         "motor": motor_result,
         "led": led_result,
+        "led_hold_s": led_hold_s,  # 자동 소등까지 남은 시간. None이면 소등 예약 없음(전부 off였거나 기능 꺼짐)
     }
