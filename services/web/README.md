@@ -20,12 +20,19 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   0.2초 간격으로 vision `GET /latest`를 폴링해 현재 커리큘럼 단계(`CURRICULUM`, PRD §3.2 순서)와
   비교, 정답/오답/below_tau/out_of_distribution을 판정해 actuation `/command`·`/result`·`/progress`와
   picar `/picar`를 호출하고, 정답 시 vision `POST /reset`으로 N프레임 누적을 초기화한다.
-  - `GET /api/state` — state/target_signal/progress/last_result/live_judgment/attempts/completed/
-    last_dispatch/devices/certificate_issued_at 조회
-  - `POST /api/start` — 커리큘럼 처음부터 시작 (SC-01/02 -> SC-03, 세션 이어하기 없음)
+  - `GET /api/state` — state/**phase**/target_signal/progress/last_result/live_judgment/attempts/completed/
+    last_dispatch/last_demo/devices/certificate_issued_at 조회
+  - `POST /api/start` — 커리큘럼 처음부터 시작 (SC-01/02 -> SC-03, 세션 이어하기 없음). 첫 수신호 AI Hand 시범을
+    보내고 `phase: "demo"`로 시작한다
+  - `POST /api/confirm` — 확인 버튼(스페이스바). `phase == "demo"`일 때만 받아 vision `/reset` 뒤 `"judging"`으로.
+    판정 중 연타는 `{"status": "ignored"}` (2026-09-28, [판정 타이밍 스펙](../../document/proposals/web_판정_타이밍_스펙.md) §4.1)
   - `POST /api/certificate` — 7종 완료 후 수료증 발급 (SC-05 -> SC-06)
-  - 같은 (커리큘럼 단계, outcome, predicted_class/reason) 조합에는 물리 피드백·시도횟수 집계를 한 번만
-    반영한다(`_last_dispatched`) — 학습자가 같은 자세를 계속 취하고 있어도 매 폴링마다 반복 동작하지 않도록 함
+  - **판정 타이밍**: `phase == "judging"`일 때만 판정한다. 정답은 즉시, 오답은 같은 클래스가 1초(`WRONG_CONFIRM_S`)
+    이어질 때만 확정하고 재시범과 함께 `"demo"`로 돌아간다. `below_tau`·OOD는 화면 안내 문구만(물리 피드백 없음)
+  - **시행 로그**: 판정이 확정될 때마다(정답·오답) `logs/web_trials_<기동시각>.csv`에 1행(스펙 §7 열 정의,
+    UTF-8 BOM). 대상자 ID는 환경변수 `LOG_SUBJECT`(대상자마다 web 재기동). 폴더는 `TRIAL_LOG_DIR`로 바꿀 수 있다
+  - 장치 호출 순서는 `/picar` → `/result` → `/command` → `/progress`(2026-09-28, 스펙 §7.3). 응답은 본문
+    `status`까지 본다 — `timeout`·`error`·`partial`은 실패로 기록하고 재시도하지 않는다(03 §5-5)
   - actuation/picar 호출 모두 "실패해도 학습 흐름은 계속"(best-effort) — 예외/4xx/5xx를 모두 실패로
     간주해 재시도 후에도 실패하면 결과를 `last_dispatch`에 남기고 진행한다(2026-09-21
     web_picar_통신_신뢰성_개선안.md 반영 — 이전에는 응답을 확인하지 않아 "조용한 실패"를 감지할 수

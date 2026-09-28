@@ -1,6 +1,19 @@
 """교육 상태머신 (09_화면목록.md SC-01~SC-07 대응).
 
-담당: 조은수 (웹 R, 성능측정 R)
+담당: 조은수 (웹 R, 성능측정 R) · 판정 로직(web 할 일 ①-a·②-a·③)은 이동혁 (2026-09-28 분담, 14 §8)
+
+판정 타이밍 — 시범 + 확인 버튼 (document/proposals/web_판정_타이밍_스펙.md, 2026-09-27 확정)
+  SC-03 안에 하위 단계 `phase`("demo" | "judging")를 둔다. 새 STATES는 만들지 않는다(09 "화면 내 상태" 원칙).
+  - 수신호 시작(POST /api/start, 정답 뒤 다음 수신호) → AI Hand 시범 `/command`(demo)만 보내고 phase="demo".
+    시범 단계에서는 판정하지 않고 SC-04 카운트도 세지 않는다 — 9/25 시험에서 방금 맞힌 손모양이 다음 수신호의
+    오답으로 잡히고, 시범을 보는 사이 SC-04로 넘어가던 문제.
+  - 학습자가 확인 버튼(POST /api/confirm, 스페이스바)을 누르면 vision /reset → phase="judging".
+  - 정답은 즉시 확정. 오답은 **같은 오답 클래스가 WRONG_CONFIRM_S(1초) 이상 이어질 때만** 확정한다 — 버튼을
+    누르고 손을 올리는 도중의 과도 자세를 거르기 위해서다. 손 미검출이 나오면 새로 센다
+    (기준 구현: services/actuation/scripts/aihand_vision_picar_demo.py `_listen()`, 9/25 실물 7/7).
+  - 오답이 확정되면 재시범(`/command` demo) 뒤 다시 phase="demo".
+  - below_tau / out_of_distribution(스펙 §5, 이동혁 결정): **화면 안내 문구만** 띄우고 물리 피드백·시도 횟수·
+    시행 로그에 넣지 않는다. 손을 올리는 도중에도 자주 나오는 값이라, 매번 AI Hand가 재시범하면 따라 할 틈이 없다.
 
 세션별 현재 state는 메모리 딕셔너리(`_session`)로 관리한다 — SC-07은 세션 이어하기가 없어(재접속 시
 항상 "처음부터", 2026-09-18 결정) DB/Redis 같은 영속 저장소가 필요 없다. 다중 학습자 동시 세션도
@@ -10,13 +23,14 @@
 현재 커리큘럼 단계(target_signal)와 비교해 SC-03a(정답)/SC-03b(오답·below_tau·out_of_distribution)로
 분기한다. `reason`(judgment_result.schema.json)에 따라:
   - no_hand / normalize_failed 가 연속 CAMERA_FAIL_STREAK_THRESHOLD회 이상 지속 -> SC-04(camera_fail)
-  - below_tau / out_of_distribution -> SC-03b (자세 다듬기 / 다른 수신호 두 메시지를 구분, 2026-09-22 추가)
+  - below_tau / out_of_distribution -> SC-03b 안내 문구만 (자세 다듬기 / 다른 수신호 두 메시지를 구분,
+    2026-09-22 추가). 물리 피드백은 보내지 않는다(위 판정 타이밍 참고)
   - awaiting_consecutive_frames / model_not_loaded / inference_error -> 과도기 상태, 오버레이 없이 대기
-  - is_reject=false 이고 predicted_class != target_signal -> SC-03b 오답
+  - is_reject=false 이고 predicted_class != target_signal -> SC-03b 오답 (같은 클래스 1초 유지 시)
   - is_reject=false 이고 predicted_class == target_signal -> SC-03a 정답
 
 정답이 확정되면:
-- actuation(RPi5, ACTUATION_URL)의 POST /command(AI Hand) · /result · /progress(micro:bit) 호출
+- actuation(RPi5, ACTUATION_URL)의 POST /result · /command(AI Hand) · /progress(micro:bit) 호출
 - **picar(RPi4B 8GB, PICAR_URL)의 POST /picar를 별도로 직접 호출** — actuation을 거치지 않는다.
   picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에 컴퓨트 보드를 분리했다
   (02_설계문서 §1-1, 2026-09-18).
@@ -33,19 +47,35 @@
   §4 C′안, 송승호 실측 반영): /command는 손 동작이 끝난 뒤 회신해 실측 0.79~0.83초라 1.5초,
   /result·/progress는 실측 26~42ms라 0.5초. 최악 대기시간 = 1.5x2 + 0.5x2 + 0.5x2 + picar 0.5x2 ≈ 6초
   (기존 2.0초 일괄 시 13초). 이전에 채택했던 C안(일괄 0.6초)은 /command가 전부 timeout 나서 철회됐다.
+- **호출 순서는 /picar → /result → /command → /progress** (스펙 §7.3, 2026-09-28 이동혁 결정). 예전 순서
+  (/command 맨 앞)는 /command가 손 동작이 끝나야 회신(0.8초)해서 picar·micro:bit 반응이 약 0.85초 늦었다.
+  picar는 다른 보드라 micro:bit 순서 제약과 무관하고, /result(ACK 26~42ms)는 /command 앞에 둬도 된다.
+- **응답 판정은 본문 status까지 본다** (03 §5-5, web 할 일 ③): HTTP 200이어도 `timeout`·`error`·`partial`은
+  실패. 본문 실패는 재시도하지 않는다(이미 장치에 닿았을 수 있다 — 다시 보내면 AI Hand·picar가 두 번 움직인다).
+  읽기 타임아웃도 /command·/picar는 재시도하지 않는다. 연결 실패·4xx/5xx만 1회 재시도.
+
+시행 로그 CSV (스펙 §7, web 할 일 ②-a): 판정이 확정될 때마다(정답·오답) 1행을
+`TRIAL_LOG_DIR/web_trials_<기동시각>.csv`에 쓴다(UTF-8 BOM, 쓰는 즉시 파일을 닫아 flush). 앞 17열은 web 없는
+데모 스크립트 CSV(`RECORD_FIELDS`)와 같은 순서라 두 결과를 한 표로 비교할 수 있다.
 
 관리자/등록 관련 상태 없음 — 수신호 등록 기능은 범위에서 제외됨 (03_인터페이스계약서 §6).
 
 SC-05(요약)/SC-06(수료증) 화면의 세부 레이아웃, SC-02(커리큘럼 확인) 화면 문구 등 시각 디자인은
 프론트엔드(frontend/) 책임이며, 이 모듈은 그 화면들이 필요로 하는 상태값·집계 데이터까지만 만든다.
 """
+import csv
+import itertools
+import logging
 import os
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 VISION_URL = os.getenv("VISION_URL", "http://localhost:8001")
@@ -56,6 +86,14 @@ PICAR_TIMEOUT_MS = int(os.getenv("PICAR_TIMEOUT_MS", "500"))
 ACTUATION_COMMAND_TIMEOUT_S = float(os.getenv("ACTUATION_COMMAND_TIMEOUT_S", "1.5"))   # /command
 ACTUATION_FEEDBACK_TIMEOUT_S = float(os.getenv("ACTUATION_FEEDBACK_TIMEOUT_S", "0.5"))  # /result, /progress
 POLL_INTERVAL_S = float(os.getenv("VISION_POLL_INTERVAL_S", "0.2"))
+# vision 호출 타임아웃 — 지정하지 않으면 httpx 기본 5초라 vision이 멈추면 폴링도 5초씩 멈췄다(16 §4.7 #6).
+# /latest는 저장된 최신 판정을 돌려줄 뿐이라 로컬에서 수 ms다.
+VISION_TIMEOUT_S = float(os.getenv("VISION_TIMEOUT_S", "0.5"))
+# 같은 오답 클래스가 이만큼 이어져야 오답 확정 (스펙 §2 #4). 호출 시점에 읽는다 — 테스트가 바꿔 끼운다.
+WRONG_CONFIRM_S = float(os.getenv("WRONG_CONFIRM_S", "1.0"))
+# 시행 로그 CSV 폴더 (스펙 §7.1). 쓰는 시점에 읽는다. 파일 이름은 web 기동 시각 — 기동마다 새 파일.
+TRIAL_LOG_DIR = Path(os.getenv("TRIAL_LOG_DIR", str(Path(__file__).resolve().parents[1] / "logs")))
+_TRIAL_LOG_NAME = f"web_trials_{datetime.now():%Y%m%d_%H%M%S}.csv"
 DEVICE_HEALTH_INTERVAL_S = float(os.getenv("DEVICE_HEALTH_INTERVAL_S", "5.0"))
 DEVICE_HEALTH_TIMEOUT_S = 1.5
 
@@ -136,20 +174,42 @@ OUTCOME_MESSAGES = {
     "out_of_distribution": "다른 수신호를 하고 계세요",
 }
 
+# 장치 본문 status 중 성공으로 치는 값 (03 §5-5). mocked는 성공이되 CSV `mocked` 열로 표시한다.
+OK_STATUSES = ("ok", "mocked")
+
+# 시행 로그 열 (스펙 §7.2). 앞 17열 = 데모 스크립트 RECORD_FIELDS와 같은 이름·순서, 뒤는 web에만 있는 값.
+TRIAL_FIELDS = (
+    "time", "signal", "attempt", "outcome", "predicted", "match_score", "confidence",
+    "vision_latency_ms", "demo_ok", "demo_ms", "observe_ms", "listen_ms",
+    "picar_ok", "picar_ms", "microbit_ok", "microbit_ms", "feedback_ms",
+    "aihand_ok", "aihand_ms", "feedback_done_ms", "aihand_status", "microbit_status",
+    "picar_status", "picar_led_ok", "mocked", "subject",
+)
+
 _lock = threading.Lock()
+_confirm_lock = threading.Lock()   # 확인 버튼 연타 — vision /reset이 끝나기 전의 두 번째 입력을 막는다
+_csv_lock = threading.Lock()
 _session: dict = {}
+_generation = itertools.count(1)   # 세션 번호 — 재시작 뒤 도착한 옛 세션의 전송 결과를 버리는 데 쓴다
 
 
 def _fresh_session() -> dict:
     return {
         "state": "landing",
+        "phase": "demo",           # SC-03 하위 단계: "demo"(시범·판정 멈춤) | "judging"(판정 중) — 스펙 §4.1
         "curriculum_index": 0,
         "last_result": None,       # {"outcome", "predicted_class", "match_score", "confidence", "message", ...}
-        "_last_dispatched": None,  # (idx, outcome, predicted/reason) 중복 물리 피드백 방지용
+        "_last_dispatched": None,  # (idx, "reject", reason) — 같은 안내 문구를 매 폴링 다시 쓰지 않게
+        "_gen": next(_generation),
+        "wrong_cls": None,         # 오답 1초 유지 추적 — 지금 보이는 오답 클래스와
+        "wrong_since": 0.0,        # 그 클래스가 처음 보인 시각(monotonic)
+        # 이번 시도의 시각 기준점(monotonic) — 시행 로그 demo_ms·observe_ms·listen_ms (스펙 §7.2)
+        "trial": {},               # t_demo, t_demo_done, demo_ok, demo_ms, t_confirm
         "attempts": {},            # signal -> 현재 회차 시도 횟수
         "completed": [],           # [{"signal", "attempts", "match_score"}] 완료 순서대로
         "camera_fail_streak": 0,
         "last_dispatch": None,     # 최근 _dispatch_feedback 결과 (actuation/picar 성공 여부)
+        "last_demo": None,         # 최근 시범 /command 결과
         "devices": {},             # vision/actuation/picar 최근 /health 스냅샷
         "live_judgment": None,     # 매 폴링 갱신되는 실시간 match_score (SC-03 진행 표시용)
         "certificate_issued_at": None,
@@ -174,20 +234,64 @@ def _recommended_retry_count(match_score: int) -> int:
     return 3
 
 
-def _post_with_retry(url: str, json: dict, timeout_s: float) -> dict:
+def _body_status(body) -> "str | None":
+    """응답 본문의 결과 표기 — `ok`, `timeout`, `error:write_failed`, `partial:i2c_failed` 꼴 (스펙 §7.2).
+    본문에 status가 없으면 None(판정 근거가 없으므로 HTTP 층 결과를 따른다)."""
+    if not isinstance(body, dict) or "status" not in body:
+        return None
+    status = str(body["status"])
+    if status in OK_STATUSES:
+        return status
+    motor = body.get("motor") if isinstance(body.get("motor"), dict) else {}
+    reason = body.get("reason") or motor.get("reason")
+    return f"{status}:{reason}" if reason else status
+
+
+def _is_mocked(body) -> bool:
+    if not isinstance(body, dict):
+        return False
+    led = body.get("led") if isinstance(body.get("led"), dict) else {}
+    parts = [body, body.get("motor"), *led.values()]
+    return any(isinstance(p, dict) and p.get("status") == "mocked" for p in parts)
+
+
+def _led_ok(body) -> "bool | str":
+    """picar LED 채널이 전부 ok/mocked인지 — LED 실패는 최상위 status에 반영되지 않는다(03 §5-2)."""
+    led = body.get("led") if isinstance(body, dict) else None
+    if not isinstance(led, dict):
+        return ""
+    return all(isinstance(v, dict) and v.get("status") in OK_STATUSES for v in led.values())
+
+
+def _post_with_retry(url: str, json: dict, timeout_s: float, *, retry_read_timeout: bool = True) -> dict:
     """실패해도 예외를 삼키고 계속 진행하되, 결과는 호출부에 돌려준다
     (03_인터페이스계약서 §7 — 장치 실패가 학습 흐름을 막지 않는 정책은 유지).
 
-    httpx.post()는 4xx/5xx에 예외를 던지지 않으므로 status_code를 직접 확인한다 — 이전 구현은
-    반환값을 버려 서버 오류를 성공으로 셌다(2026-09-21 web_picar_통신_신뢰성_개선안.md §1-1)."""
+    판정 기준은 03 §5-5 (web 할 일 ③):
+    - 연결 실패·4xx/5xx → 1회 재시도 (요청이 장치에 가지 않았거나 서버가 처리하지 못함).
+    - 읽기(쓰기) 타임아웃 → `retry_read_timeout=False`면 재시도하지 않는다. 요청이 이미 갔을 수 있어서,
+      /command·/picar를 다시 보내면 AI Hand·picar가 두 번 움직인다(web 1.5초 < actuation ACK 대기 2.0초).
+    - HTTP 200이어도 본문 status가 ok/mocked가 아니면(`timeout`·`error`·`partial`) 실패. **재시도하지 않는다.**
+    - 본문에 status가 없으면 HTTP 결과대로 성공.
+
+    반환: {"ok", "status"(결과 표기), "ms"(재시도 포함 소요), "body" | "error", "mocked", "_t0", "_t1"}.
+    `_t0`·`_t1`은 시행 로그용 monotonic 시각이라 /api/state에는 내보내지 않는다(`_public`)."""
+    t0 = time.monotonic()
     last_error = None
     for _ in range(2):
         try:
             response = httpx.post(url, json=json, timeout=timeout_s)
+        except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
+            last_error = type(exc).__name__
+            if not retry_read_timeout:
+                break
+            continue
         except httpx.HTTPError as exc:
             last_error = type(exc).__name__
             continue
 
+        # httpx.post()는 4xx/5xx에 예외를 던지지 않으므로 status_code를 직접 확인한다 — 이전 구현은
+        # 반환값을 버려 서버 오류를 성공으로 셌다(2026-09-21 web_picar_통신_신뢰성_개선안.md §1-1).
         if response.status_code >= 400:
             last_error = f"http_{response.status_code}"
             continue
@@ -196,37 +300,128 @@ def _post_with_retry(url: str, json: dict, timeout_s: float) -> dict:
             body = response.json()
         except ValueError:
             body = None
-        return {"ok": True, "body": body}
+        t1 = time.monotonic()
+        status = _body_status(body)
+        ok = status is None or status in OK_STATUSES
+        result = {"ok": ok, "status": status or "ok", "ms": round((t1 - t0) * 1000), "body": body,
+                  "mocked": _is_mocked(body), "_t0": t0, "_t1": t1}
+        if not ok:
+            result["error"] = status
+        return result
 
-    return {"ok": False, "error": last_error}
+    t1 = time.monotonic()
+    return {"ok": False, "status": last_error, "error": last_error, "ms": round((t1 - t0) * 1000),
+            "mocked": False, "_t0": t0, "_t1": t1}
+
+
+def _public(result: "dict | None") -> "dict | None":
+    return None if result is None else {k: v for k, v in result.items() if not k.startswith("_")}
+
+
+def _aihand_payload(command: str, target_signal: str) -> dict:
+    return {"command": command, "target_signal": target_signal, "servo_angles": _PLACEHOLDER_SERVO_ANGLES}
 
 
 def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict) -> dict:
+    """판정 뒤 물리 피드백. 순서 /picar → /result → /command → /progress (스펙 §7.3)."""
     is_correct = outcome == "correct"
     match_score = judgment.get("match_score", 0)
-    aihand_command = "correct_pose" if is_correct else "demo"
-
-    results = {
-        "aihand": _post_with_retry(f"{ACTUATION_URL}/command", {
-            "command": aihand_command,
-            "target_signal": target_signal,
-            "servo_angles": _PLACEHOLDER_SERVO_ANGLES,
-        }, ACTUATION_COMMAND_TIMEOUT_S),
-        "result": _post_with_retry(f"{ACTUATION_URL}/result", {
-            "is_correct": is_correct, "match_score": match_score,
-        }, ACTUATION_FEEDBACK_TIMEOUT_S),
-        "progress": _post_with_retry(f"{ACTUATION_URL}/progress", {
-            "current": _session["curriculum_index"] + 1, "total": len(CURRICULUM),
-        }, ACTUATION_FEEDBACK_TIMEOUT_S),
-    }
+    results = {}
 
     if is_correct:
         picar_command = PICAR_COMMANDS[target_signal]
         results["picar"] = _post_with_retry(f"{PICAR_URL}/picar", {
             "target_signal": target_signal, **picar_command,
-        }, PICAR_TIMEOUT_MS / 1000)
+        }, PICAR_TIMEOUT_MS / 1000, retry_read_timeout=False)
 
+    results["result"] = _post_with_retry(f"{ACTUATION_URL}/result", {
+        "is_correct": is_correct, "match_score": match_score,
+    }, ACTUATION_FEEDBACK_TIMEOUT_S)
+    # 정답: 정답 자세 / 오답: 재시범 — 오답의 이 /command가 곧 다음 시도의 시범이다.
+    results["aihand"] = _post_with_retry(
+        f"{ACTUATION_URL}/command", _aihand_payload("correct_pose" if is_correct else "demo", target_signal),
+        ACTUATION_COMMAND_TIMEOUT_S, retry_read_timeout=False)
+    results["progress"] = _post_with_retry(f"{ACTUATION_URL}/progress", {
+        "current": _session["curriculum_index"] + 1, "total": len(CURRICULUM),
+    }, ACTUATION_FEEDBACK_TIMEOUT_S)
     return results
+
+
+def _record_demo(result: dict) -> None:
+    """시범 /command 결과를 이번 시도의 기준점으로 남긴다 (_lock 안에서 부른다)."""
+    _session["trial"].update(t_demo=result["_t0"], t_demo_done=result["_t1"],
+                             demo_ok=result["ok"], demo_ms=result["ms"])
+    _session["last_demo"] = _public(result)
+
+
+def _send_demo(target_signal: str, gen: int) -> None:
+    """수신호 시작 시범 — `/command`(demo)만 보낸다. /result·/progress·picar는 보내지 않는다 (스펙 §4.1)."""
+    with _lock:
+        if _session.get("_gen") != gen:
+            return
+        _session["trial"] = {}
+    result = _post_with_retry(f"{ACTUATION_URL}/command", _aihand_payload("demo", target_signal),
+                              ACTUATION_COMMAND_TIMEOUT_S, retry_read_timeout=False)
+    with _lock:
+        if _session.get("_gen") == gen:       # 그사이 재시작됐으면 옛 결과는 버린다
+            _record_demo(result)
+
+
+def _ms(start: "float | None", end: "float | None"):
+    return "" if start is None or end is None else round((end - start) * 1000)
+
+
+def _trial_row(*, when: datetime, t_dec: float, target_signal: str, attempt: int, outcome: str,
+               judgment: dict, trial: dict, dispatch: dict) -> dict:
+    """시행 로그 1행 (스펙 §7.2). 장치 지연은 전부 판정 확정 시각 t_dec 기준."""
+    row = dict.fromkeys(TRIAL_FIELDS, "")
+    t_done, t_confirm = trial.get("t_demo_done"), trial.get("t_confirm")
+    observed = t_done is not None and t_confirm is not None and t_confirm >= t_done
+    row.update(
+        time=when.isoformat(timespec="milliseconds"), signal=target_signal, attempt=attempt,
+        outcome=outcome, predicted=judgment.get("predicted_class", ""),
+        match_score=judgment.get("match_score", ""), confidence=judgment.get("confidence", ""),
+        vision_latency_ms=judgment.get("latency_ms", ""),
+        demo_ok=trial.get("demo_ok", ""), demo_ms=trial.get("demo_ms", ""),
+        # 시범 응답 전에 확인을 눌렀으면 "본 시간"은 정의되지 않는다 — 음수 대신 빈 값
+        observe_ms=_ms(t_done, t_confirm) if observed else "",
+        listen_ms=_ms(t_confirm, t_dec),
+        subject=os.getenv("LOG_SUBJECT", ""),
+    )
+    for key, col in (("picar", "picar"), ("result", "microbit"), ("aihand", "aihand")):
+        r = dispatch.get(key)
+        if r:
+            row[f"{col}_ok"] = r["ok"]
+            row[f"{col}_ms"] = _ms(t_dec, r["_t1"])
+            row[f"{col}_status"] = r["status"]
+    if dispatch.get("picar"):
+        row["picar_led_ok"] = _led_ok(dispatch["picar"].get("body"))
+
+    picar_ms, microbit_ms, aihand_ms = (row[c] if row[c] != "" else None
+                                        for c in ("picar_ms", "microbit_ms", "aihand_ms"))
+    starts = [v for v in (picar_ms, microbit_ms) if v is not None]
+    row["feedback_ms"] = max(starts) if starts else ""       # 반응 시작 기준 (데모 CSV와 같음)
+    done = [v for v in (aihand_ms, None if microbit_ms is None else microbit_ms + 1000) if v is not None]
+    row["feedback_done_ms"] = max(done) if done else ""     # 완료 기준 (LED O/X 1초 포함, picar 주행 제외)
+    row["mocked"] = any(r.get("mocked") for r in dispatch.values())
+    return row
+
+
+def _write_trial_row(row: dict) -> None:
+    """한 행 쓰고 바로 닫는다 — 시연 중 web이 죽어도 그때까지의 행은 남는다. 실패해도 학습 흐름은 계속."""
+    path = Path(TRIAL_LOG_DIR) / _TRIAL_LOG_NAME
+    try:
+        with _csv_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            new = not path.exists()
+            # utf-8-sig는 파일을 열 때마다 첫 쓰기에 BOM을 붙이므로 새 파일일 때만 쓴다
+            with path.open("w" if new else "a", encoding="utf-8-sig" if new else "utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=TRIAL_FIELDS)
+                if new:
+                    writer.writeheader()
+                writer.writerow(row)
+    except OSError:
+        logger.exception("시행 로그를 쓰지 못했습니다: %s", path)
 
 
 def _poll_once(vision_client: httpx.Client) -> None:
@@ -234,21 +429,26 @@ def _poll_once(vision_client: httpx.Client) -> None:
         state = _session["state"]
         if state not in ("training", "camera_fail"):
             return
+        # 시범 단계 — 판정도, 손 미검출 집계도 하지 않는다 (스펙 §4.1)
+        if _session["phase"] != "judging":
+            return
         target_signal = _current_target_signal()
+        gen = _session["_gen"]
     if target_signal is None:
         return
 
     try:
         judgment = vision_client.get(f"{VISION_URL}/latest").json()
-    except httpx.HTTPError:
+    except (httpx.HTTPError, ValueError):   # ValueError = JSON이 아닌 응답 — 전에는 폴링 스레드가 죽었다
+        return
+    if not isinstance(judgment, dict):
         return
 
     is_reject = judgment.get("is_reject", True)
     reason = judgment.get("reason")
     predicted = judgment.get("predicted_class")
 
-    # 확정된 정답/오답 이벤트와 별개로, SC-03의 실시간 match_score 진행 표시를 위해 매 폴링마다
-    # 갱신한다(아래 dedup은 물리 피드백 중복 방지용이지 화면 표시용이 아니다).
+    # 확정된 정답/오답 이벤트와 별개로, SC-03의 실시간 match_score 진행 표시를 위해 매 폴링마다 갱신한다.
     with _lock:
         _session["live_judgment"] = {
             "predicted_class": predicted,
@@ -260,6 +460,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
 
     if is_reject and reason in CAMERA_FAIL_REASONS:
         with _lock:
+            _session["wrong_cls"] = None   # 손을 내렸다 다시 들면 오답 유지 시간을 새로 센다
             _session["camera_fail_streak"] += 1
             if _session["camera_fail_streak"] >= CAMERA_FAIL_STREAK_THRESHOLD:
                 _session["state"] = "camera_fail"
@@ -277,27 +478,54 @@ def _poll_once(vision_client: httpx.Client) -> None:
         return  # 과도기 상태(모델 로딩/N프레임 누적 중 등) — 오버레이 없이 대기
 
     if is_reject and reason in HOLD_REASONS:
-        outcome = reason  # "below_tau" | "out_of_distribution"
-        dispatch_key = (_session["curriculum_index"], "reject", reason)
-    elif not is_reject and predicted and predicted != NEGATIVE_LABEL:
-        outcome = "correct" if predicted == target_signal else "wrong"
-        dispatch_key = (_session["curriculum_index"], outcome, predicted)
-    else:
+        # 화면 안내만 — 물리 피드백·시도 횟수·시행 로그 없음, 판정 단계 유지 (스펙 §5, 이동혁 결정)
+        match_score = judgment.get("match_score", 0)
+        with _lock:
+            key = (_session["curriculum_index"], "reject", reason)
+            if _session["_last_dispatched"] == key:
+                return  # 같은 안내가 계속 들어오는 동안 다시 쓰지 않는다
+            _session["_last_dispatched"] = key
+            _session["last_result"] = {
+                "signal": target_signal, "outcome": reason, "predicted_class": predicted,
+                "match_score": match_score, "confidence": judgment.get("confidence", 0),
+                "attempt": _session["attempts"].get(target_signal, 0),
+                "message": OUTCOME_MESSAGES.get(reason),
+                "recommended_retry": _recommended_retry_count(match_score),
+            }
         return
 
+    if is_reject or not predicted or predicted == NEGATIVE_LABEL:
+        return
+
+    if predicted == target_signal:
+        outcome = "correct"                  # 정답은 즉시 확정
+    else:
+        now = time.monotonic()
+        with _lock:
+            if _session["wrong_cls"] != predicted:     # 새 오답 클래스 — 여기서부터 센다
+                _session["wrong_cls"], _session["wrong_since"] = predicted, now
+                return
+            if now - _session["wrong_since"] < WRONG_CONFIRM_S:
+                return                                 # 아직 손을 올리는 도중의 과도 자세일 수 있다
+        outcome = "wrong"
+
+    t_dec, when = time.monotonic(), datetime.now()
     with _lock:
-        if _session["_last_dispatched"] == dispatch_key:
-            return  # 같은 판정이 계속 들어오는 동안 물리 피드백/시도횟수를 반복 집계하지 않음
-        _session["_last_dispatched"] = dispatch_key
+        if _session.get("_gen") != gen or _session["phase"] != "judging":
+            return
+        _session["wrong_cls"] = None
         _session["attempts"][target_signal] = _session["attempts"].get(target_signal, 0) + 1
         attempt_no = _session["attempts"][target_signal]
+        trial = dict(_session["trial"])
 
     dispatch_results = _dispatch_feedback(target_signal, outcome, judgment)
 
     match_score = judgment.get("match_score", 0)
-    finished = False
+    next_signal = None
     with _lock:
-        _session["last_dispatch"] = dispatch_results
+        if _session.get("_gen") != gen:
+            return                            # 전송하는 사이 재시작됨 — 새 세션을 건드리지 않는다
+        _session["last_dispatch"] = {k: _public(v) for k, v in dispatch_results.items()}
         _session["last_result"] = {
             "signal": target_signal,  # 정답 시 curriculum_index가 이미 다음으로 넘어가므로 별도 보관
             "outcome": outcome,
@@ -308,27 +536,41 @@ def _poll_once(vision_client: httpx.Client) -> None:
             "message": OUTCOME_MESSAGES.get(outcome),
             "recommended_retry": _recommended_retry_count(match_score),
         }
+        _session["_last_dispatched"] = None
+        # 정답이면 다음 수신호 시범, 오답이면 방금 보낸 재시범을 볼 차례 — 확인 버튼을 기다린다
+        _session["phase"] = "demo"
+        _session["trial"] = {}
         if outcome == "correct":
             _session["completed"].append({
                 "signal": target_signal, "attempts": attempt_no, "match_score": match_score,
             })
             _session["curriculum_index"] += 1
-            _session["_last_dispatched"] = None
             if _session["curriculum_index"] >= len(CURRICULUM):
                 _session["state"] = "summary"
-                finished = True
+            else:
+                next_signal = _current_target_signal()
+        else:
+            _record_demo(dispatch_results["aihand"])
 
-    if outcome == "correct" and not finished:
+    _write_trial_row(_trial_row(when=when, t_dec=t_dec, target_signal=target_signal, attempt=attempt_no,
+                                outcome=outcome, judgment=judgment, trial=trial, dispatch=dispatch_results))
+
+    if next_signal is not None:
         try:
             vision_client.post(f"{VISION_URL}/reset")
         except httpx.HTTPError:
             pass
+        # 정답 자세(/command correct_pose)가 끝난 뒤에 보낸다 — /command는 손 동작 후 회신하므로 순서가 보장된다
+        _send_demo(next_signal, gen)
 
 
 def _poll_loop() -> None:
-    with httpx.Client() as vision_client:
+    with httpx.Client(timeout=VISION_TIMEOUT_S) as vision_client:
         while True:
-            _poll_once(vision_client)
+            try:
+                _poll_once(vision_client)
+            except Exception:  # noqa: BLE001 — 예상 못 한 오류로 폴링 스레드가 죽으면 교육이 멈춘다
+                logger.exception("판정 폴링 중 오류 — 다음 폴링을 계속합니다")
             time.sleep(POLL_INTERVAL_S)
 
 
@@ -373,6 +615,7 @@ def get_state():
         target_signal = _current_target_signal()
         return {
             "state": _session["state"],
+            "phase": _session["phase"],    # SC-03 하위 단계 — "demo"면 예시 사진 + 확인 버튼 (스펙 §4.1)
             "target_signal": target_signal,
             "signal_info": CURRICULUM_INFO.get(target_signal) if target_signal else None,
             "curriculum": [
@@ -383,6 +626,7 @@ def get_state():
             "live_judgment": _session["live_judgment"],
             "attempts": _session["attempts"].get(target_signal, 0) if target_signal else 0,
             "last_dispatch": _session["last_dispatch"],
+            "last_demo": _session["last_demo"],
             "devices": _session["devices"],
             "completed": _session["completed"],
             "certificate_issued_at": _session["certificate_issued_at"],
@@ -398,7 +642,34 @@ def start():
         _session.update(_fresh_session())
         _session["state"] = "training"
         _session["devices"] = devices
-    return {"state": "training", "target_signal": CURRICULUM[0]}
+        gen = _session["_gen"]
+    # 첫 수신호 시범 — /command는 손 동작 뒤 회신(최대 1.5초 × 2)이라 응답을 늦추지 않게 스레드로 보낸다 (스펙 §4.1)
+    threading.Thread(target=_send_demo, args=(CURRICULUM[0], gen), daemon=True).start()
+    return {"state": "training", "phase": "demo", "target_signal": CURRICULUM[0]}
+
+
+@router.post("/confirm")
+def confirm():
+    """확인 버튼(스페이스바) — 시범을 본 학습자가 판정을 시작한다 (스펙 §4.1).
+
+    `phase == "demo"`일 때만 받는다(판정 중 연타는 무시). vision `/reset`으로 시범 동안 쌓인 N프레임 연속판정
+    누적을 버린 뒤 판정 단계로 넘어간다 — 그래야 시범 전에 들고 있던 손모양이 곧바로 판정되지 않는다."""
+    with _confirm_lock:
+        with _lock:
+            if _session["state"] != "training" or _session["phase"] != "demo":
+                return {"status": "ignored", "state": _session["state"], "phase": _session["phase"]}
+            gen = _session["_gen"]
+        # /reset이 실패해도 학습은 막지 않는다 — 직전 누적이 남아 있을 수 있다는 것만 기록한다
+        reset = _post_with_retry(f"{VISION_URL}/reset", {}, VISION_TIMEOUT_S)
+        with _lock:
+            if _session["_gen"] != gen or _session["phase"] != "demo":
+                return {"status": "ignored", "state": _session["state"], "phase": _session["phase"]}
+            _session["phase"] = "judging"
+            _session["trial"]["t_confirm"] = time.monotonic()
+            _session["_last_dispatched"] = None
+            _session["wrong_cls"] = None
+            _session["camera_fail_streak"] = 0
+        return {"status": "ok", "phase": "judging", "vision_reset": _public(reset)}
 
 
 @router.post("/certificate")

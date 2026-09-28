@@ -75,30 +75,44 @@ web은 학습 흐름 전체를 지휘하는 **오케스트레이터**다. vision
 
 | vision 응답 | web 처리 |
 | --- | --- |
-| `is_reject=false`, `predicted_class == target_signal` | **SC-03a 정답** → 물리 피드백 + picar + 다음 수신호 + vision `/reset` |
-| `is_reject=false`, `predicted_class ≠ target_signal` | **SC-03b 오답** → AI Hand 재시범 + micro:bit 결과 표시 |
-| `below_tau` | SC-03b "조금 더 정확히 해주세요" |
-| `out_of_distribution` | SC-03b "다른 수신호를 하고 계세요" |
-| `no_hand` / `normalize_failed` | 미검출 카운트 +1 → 15회 연속이면 SC-04 |
+| `is_reject=false`, `predicted_class == target_signal` | **SC-03a 정답**(즉시) → 물리 피드백 + picar + 다음 수신호 + vision `/reset` + 다음 수신호 시범 |
+| `is_reject=false`, `predicted_class ≠ target_signal` | **SC-03b 오답** — 같은 오답 클래스가 **1초**(`WRONG_CONFIRM_S`) 이어질 때만 확정 → micro:bit 결과 표시 + AI Hand 재시범 |
+| `below_tau` | SC-03b "조금 더 정확히 해주세요" — **화면 안내만**(물리 피드백·시도 횟수 없음) |
+| `out_of_distribution` | SC-03b "다른 수신호를 하고 계세요" — **화면 안내만** |
+| `no_hand` / `normalize_failed` | 미검출 카운트 +1 → 15회 연속이면 SC-04. 오답 1초 유지도 새로 센다 |
 | `awaiting_consecutive_frames` / `model_not_loaded` / `inference_error` | 과도기 상태 — 화면 변화 없이 대기 |
 | `predicted_class == negative` | 무시 |
 
-- **중복 방지**: 같은 (커리큘럼 단계, 결과, 예측 클래스) 조합은 한 번만 처리한다(`_last_dispatched`).
-  학습자가 같은 자세를 들고 있어도 매 폴링마다 장치가 반복 동작하거나 시도 횟수가 늘지 않는다.
+- **판정 단계 `phase`** (2026-09-28, [판정 타이밍 스펙](proposals/web_판정_타이밍_스펙.md) §4.1 구현): 위 분기는
+  `phase == "judging"`일 때만 한다. 수신호 시작(`/api/start`·정답 뒤)과 오답 확정 뒤에는 AI Hand 시범과 함께
+  `phase = "demo"`가 되고, 이때는 판정도 SC-04 카운트도 하지 않는다. 학습자가 확인 버튼(`POST /api/confirm`)을
+  누르면 vision `/reset` 뒤 `judging`으로 넘어간다.
+- **`below_tau`·OOD를 안내만 하는 이유**(스펙 §5, 이동혁 결정): 손을 올리는 도중에도 자주 나오는 값이라
+  매번 재시범을 보내면 따라 할 틈이 없다. web 없는 데모 스크립트(9/25 실물 7/7)와 같은 처리다.
+- **중복 방지**: 같은 안내(`below_tau`·OOD)는 한 번만 쓴다(`_last_dispatched`). 정답·오답은 확정 즉시
+  `demo` 단계로 넘어가므로 같은 자세를 들고 있어도 다시 처리되지 않는다.
 - **집계**: 수신호별 시도 횟수(`attempts`)와 완료 목록(`completed`: 수신호·시도 횟수·최종 일치율)을 쌓아
   SC-05·SC-06에 쓴다.
 
 ### 3.3 장치 호출 순서 (`_dispatch_feedback`)
 
 ```
-actuation POST /command   (정답: correct_pose / 오답: demo)      timeout 1.5초 × 최대 2회
+picar     POST /picar     (정답일 때만, 수신호별 모터·LED 명령)    timeout 0.5초 × 최대 2회 (읽기 타임아웃은 재시도 안 함)
 actuation POST /result    (is_correct, match_score)              timeout 0.5초 × 최대 2회
+actuation POST /command   (정답: correct_pose / 오답: demo)      timeout 1.5초 × 최대 2회 (읽기 타임아웃은 재시도 안 함)
 actuation POST /progress  (current, total)                       timeout 0.5초 × 최대 2회
-picar     POST /picar     (정답일 때만, 수신호별 모터·LED 명령)    timeout 0.5초 × 최대 2회
 ```
 
+- **2026-09-28 순서 변경**(스펙 §7.3, 이동혁): 예전 순서(`/command` 맨 앞)는 `/command`가 손 동작이 끝나야
+  회신(0.8초)해 picar·micro:bit 반응이 약 **0.85초 늦었다**. picar는 다른 보드라 맨 앞에, `/result`(ACK 26~42ms)는
+  `/command` 앞에 둔다.
 - 순차 호출이다. micro:bit가 명령을 하나씩 처리하므로 병렬로 보내도 빨라지지 않고, 순서 보장이 필요하다(§5 D4).
 - 최악 대기시간은 약 **6초**(모든 호출이 재시도까지 timeout일 때), 정상 시에는 `/command` 약 0.8초가 대부분이다.
+- **응답 판정**(03 §5-5, 2026-09-28): HTTP 200이어도 본문 `status`가 `timeout`·`error`·`partial`이면 실패로
+  기록하고 **재시도하지 않는다**(다시 보내면 AI Hand·picar가 두 번 움직인다). `mocked`는 성공. 결과는
+  `last_dispatch`와 시행 로그 CSV(`services/web/logs/web_trials_*.csv`, 스펙 §7)에 남는다.
+- **시범 전송**: 수신호 시작 시에는 `/command`(demo)**만** 보낸다(`/api/start`는 백그라운드 스레드, 정답 뒤에는
+  정답 자세가 끝난 다음). 오답 확정 때는 위 `/command`(demo)가 곧 재시범이다.
 
 ### 3.4 picar 명령표 (`PICAR_COMMANDS`)
 
