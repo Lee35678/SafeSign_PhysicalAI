@@ -92,9 +92,11 @@ curl http://localhost:8001/health      # model.loaded, tau, n_frames 확인
 curl http://localhost:8001/latest
 ```
 
-`picamera2`는 Raspberry Pi OS apt 패키지라 x86 Docker에 설치되지 않는다. 그래서 Docker 기본값은
-`MOCK_CAMERA=true`로 "손 미검출" 프레임만 흘려보내며 배선을 검증한다. **실물 카메라는 RPi5에서
-네이티브로 돌린다** → 아래 [RPi5 에서 실행](#rpi5-에서-실행-camera-module-3-csi).
+`picamera2`와 Raspberry Pi판 libcamera는 Raspberry Pi OS apt 전용이라 이 이미지에 설치되지 않는다 —
+**x86 PC뿐 아니라 RPi5에서 컨테이너로 띄워도 CSI 카메라를 쓸 수 없다**(`MOCK_CAMERA=false`로 띄우면
+`/health`의 `camera.state=error`, "picamera2를 불러올 수 없습니다"로 버티며 손 미검출만 낸다 — 2026-09-28 확인).
+그래서 Docker는 개발 PC mock·CI 전용이고, 기본값 `MOCK_CAMERA=true`로 "손 미검출" 프레임만 흘려보내며
+배선을 검증한다. **실물 카메라는 RPi5에서 네이티브로 돌린다** → 아래 [RPi5 에서 실행](#rpi5-에서-실행-camera-module-3-csi).
 
 노트북에서도 실제 캡처 경로를 확인할 수 있다 (웹캠이 CSI 대신):
 

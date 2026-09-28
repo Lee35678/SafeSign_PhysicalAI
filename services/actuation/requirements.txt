@@ -4,5 +4,5 @@ bleak==0.22.3
 # RPi5 <-> micro:bit 통신은 USB 시리얼이 아니라 BLE로 전환되었습니다(README "AiHand + micro:bit
 # BLE 연동 코드" 참고). 서보 구동은 micro:bit 펌웨어가 담당하므로 이 서비스에는 pyserial/gpiozero가
 # 더 이상 필요하지 않습니다. 리눅스(RPi5)에서 bleak를 쓰려면 BlueZ + D-Bus가 필요합니다 —
-# 컨테이너에서 실행 시 docker-compose.yml의 actuation 서비스에 network_mode: host와
-# /var/run/dbus 마운트가 필요할 수 있습니다 (실물 도착 후 검증).
+# 실물은 RPi5 네이티브 venv로 운영한다(루트 README §4). 컨테이너 구성(docker-compose.hw.yml의 /run/dbus 마운트)은
+# 미검증·선택 사항이며 시연에 쓰지 않는다(2026-09-28 결정).

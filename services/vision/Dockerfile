@@ -8,9 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# 주의: 이 이미지에는 picamera2를 설치하지 않습니다 (requirements.txt 참고).
-# 실물 RPi5에 Pi Camera Module 3를 연동할 때는 이 컨테이너 방식 대신
-# Raspberry Pi OS에서 apt로 picamera2를 설치한 네이티브 실행을 권장합니다.
+# 주의: 이 이미지로는 CSI 카메라(Pi Camera Module 3)를 쓸 수 없습니다 — RPi5에서 돌려도 같습니다.
+# picamera2와 Raspberry Pi판 libcamera는 Raspberry Pi OS apt 전용이라 여기(python:3.11-slim)에 설치되지 않습니다.
+# 이 이미지는 개발 PC mock·CI용이고, 실물 vision은 네이티브로 실행합니다(README "RPi5 에서 실행").
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

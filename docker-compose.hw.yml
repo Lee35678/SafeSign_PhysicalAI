@@ -1,9 +1,15 @@
 # 실물 하드웨어 오버라이드 — docker-compose.yml(개발 PC, mock 기본값) 위에 덧씌워 쓴다.
+#
+# 🟡 미검증·선택 사항. 실물 운영·시연은 네이티브(scripts/rpi/, 루트 README §4)로 한다 — 2026-09-28 결정.
+#    시연 전에는 이 파일을 검증하지 않는다(document/16_통합테스트_KPI_CI.md §2.4).
+#    vision은 여기 없다: 이미지에 picamera2/libcamera가 없어 컨테이너에서 CSI 카메라를 쓸 수 없다.
+#
 # 개발 PC(Windows Docker Desktop)에서는 쓰지 말 것: 아래 장치/소켓이 호스트에 없어 기동이 실패한다.
 #
 #   RPi4B(picar 차체):  docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build picar
 #   RPi5(스테이션):     docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build actuation
 #
+# ⚠️ 서비스 이름을 반드시 붙일 것. 빼면 그 보드에서 4개(vision·actuation·picar·web)가 다 뜬다 — RPi5에서 picar가 I²C·GPIO를 잡는 식.
 # ⚠️ 같은 보드에서 네이티브 uvicorn을 먼저 끌 것(`pgrep -af uvicorn`). 포트가 겹치고, micro:bit는
 #    BLE 연결을 하나만 받아서 네이티브 서버가 붙어 있으면 컨테이너 쪽 스캔에 안 보인다.
 services:

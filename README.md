@@ -7,11 +7,16 @@
 
 ---
 
-## 1. 디렉터리 구조 (담당자별 컨테이너 분리)
+## 1. 디렉터리 구조 (담당자별 서비스 분리)
 
 `document/10_PRD.md` §4 시스템 아키텍처와 `document/01_프로젝트계획서.md` §역할 및 책임(RACI)을 기준으로 5개 서비스로
 나눴습니다. 각자 자기 서비스 폴더 안에서만 작업하면 다른 사람 코드와 충돌 없이 개발할 수 있고,
-마지막에 `docker compose up`으로 전부 합쳐서 로컬 통합 구동을 확인합니다.
+개발 PC에서는 `docker compose up`(mock)으로 전부 합쳐서 통합 구동을 확인합니다.
+
+> 📌 **운영 방식 (2026-09-28 결정, 송승호)**: **실물 운영·시연은 네이티브**(§4), **Docker는 개발 PC mock
+> 통합·CI 전용**이다. 보드가 2대(RPi5·RPi4B)로 나뉘어 compose의 "한 번에 띄우기" 이점이 없고, vision은
+> CSI 카메라(picamera2) 때문에 컨테이너로 돌릴 수 없어 RPi5가 네이티브·Docker 혼합이 되기 때문이다.
+> 근거: [16 §2.4](document/16_통합테스트_KPI_CI.md)
 
 ```
 SafeSign_PhysicalAI/
@@ -20,10 +25,11 @@ SafeSign_PhysicalAI/
 │   ├── vision/             ← 이동혁 담당 (Perception + Cognition, 판정로직 R) — Raspberry Pi 5
 │   ├── actuation/          ← 송승호 담당 (AI Hand + micro:bit, 하드웨어 R) — Raspberry Pi 5
 │   ├── picar/              ← 송승호 담당 (picar 전용 컨트롤러, 하드웨어 R) — Raspberry Pi 4B 8GB (신규)
-│   ├── web/                ← 조은수 담당 (프론트엔드 + 교육 상태머신 백엔드, 웹 R)
+│   ├── web/                ← 조은수 담당 (웹 R, 화면) — 백엔드 state_machine.py는 이동혁 (분담 document/14 §8)
 │   └── data/                ← 김지훈 담당 (데이터 수집 스크립트 + 수신호 템플릿 DB, 데이터수집 R)
 ├── shared/                 # 5개 서비스 공통: 03_인터페이스계약서 기반 스키마 (필드명 그대로 코드 변수명에 사용)
-├── docker-compose.yml      # 5개 서비스 통합 실행
+├── docker-compose.yml      # 서비스 4개 통합 실행 + data-tools(--profile tools) (개발 PC mock·CI 전용)
+├── docker-compose.hw.yml   # actuation·picar 실물 오버라이드 — 미검증·선택 사항, 시연 미사용
 ├── .env.example
 └── .gitignore
 ```
@@ -50,7 +56,9 @@ SafeSign_PhysicalAI/
 
 ## 3. 로컬 실행 (개발 PC, mock)
 
-하드웨어 없이 개발 PC에서 5개 서비스를 한꺼번에 띄운다. 카메라·서보·모터는 전부 목업 응답이다.
+하드웨어 없이 개발 PC에서 서비스 4개(vision·actuation·picar·web)를 한꺼번에 띄운다(data-tools는 `--profile tools`로 따로).
+카메라·서보·모터는 전부 목업 응답이다. mock 카메라는 "손 미검출"만 내므로 판정은 일어나지 않고 약 3초 뒤 SC-04로
+넘어간다 — 연결 확인용이다(2026-09-28 확인, [16 §2.3](document/16_통합테스트_KPI_CI.md)).
 **실물(RPi5 + RPi4B)로 돌리려면 [4. 실물 실행](#4-실물-실행--네이티브-rpi5--rpi4b)을 볼 것.**
 
 ```bash
@@ -75,9 +83,12 @@ docker compose --profile tools run --rm data-tools python src/seed_templates.py
 
 ## 4. 실물 실행 — 네이티브 (RPi5 + RPi4B)
 
-실물은 **Docker 없이 각 보드에서 서비스를 직접 띄우는 방식(네이티브)** 이 기준 경로다. 2026-09-25 전 구간
-통합 테스트를 이 방식으로 통과했다. (Docker 실물 구성 `docker-compose.hw.yml`은 준비됐지만 아직 실물
-미검증 — 각 서비스 README의 "실물 실행 (Docker)" 참고.)
+실물은 **Docker 없이 각 보드에서 서비스를 직접 띄우는 방식(네이티브)** 으로 운영한다(2026-09-28 결정, §1).
+2026-09-25 전 구간 통합 테스트를 이 방식으로 통과했다. 기동·종료는 `scripts/rpi/`
+([17](document/17_실물실행_스크립트_사용법.md))로 한다.
+
+> `docker-compose.hw.yml`(actuation·picar 실물 오버라이드)은 **미검증·선택 사항**이며 시연 전에는 검증하지
+> 않는다. vision은 컨테이너에서 CSI 카메라를 쓸 수 없어 이 파일에 없다.
 
 ### 4.0 구성 한눈에
 
@@ -214,7 +225,7 @@ ip -4 addr show eth0
 
 PC 브라우저에서 `http://<위 주소>:8000` → SC-01 화면. 상단 장치 상태가 전부 정상이어야 한다.
 
-### 4.2-S (선택) 스크립트로 한 번에 — tmux
+### 4.2-S 스크립트로 한 번에 — tmux (권장 · 실물 첫 검증 전이라 4.2 수동 절차도 유지)
 
 위 터미널 4개를 RPi5에서 명령 하나로 띄운다. 서비스가 **tmux 안에서** 돌기 때문에 SSH가 끊겨도 죽지 않는다
 (→ 4.5의 "SSH 끊김 → BLE 연결 잔류"가 생기지 않는다). 최초 1회 두 보드 모두 `sudo apt install -y tmux`.
@@ -295,7 +306,8 @@ picar는 끝나면 배터리 스위치를 내린다(정상 종료가 필요하�
   예: `feat/vision-classifier`, `feat/actuation-aihand`, `feat/picar-motor`, `feat/web-sc03`,
   `feat/data-collection`
 - `shared/schemas/`를 변경하는 PR은 반드시 관련자 전원 리뷰(C) 후 머지합니다.
-- 통합 확인은 `main`에 머지 후 `docker compose up --build`로 5개 서비스가 함께 뜨는지 확인합니다.
+- 통합 확인은 `main`에 머지 후 `docker compose up --build`(mock)로 서비스 4개가 함께 뜨는지 확인하고,
+  실물 동작은 §4 네이티브 경로로 확인합니다.
 
 ## 6. 문서 연동 체크
 
