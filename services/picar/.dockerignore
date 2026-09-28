@@ -1,0 +1,8 @@
+# reference/ 에는 Raspbot SD 카드 이미지(약 15GB, gitignore 대상)가 있어 빌드 컨텍스트로 보내면
+# 빌드가 매우 느려지거나 Docker Desktop 디스크가 모자라 실패한다. 이미지에는 src/와 requirements.txt만 필요하다.
+reference/
+tests/
+scripts/
+**/__pycache__/
+.pytest_cache/
+.venv/

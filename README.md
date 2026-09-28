@@ -214,6 +214,24 @@ ip -4 addr show eth0
 
 PC 브라우저에서 `http://<위 주소>:8000` → SC-01 화면. 상단 장치 상태가 전부 정상이어야 한다.
 
+### 4.2-S (선택) 스크립트로 한 번에 — tmux
+
+위 터미널 4개를 RPi5에서 명령 하나로 띄운다. 서비스가 **tmux 안에서** 돌기 때문에 SSH가 끊겨도 죽지 않는다
+(→ 4.5의 "SSH 끊김 → BLE 연결 잔류"가 생기지 않는다). 최초 1회 두 보드 모두 `sudo apt install -y tmux`.
+
+```bash
+cd ~/git/SafeSign_PhysicalAI
+bash scripts/rpi/start_all.sh      # 사전 점검 → picar(RPi4B, SSH) → actuation → vision → web, 각 /health 확인
+bash scripts/rpi/status.sh         # 4.3 확인 4종 + 온도·스로틀링 + 세션
+bash scripts/rpi/stop_all.sh       # picar 정지 명령 → 역순 Ctrl+C → 세션 정리
+tmux attach -t safesign            # 로그 보기 (창 0 actuation · 1 vision · 2 web, 빠져나오기 Ctrl+b d)
+```
+
+- RPi4B 계정이 RPi5와 다르면 `PICAR_SSH=<rpi4b 계정>@192.168.50.10 bash scripts/rpi/start_all.sh`.
+- 사전 점검(남은 uvicorn, BLE `Discovering`, 모델 파일, 두 보드 커밋, `get_throttled`, picar 안전 확인)을 통과하지 못하면 아무것도 띄우지 않는다.
+- 창별 로그와 실행 환경 기록(`env.txt` — 06 §1-1용)은 `~/safesign_logs/<시각>/`에 쌓인다.
+- **준비·설정·사전 점검 조치·문제 해결은 [document/17_실물실행_스크립트_사용법](document/17_실물실행_스크립트_사용법.md).** ⚠️ 실물 첫 검증 전 — 처음엔 바퀴를 띄우고 17 §6 체크리스트대로.
+
 ### 4.3 한 번에 상태 확인 (RPi5의 새 터미널)
 
 ```bash
