@@ -63,10 +63,10 @@ disc=$(bluetoothctl show 2>/dev/null | awk '/Discovering/ {print $2}')
 [[ "$disc" == yes ]] && abort "BLE 스캔이 켜져 있습니다(Discovering: yes) → scan on 켠 창에서 scan off, 모르면 pkill bluetoothctl"
 if [[ -n "$disc" ]]; then ok "BLE Discovering: $disc"; else warn "bluetoothctl 상태를 읽지 못했습니다"; fi
 
-for f in svm_classifier.joblib hand_landmarker.task; do
-  [[ -f "$REPO/services/vision/models/$f" ]] \
-    || abort "vision 모델 파일 없음: services/vision/models/$f (git에 없음 — 노트북에서 scp로 복사)"
-done
+[[ -f "$REPO/services/vision/models/svm_classifier.joblib" ]] \
+  || abort "vision 분류 모델 없음: services/vision/models/svm_classifier.joblib (git에 없음 — 노트북에서 scp로 복사)"
+[[ -f "$REPO/services/vision/models/hand_landmarker.task" ]] \
+  || abort "MediaPipe 모델 없음: services/vision/models/hand_landmarker.task (git에 포함 — git pull 또는 checkout 확인)"
 ok "vision 모델 파일 2개 있음"
 for d in actuation web; do
   [[ -f "$REPO/services/$d/.venv/bin/activate" ]] || abort "services/$d/.venv 가 없습니다 (README §4.1)"
