@@ -3,9 +3,8 @@
 정답/오답/below_tau/out_of_distribution 분기, SC-04(camera_fail) 임계값·자동 복귀,
 2026-09-21 web_picar_통신_신뢰성_개선안.md의 4xx/5xx 실패 감지, SC-06 수료증 발급 조건을 검증한다.
 
-실행:
+실행 (반드시 pytest — conftest.py가 시행 로그를 임시 폴더로 돌린다):
     cd services/web && python -m pytest tests -q
-    (pytest가 없으면) python tests/test_state_machine.py
 """
 from __future__ import annotations
 
@@ -208,8 +207,5 @@ def test_certificate_requires_all_signals_completed():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
-    for fn in tests:
-        fn()
-        print(f"  ok  {fn.__name__}")
-    print(f"{len(tests)}개 통과")
+    # 직접 실행하면 conftest.py를 거치지 않아 판정 테스트가 실제 logs/ 시행 로그(KPI 원본)에 가짜 행을 쓴다
+    sys.exit("pytest로 실행하세요: cd services/web && python -m pytest tests -q")

@@ -48,6 +48,12 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   구현. 프레임워크 없이 바닐라 JS 유지(팀 논의 전까지). 수료증(SC-06)은 `<canvas>`로 그려 PNG 다운로드/
   인쇄(PDF 저장)를 제공한다. 카메라 실시간 영상 미리보기는 vision에 프레임 스트리밍 엔드포인트가 없어
   자리표시자만 표시한다(§ "아직 확정 안 된 것" 참고).
+  - **SC-03 시범/판정 단계**(2026-09-29, [판정 타이밍 스펙](../../document/proposals/web_판정_타이밍_스펙.md) §4.2):
+    `/api/state`의 `phase`가 `"demo"`면 예시 사진 크게 + 확인 버튼, `"judging"`이면 카메라·일치율 + 사진 작게.
+    확인 버튼·스페이스바 → `POST /api/confirm`. Space는 버튼이 보일 때만 받고(`preventDefault`로 스크롤 방지,
+    `event.repeat` 무시), 정답/오답 오버레이가 떠 있는 동안에는 받지 않는다
+  - 예시 사진: `frontend/images/<command>.jpg`(`stop`·`slow`·`turn_left`·`turn_right`·`complete`·`reverse`·`caution`,
+    스펙 §4.3). 파일이 없으면 자리표시 문구를 보여준다
 
 ## 화면 ↔ 상태 매핑 (09_화면목록.md 참고, 2026-09-18 갱신)
 
@@ -55,7 +61,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 | --- | --- | --- |
 | SC-01 | `landing` | |
 | SC-02 | `curriculum_confirm` | 수신호 7종 안내 (구 SC-02 분야선택은 폐지) |
-| SC-03 (+03a/03b) | `training` (하위 상태: 정답/오답) | 핵심 화면, vision `GET /latest` 폴링 |
+| SC-03 (+03a/03b) | `training` (하위 단계 `phase`: `demo`/`judging`, 오버레이: 정답/오답) | 핵심 화면, vision `GET /latest` 폴링 |
 | SC-04 | `camera_fail` | 손 미검출 지속 시 |
 | SC-05 | `summary` | |
 | SC-06 | `certificate` | |
@@ -68,7 +74,8 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 
 - [x] ~~SC-03 화면 분할 단위 (시범/인식 동시 표시 여부)~~ → 2026-09-27 결정: 한 화면 안에서 **시범 단계 →
   판정 단계** (예시 사진 + 확인 버튼(스페이스바), 오답 1초 유지). `document/09_화면목록.md`,
-  `document/proposals/web_판정_타이밍_스펙.md` — 구현은 web 할 일 ①(`document/14_web_구현보고서.md` §8)
+  `document/proposals/web_판정_타이밍_스펙.md` — 구현 완료: 백엔드 ①-a 2026-09-28, 화면 ①-b 2026-09-29
+  (`document/14_web_구현보고서.md` §8). 실물 재시험(⑥) 대기
 - [x] ~~vision `/latest` 폴링 주기~~ → 0.2초로 우선 구현(`VISION_POLL_INTERVAL_S`), 실측 후 조정
 - [x] ~~프론트엔드(`main.js`)가 `/api/state`를 폴링해 SC-01~SC-07 화면을 실제로 전환하도록 연결~~ →
   2026-09-22 구현
@@ -97,11 +104,31 @@ docker compose up --build web
 
 ## 테스트
 
-`tests/test_state_machine.py` — vision/actuation/picar 실물·mock 서버 없이 httpx 호출만 patch해
-정답/오답/below_tau/out_of_distribution 분기, SC-04 임계값·자동 복귀, 4xx/5xx 실패 감지, SC-06 발급
-조건을 검증한다 (services/vision/tests와 동일한 스타일 — pytest 없이도 단독 실행 가능).
+vision/actuation/picar 실물·mock 서버 없이 httpx 호출만 patch해 검증한다.
+
+- `tests/test_state_machine.py` — 정답/오답/below_tau/out_of_distribution 분기, SC-04 임계값·자동 복귀,
+  4xx/5xx 실패 감지, SC-06 발급 조건
+- `tests/test_judging_timing_spec.py` — 판정 타이밍 스펙 인수 테스트(①-a·②-a·③)
+- `tests/test_aggregate_kpi.py` — KPI 집계 스크립트(아래)
 
 ```bash
 cd services/web && python -m pytest tests -q
-# (pytest가 없으면) python tests/test_state_machine.py
 ```
+
+> ⚠️ **반드시 pytest로 실행한다.** `tests/conftest.py`가 테스트 동안 시행 로그를 임시 폴더로 돌린다.
+> `python tests/test_state_machine.py`처럼 직접 실행하면 이 설정을 거치지 않아 실제 `logs/`에 가짜 판정 행이 쓰인다.
+
+## KPI 집계 (06 2부)
+
+`scripts/aggregate_kpi.py` — 시행 로그 CSV를 `06_테스트·평가리포트` §2 표(요약·혼동행렬·지연 분포·대상자별)로
+집계한다(16 §5.7 규칙, §5.8 명세). `mocked=true` 행은 빼고 제외 건수를 출력한다. 미결 KPI 정의는
+[회의안건_KPI측정방법](../../document/proposals/회의안건_KPI측정방법.md)의 잠정치가 기본값이다.
+
+```bash
+cd services/web
+python scripts/aggregate_kpi.py logs/web_trials_*.csv --out kpi_out   # kpi_out/kpi_report.md
+# web 없는 데모 CSV를 같이 주면 따로 집계해 비교한다(합치지 않음)
+python scripts/aggregate_kpi.py logs/web_trials_*.csv ../actuation/aihand_vision_picar_*.csv
+```
+
+PNG(혼동행렬·지연 히스토그램)는 matplotlib이 설치돼 있을 때만 만든다 — web 의존성에는 넣지 않았다.
