@@ -1,4 +1,4 @@
-# 통합 테스트 · KPI 측정 · CI 계획서 (v0.3 — 초안)
+# 통합 테스트 · KPI 측정 · CI 계획서 (v0.4 — 초안)
 
 **팀명**: 심기일전 · **작성자**: 송승호 (하드웨어·로봇동작 R, 팀장)
 **최초 작성**: 2026-09-28(월) · **기준 커밋**: `dev` `d2503de` + 미커밋 실물 스크립트(`scripts/rpi/`)
@@ -103,7 +103,12 @@ actuation BLE 전송 실패 경로(`timeout`·`write_failed`·`microbit_unreacha
 | --- | --- | --- | --- | --- |
 | ① 계약 테스트 | 각 서비스 요청·응답이 `shared/schemas/*.json`과 03을 지키는가 | 프로세스 안(TestClient) | 개발 PC · CI | `sw-tester` |
 | ② mock 통합 | docker compose로 4개 서비스를 띄워 web → actuation·picar 흐름이 도는가 | 컨테이너 | 개발 PC · CI | `sw-tester` |
-| ③ 실물 E2E | RPi5·RPi4B에서 BLE·모터·LED로 시연 흐름이 도는가 | 실물 보드 (네이티브) | **수동** | `hw-tester` |
+| ③ 실물 E2E | RPi5·RPi4B에서 BLE·모터·LED로 시연 흐름이 도는가 | 실물 보드 (네이티브) | **수동 + 기존 스크립트** (pytest 아님) | `hw-tester` |
+
+> **actuation·picar의 pytest 사용 범위 (2026-09-28 결정, 송승호)**: pytest는 **① 단위 테스트 확장(개발 PC·CI)**과
+> **워치독 조종 모드(09-29 구현 예정) 단위 테스트**에만 쓴다. 실물 검증은 pytest `hw` 테스트를 만들지 않고
+> `status.sh`·`aihand_test.py`·`load_test.py`와 육안 확인으로 한다(§2.4). 이유: 기존 스크립트가 이미 측정값과 기준 초과 표시를 내고,
+> 반복 구동은 정격 초과 전압 서보를 닳게 한다. 보드 venv에 pytest를 설치해 단위 테스트를 돌리는 것도 하지 않는다 — 버전 확인은 CI(Python 3.11 고정 버전)가 맡는다.
 
 ### 2.2 ① 계약 테스트
 
@@ -200,21 +205,22 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 
 | 구분 | 항목 |
 | --- | --- |
-| 자동 판정 (`pytest --run-hw -m hw`) | actuation `/health` `microbit_connected`, picar `/health` `hardware.i2c.reachable`, `/command` 7종 회신 `OK{n}`과 지연, `OK:CORRECT`·`OKP37` 회신, 주행 뒤 `motion_active=false` + `last_stop_error=null` |
+| 자동 판정 (스크립트 — 아래 표) | actuation `/health` `microbit_connected`, picar `/health` `hardware.i2c.reachable`, `/command` 7종 회신 `OK{n}`과 지연, `OK:CORRECT`·`OKP37` 회신, 주행 뒤 `motion_active=false` + `last_stop_error=null` |
 | 사람이 확인 | AI Hand 손모양(펌웨어는 각도와 무관하게 OK 회신), micro:bit O/X, LED 색·동시 점멸·2초 소등(결선이 없어도 `ok`), **바퀴가 실제로 멈췄는지**(`motion_active`는 타이머 상태일 뿐이라 바퀴가 돌아도 false일 수 있음, 13 §4), 바퀴 방향, 전원 차단 후 재연결 |
 | 알려진 한계 (실패로 판정 안 함) | G3≈G6·G4≈G7 육안 구분 불가(엄지 서보), micro:bit `music` 사용 금지(패닉 070) |
 
-#### hw 테스트 목록 (제안)
+#### 실물 점검 도구 (pytest `hw` 테스트는 만들지 않음 — §2.1 결정)
 
-| 파일 | 테스트 | 환경변수 |
+| 확인할 것 | 도구 | 움직이나 |
 | --- | --- | --- |
-| `services/actuation/tests/test_hw_microbit.py` | `test_health_microbit_connected`, `test_command_replies_ok_n`(7종 파라미터, `reply == f"OK{n}"`, 각 1회), `test_command_under_1200ms`, `test_result_ack_under_300ms`, `test_progress_replies_okp` | `ACTUATION_URL` |
-| `services/picar/tests/test_hw_picar.py` | `test_health_i2c_reachable`, `test_stop_ok`, `test_drive_auto_stops`(2.5초 폴링, `last_stop_error is None`), `test_speed_capped_at_50` | `PICAR_URL` |
-| `services/vision/tests/test_hw_camera.py` | `test_camera_running_csi`, `test_result_fps_min` | `VISION_URL` |
+| 네 서비스 `/health`, 카메라 fps, BLE 연결, i2c, 온도·스로틀링 | `bash scripts/rpi/status.sh` ([17](17_실물실행_스크립트_사용법.md)) | 아니오 |
+| AI Hand 7종 `OK{n}` 회신·지연, `/result`·`/progress` ACK(300ms 초과 🔴 표시) | `services/actuation/scripts/aihand_test.py --auto --repeat 1` | 서보 (7동작) |
+| picar 주행·자동 정지·왕복 지연·실패 건수 | `services/picar/scripts/load_test.py` — **RPi5에서** `--url http://192.168.50.10:8000` | 바퀴 |
+| web 없이 전 구간 (판정 → picar·micro:bit 반응) | `services/actuation/scripts/aihand_vision_picar_demo.py` | 전부 |
 
-- 모두 `@pytest.mark.hw`. 주소는 환경변수로만 받는다.
-- teardown: picar는 stop + LED off를 보낸다. AI Hand는 별도 중립 명령이 없다(G5 주먹이 초기 자세 — 펌웨어 기준, hw 검토).
-- 측정 보조 스크립트: `aihand_test.py --auto --repeat 1`, `load_test.py`(RPi5에서 실행), `aihand_vision_picar_demo.py`.
+- 서보를 움직이는 점검은 **`--repeat 1`**로 최소화한다(정격 초과 전압, §2.4 안전·복구).
+- 점검이 끝나면 picar는 stop + LED off 상태로 둔다. AI Hand는 별도 중립 명령이 없다(G5 주먹이 초기 자세 — 펌웨어 기준, hw 검토).
+- 결과 수치는 11 §4.5·13 §4에 이미 쓰는 형식 그대로 기록한다.
 
 #### 시행 당일 절차 (제안 — 기동 순서는 README §4.2)
 
@@ -257,8 +263,8 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 | `--import-mode=importlib` (actuation·picar의 같은 이름 `test_controller.py` 충돌 방지) | `pytest.ini` |
 | `python_files = test_*.py` — 수동 스크립트는 `test_` 접두어를 쓰지 않는다 | `pytest.ini` |
 | `xfail_strict = true` — 미구현 명세는 구현 감지 조건과 `raises=`로 좁혀 건다 | `pytest.ini` |
-| 마커 `unit` / `integration` / `hw` — ⚠️ **현재 마커가 붙은 테스트는 0개**다. 그래서 `-m "not integration"`은 지금은 아무것도 거르지 않는다. 계약·통합·hw 테스트를 쓸 때부터 붙인다 | `pytest.ini` |
-| `--run-hw` (구현됨), `--run-integration` (예정) | 루트 `conftest.py` |
+| 마커 `unit` / `integration` / `hw` — ⚠️ **현재 마커가 붙은 테스트는 0개**다. 그래서 `-m "not integration"`은 지금은 아무것도 거르지 않는다. 계약·통합 테스트를 쓸 때부터 붙인다. `hw`는 actuation·picar에서 쓰지 않기로 했다(§2.1) | `pytest.ini` |
+| `--run-hw` (구현돼 있으나 **현재 사용처 없음**), `--run-integration` (예정) | 루트 `conftest.py` |
 | 환경변수는 import 시점에 읽힌다 → `setenv`가 아니라 **모듈 속성을 monkeypatch** | 각 테스트 |
 | 모듈 전역을 바꾸면 반드시 원복, 고정 sleep 대신 마감시간 있는 폴링 | 각 테스트 |
 | web 테스트는 앱 startup(폴링 스레드)을 띄우지 않는다 (§1.1) | 각 테스트 |
@@ -271,7 +277,7 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 | 서비스 하나 | `python -m pytest services/web` |
 | 마지막 실패만 다시 | `python -m pytest --lf` |
 | 실물 기동·종료·상태 (RPi5에서) | `bash scripts/rpi/start_all.sh` · `stop_all.sh` · `status.sh` ([17](17_실물실행_스크립트_사용법.md)) |
-| 실물 hw 테스트 (보드에서) | `python -m pytest --run-hw -m hw services/actuation` 등 — 환경변수로 주소 지정 |
+| 실물 장치 점검 (보드에서) | `python3 scripts/aihand_test.py --auto --repeat 1`(actuation) · `load_test.py`(picar, RPi5에서) — §2.4 표 |
 | mock 스택만 띄워 보기 (개발 PC) | Docker Desktop 실행 → `docker compose up -d --build` → `docker compose ps` → `docker compose down` |
 | mock 통합 (예정) | `docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait` 후 `python -m pytest tests/integration --run-integration` |
 | CI 실패 재현 | CI와 같은 Python 3.11 가상환경을 만들고 `pip install -r services/<svc>/requirements-test.txt` 후 같은 명령 (§3.4 #1) |
@@ -463,7 +469,7 @@ web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 
 | 2 | micro:bit·picar 0.85초 늦은 반응 | 호출 순서 변경 | 이동혁 | 시행 로그 `feedback_ms` |
 | 3 | 판정 지연 측정 기준점 | §5.6 #1 결정 | 팀 | — |
 | 4 | 물리 피드백 시작 대 완료 | §5.6 #3 결정 | 팀 | — |
-| 5 | BLE 끊김 시 잠금을 쥔 채 스캔·연결 | 재연결을 요청 경로 밖으로, 또는 잠금 전 빠른 실패 | 송승호 | **가짜 bleak 단위 테스트** + hw 테스트(micro:bit 리셋 뒤 첫 명령). mock 경로로는 검증 불가 |
+| 5 | BLE 끊김 시 잠금을 쥔 채 스캔·연결 | 재연결을 요청 경로 밖으로, 또는 잠금 전 빠른 실패 | 송승호 | **가짜 bleak 단위 테스트** + 실물 확인(micro:bit 리셋 뒤 첫 명령 시간을 `aihand_test.py`로). mock 경로로는 검증 불가 |
 | 6 | vision `/latest` 타임아웃 미지정 · 비JSON 미처리 | 폴링 간격에 맞는 타임아웃, `ValueError` 처리 | 이동혁 | 단위 테스트 |
 | 7 | 열 스로틀링 | 액티브 쿨러 장착 | 송승호 | 재부팅 뒤 `get_throttled`, 판정 fps 재측정 |
 
@@ -605,7 +611,9 @@ web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 
 | 10 | BLE 끊김 시 잠금을 쥔 채 스캔·연결하는 문제 (§4.7 #5) — 가짜 bleak 단위 테스트로 검증 | 10-01(목) | — | 직접 + `sw-tester` |
 | 11 | RPi5 액티브 쿨러 장착 → 재부팅 뒤 `get_throttled`·판정 fps 재측정 | ⑥ 재시험(10-02) 전 | 부품 | `hw-tester` |
 | 12 | **AP 경유 부하 주행 반복 측정** — `load_test.py`를 **RPi5에서** `--url http://192.168.50.10:8000`으로 실행(PC에서는 50번 대역에 닿지 않음, 07). AP 경유 왕복은 13~21·19~21ms로 이미 쟀고, 안 잰 것은 부하 주행 반복뿐이다 | 10-01(목) | — | `hw-tester` |
-| 13 | 실물 hw 테스트(§2.4 목록)·당일 절차·비상정지 절차 준비. web ①-a와 무관한 장치 테스트라 먼저 한다 | 10-01(목) | — | `hw-tester` |
+| 13 | 실물 점검(§2.4 도구 표)·당일 절차·비상정지 절차 준비. web ①-a와 무관한 장치 점검이라 먼저 한다 | 10-01(목) | — | `hw-tester` |
+| 13-a | **actuation·picar 단위 테스트 확장**(pytest, 개발 PC·CI): picar 잘못된 요청 → 500(알려진 결함, strict xfail), `/health` degraded, 자동 정지 타이머 발동, 주행 쓰기 실패 → `partial` / actuation BLE `timeout`·`write_failed`·`microbit_unreachable`, 끊긴 상태의 잠금 보유 재스캔, 늦은 회신 오귀속, `app.py` TestClient + 스키마 대조 | 09-30(수) | — | `sw-tester` |
+| 13-b | **워치독 조종 모드 단위 테스트** — 구현 계획서 §5 목록(타이머 재무장, `decide()` 표, 데모 표 ↔ web 표 일치, 기존 테스트 전부 통과) | 09-29(화) 구현과 함께 | 조종 모드 회의 결정 | `sw-tester` |
 | 14 | web 전 구간 재시험 ⑥ (조은수와 함께) — §2.4 당일 절차로 | 10-02(금) | ①-a·①-b 병합, 쿨러 | `hw-tester` |
 | 15 | KPI 측정방법 회의 진행 (안건 5·2 결정권자) | ⑥ 전 정기 회의 | 회의 전 준비 | `pm` |
 | 16 | 08 리스크 레지스터에 새 리스크 후보 반영 (§6.5) | 회의 후 | 15 | `pm` |
@@ -672,6 +680,7 @@ web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 
 
 | 버전 | 일자 | 내용 |
 | --- | --- | --- |
+| v0.4 | 2026-09-28 | **결정 반영**: actuation·picar의 pytest는 단위 테스트 확장(개발 PC·CI)과 워치독 조종 모드에만 쓴다(송승호). §2.4 "hw 테스트 목록"을 "실물 점검 도구"(`status.sh`·`aihand_test.py`·`load_test.py`·데모 스크립트) 표로 교체, §2.5 `hw` 마커·`--run-hw` 사용처 없음 표시, §2.6·§4.7 #5 검증 방법 변경, 할 일 13-a(단위 테스트 확장)·13-b(워치독 단위 테스트) 추가 |
 | v0.3 | 2026-09-28 | **정정**: `.pytest_cache/`는 자체 `.gitignore`로 이미 무시되므로 조치 불필요(§3.1·§6.1 #1), `.claude/agents/`는 `.gitignore:54`로 공유되지 않음을 명시, 커밋 완료 반영(`67ef27b`·`a8f7640`·`d2503de`). **추가**: docker compose(mock) 빌드·기동·장치 호출·SC-04 전환 점검 결과와 발견 3건(§2.3 — picar 빌드 폴더 14.9GB → `.dockerignore`, 기반 이미지 trixie, OpenCV 버전 차이), 시연에 Docker를 쓰지 않는 이유와 vision 컨테이너화 전제조건(§2.4), 실물 스크립트 `scripts/rpi/` 연결(§0·§2.4 당일 절차 4·8·9·§2.6, [17](17_실물실행_스크립트_사용법.md)), 할 일 1-a 스크립트 실물 첫 검증, §6.3 기반 이미지 고정·에이전트 공유 여부 |
 | v0.2 | 2026-09-28 | `sw-tester`·`hw-tester`·`evaluator` 검토 반영. **정정**: web 백엔드 담당을 14 §8대로 이동혁으로(①-a·②-a·③), `/progress` 실측 32~38·38~39ms, web 없는 데모 반응 시작 25~47ms(마지막 장치 기준), `/command` 회신 시점 단서, 완료 기준 합계 재계산(picar 제외 현재 2.0~2.2 · 권장 1.2~1.4초), 100ms 간격 문구, BLE 재연결 시간(스캔 + 연결), 실물 실행 방식을 네이티브로, `motion_active` 판정에 육안 정지 확인 추가, 장치 호출 합계(정답 6·오답 5초), 스펙 xfail은 구현 감지 조건부라 마커 제거 불필요(§3.4 #5), 데모 CSV는 공통 지연 열만 비교 가능, 치명 오분류 정의 3갈래(코드는 이미 A안), 측정 절차의 `get_throttled`·`repo_commit`·`mocked` 확인 방법, AP 경유 측정 범위. **추가**: 계약 테스트 대상표, stub vision 인터페이스, 시나리오별 파일명, 실물 hw 테스트 목록, 시행 당일 절차·역할·육안 기록 양식·안전·복구, 로컬 실행 명령(§2.6), 마커 사용 현황, 표본 계산 검산, 온라인 시행의 서보 누적 위험, 집계 규칙(§5.7)·집계 스크립트 명세(§5.8), 할 일 일정을 14 §8에 맞춤, 결정 대기·리스크 후보 추가 |
 | v0.1 | 2026-09-28 | 최초 작성. 테스트 준비 상태 점검(서비스 4개 병렬 조사), 테스트 불안정 원인 정리 결과, 통합 테스트 3층 구조·시나리오 S1~S7, GitHub Actions 계획, 지연 분석, KPI 측정 방법과 미결 사항 7건(회의안건 연계), 담당별 할 일 |

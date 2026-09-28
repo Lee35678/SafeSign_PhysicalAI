@@ -7,6 +7,8 @@
 프로토콜 근거: shared/schemas/microbit_protocol.md ·
 document/03_인터페이스계약서.md §5-3 · 펌웨어 src/firmware/aihand_control.ts
 
+버튼 A(`BTN:A`, 2026-09-28) 수신도 여기서 고정한다 — 맨 아래 "버튼 입력" 절 참고.
+
 `pytest-asyncio`를 쓰지 않기 위해 async 함수는 `asyncio.run()`으로 감싼다
 (actuation/requirements.txt에 테스트 전용 의존성을 추가하지 않으려는 의도).
 
@@ -16,14 +18,24 @@ document/03_인터페이스계약서.md §5-3 · 펌웨어 src/firmware/aihand_c
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import pytest
+
+_SRC = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(_SRC))
 
 from aihand import controller  # noqa: E402
 from microbit import ble_bridge  # noqa: E402
+
+# picar·vision에도 src/app.py가 있다. `import app`으로 올리면 sys.modules["app"]에 남아 다른 서비스
+# 테스트가 이 모듈을 잘못 집는다 — 경로로 적재하고 고유 이름을 준다.
+_spec = importlib.util.spec_from_file_location("actuation_app", _SRC / "app.py")
+actuation_app = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(actuation_app)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCHEMA = _REPO_ROOT / "shared" / "schemas" / "aihand_command.schema.json"
@@ -294,3 +306,109 @@ def test_concurrent_sends_each_get_their_own_reply(monkeypatch):
 
     results = asyncio.run(_run())
     assert [r.get("reply") for r in results] == ["OK1", "OK2", "OK3"], results
+
+
+# ── 버튼 입력 (BTN, 2026-09-28) ──────────────────────────────────────────────
+# 펌웨어는 버튼 A를 누르면 **요청 없이** "BTN:A\n"을 알림으로 올린다. 회신 칸(_last_reply/_reply_event)이
+# 하나뿐이라 이 줄을 회신으로 받으면 대기 중인 G 명령이 엉뚱한 줄로 "ok" 처리되고(AI Hand가 아직
+# 움직이는 중인데 /command가 돌아감) 버튼 입력은 사라진다. BTN 줄이 회신과 섞이지 않고 seq로만
+# 쌓이는지 고정한다.
+@pytest.fixture
+def fresh_bridge(monkeypatch):
+    """모듈 전역 상태가 테스트 사이로 새지 않게 매번 새로 깐다."""
+    monkeypatch.setattr(ble_bridge, "_button", {"seq": 0, "last_button": None, "last_at": None})
+    monkeypatch.setattr(ble_bridge, "_last_reply", None)
+    monkeypatch.setattr(ble_bridge, "_reply_event", None)
+    monkeypatch.setattr(ble_bridge, "_send_lock", None)
+    monkeypatch.setattr(ble_bridge, "_client", None)
+
+
+def test_button_line_is_not_taken_as_a_reply(fresh_bridge):
+    ble_bridge._reply_event = asyncio.Event()
+    ble_bridge._on_notify(None, b"BTN:A\n")
+    assert not ble_bridge._reply_event.is_set(), "버튼 알림이 회신 대기를 깨웠다"
+    assert ble_bridge._last_reply is None
+    assert ble_bridge.button_state()["seq"] == 1
+    assert ble_bridge.button_state()["last_button"] == "A"
+
+
+def test_reply_and_button_in_one_notify_are_split(fresh_bridge):
+    """두 줄이 알림 한 번에 붙어 와도 회신은 회신대로, 버튼은 버튼대로 처리한다."""
+    ble_bridge._reply_event = asyncio.Event()
+    ble_bridge._on_notify(None, b"OK3\nBTN:A\n")
+    assert ble_bridge._last_reply == "OK3"
+    assert ble_bridge._reply_event.is_set()
+    assert ble_bridge.button_state()["seq"] == 1
+
+
+def test_button_before_reply_does_not_shadow_it(fresh_bridge):
+    ble_bridge._reply_event = asyncio.Event()
+    ble_bridge._on_notify(None, b"BTN:A\nOK:CORRECT\n")
+    assert ble_bridge._last_reply == "OK:CORRECT"
+    assert ble_bridge.button_state()["seq"] == 1
+
+
+def test_reply_without_newline_still_counts(fresh_bridge):
+    """기존 동작 유지 — 줄바꿈 없이 온 회신도 한 줄로 받는다."""
+    ble_bridge._reply_event = asyncio.Event()
+    ble_bridge._on_notify(None, b"OK5")
+    assert ble_bridge._last_reply == "OK5"
+
+
+def test_each_press_increments_seq_and_stamps_time(fresh_bridge):
+    for _ in range(3):
+        ble_bridge._on_notify(None, b"BTN:A\n")
+    state = ble_bridge.button_state()
+    assert state["seq"] == 3
+    assert state["last_at"] is not None
+
+
+def test_button_state_is_a_copy(fresh_bridge):
+    """호출부가 받은 dict를 고쳐도 내부 seq가 바뀌면 안 된다."""
+    state = ble_bridge.button_state()
+    state["seq"] = 99
+    assert ble_bridge.button_state()["seq"] == 0
+
+
+class _SlowGestureClient:
+    """G{n}을 받으면 버튼 알림을 먼저, 회신을 나중에 보낸다 (시범 동작 끝 무렵에 누르는 상황)."""
+    is_connected = True
+
+    async def write_gatt_char(self, _uuid, data):
+        n = data.decode().strip()[1:]
+
+        async def _events():
+            await asyncio.sleep(0.01)
+            ble_bridge._on_notify(None, b"BTN:A\n")
+            await asyncio.sleep(0.02)
+            ble_bridge._on_notify(None, f"OK{n}\n".encode())
+
+        asyncio.get_running_loop().create_task(_events())
+
+
+def test_press_during_gesture_keeps_the_real_ack(fresh_bridge, monkeypatch):
+    monkeypatch.setattr(ble_bridge, "_client", _SlowGestureClient())
+
+    async def _run():
+        ble_bridge._reply_event = asyncio.Event()
+        return await ble_bridge.send_gesture(4, mock=False)
+
+    result = asyncio.run(_run())
+    assert result["status"] == "ok"
+    assert result["reply"] == "OK4", f"버튼 알림을 회신으로 받았다: {result}"
+    assert ble_bridge.button_state()["seq"] == 1
+
+
+def test_get_button_reports_seq_and_connection(fresh_bridge):
+    body = actuation_app.button()
+    assert body["seq"] == 0
+    assert body["last_button"] is None
+    assert body["microbit_connected"] is True  # 기본 MOCK_HARDWARE=true
+
+
+def test_simulate_increments_seq_without_touching_ble(fresh_bridge):
+    actuation_app.button_simulate(None)
+    body = actuation_app.button_simulate({"button": "A"})
+    assert body["seq"] == 2
+    assert actuation_app.button()["seq"] == 2
+    assert ble_bridge._client is None

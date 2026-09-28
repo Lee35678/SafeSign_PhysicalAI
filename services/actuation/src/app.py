@@ -76,3 +76,26 @@ async def progress(payload: dict):
     return await ble_bridge.send_progress(
         payload.get("current", 0), payload.get("total", 7), mock=MOCK_HARDWARE
     )
+
+
+@app.get("/button")
+def button():
+    """micro:bit 버튼 A 누적 입력 — web 확인 버튼 대용(2026-09-28). web이 폴링한다.
+
+    응답 예: {"seq": 3, "last_button": "A", "last_at": "2026-09-28T05:12:03.412+00:00",
+             "microbit_connected": true}
+
+    - web은 시범 단계에 들어갈 때 seq를 기준값으로 적어 두고, 그보다 커지면 확인으로 처리한다
+      (시범 전·판정 중에 눌린 입력이 나중에 확인으로 새지 않게).
+    - seq가 기준값보다 **작아지면** actuation이 재시작된 것이다 → 기준값을 새 seq로 다시 잡는다.
+    - BLE가 끊긴 동안 누른 입력은 올라오지 않는다 — web 스페이스바를 대체 수단으로 남겨 둘 것.
+    """
+    return {**ble_bridge.button_state(),
+            "microbit_connected": ble_bridge.is_connected(mock=MOCK_HARDWARE)}
+
+
+@app.post("/button/simulate")
+def button_simulate(payload: dict | None = None):
+    """버튼 입력을 흉내 내 seq를 1 올린다 — micro:bit 없이 web 쪽 흐름을 시험하는 용도.
+    BLE·장치는 건드리지 않는다. payload 예: {"button": "A"} (생략 시 A)"""
+    return ble_bridge.simulate_button((payload or {}).get("button", "A"))

@@ -16,7 +16,7 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
   BLE 기준으로 갱신됨)에서 BLE로 전환했다. LED 매트릭스로 판정 결과(`correct`/`incorrect` →
   회신 먼저 → LED O/X 1초 표시)를 표시하고, 진행 표시(`P<current><total>`)는 LED 없이 수신 확인만 회신한다
   (두 모드 공통). **부저는 BLE SoftDevice 충돌(패닉 070)로 비활성화**되어 있다(2026-09-21 실측 확정).
-  버튼 입력(테스트 모드 제외)은 아직 펌웨어에 없음.
+  버튼 A를 누르면 `BTN:A`를 RPi5로 올린다(web 확인 버튼 대용, 2026-09-28 — web 쪽 수신은 미구현).
 
 ## 디렉터리
 
@@ -30,8 +30,9 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
 - `src/firmware/*.ts` — micro:bit(MakeCode) 쪽 펌웨어 프로젝트. Python 서비스와는 별개로 MakeCode
   웹 에디터에서 micro:bit에 직접 플래시하는 코드라 `src/microbit/`(Python 패키지)와 폴더를
   분리했다(2026-09-21). 아래 각 파일 설명 참고
-- `src/app.py` — FastAPI 진입점 (`/health`, `/command`, `/result`, `/progress`). 셋 다
-  `ble_bridge`를 통해 실제 BLE 전송까지 연동되어 있음(`/progress`는 LED 표시 없이 수신 확인만)
+- `src/app.py` — FastAPI 진입점 (`/health`, `/command`, `/result`, `/progress`, `/button`). 앞의 셋은
+  `ble_bridge`를 통해 실제 BLE 전송까지 연동되어 있음(`/progress`는 LED 표시 없이 수신 확인만).
+  `/button`은 micro:bit가 올린 버튼 입력 누적값(seq)을 돌려준다
 - `tests/vision_to_command_integration_test.py` — vision의 JudgmentResult 형태 값을
   `/command`로 흘려보내 target_signal↔G{n} 매핑이 실제로 동작하는지 확인하는 통합 테스트
   (MediaPipe 연동 전 단계 검증용, "다음 단계" 참고)
@@ -99,7 +100,7 @@ AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모�
 
 ```bash
 cd services/actuation
-python -m pytest tests -q        # 14개
+python -m pytest tests -q        # 29개
 ```
 
 A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, **하드웨어 없이도 매핑·프로토콜이
@@ -115,6 +116,8 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 - **RX/TX UUID가 이 보드에서 실측한 반대 배정 그대로인지** — 표준 NUS 값으로 되돌리면 통신이 죽음
 - 알 수 없는/누락된 `target_signal`에 죽지 않고 에러를 돌려주는지
 - mock 경로가 BLE 연결을 열지 않는지
+- **버튼 알림(`BTN:A`)이 명령 회신으로 잡히지 않는지** — 시범 동작 중에 눌러도 `/command`는 진짜
+  `OK{n}`을 기다리고, 버튼은 seq로만 쌓인다
 
 ## `ble_debug_services.py`
 
@@ -130,6 +133,11 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 
 **용도**: 기존 `aihand_named_control.ts`(캘리브레이션용)와 `aihand_production.ts`(운영용)를 하나로
 합친 펌웨어. 최상단 `const TEST_MODE = false;` **한 줄만 바꿔서** 운영/테스트 모드를 전환합니다.
+
+**버튼 A (BTN, 모드 공통, 2026-09-28)**: 누르면 `BTN:A
+`을 요청 없이 알림으로 올립니다. web 확인 버튼
+(스페이스바) 대용입니다. LED는 쓰지 않습니다 — `showString`은 몇 초간 화면을 잡아 O/X 표시와 부딪힙니다.
+회신과의 구분은 `ble_bridge._on_notify`가 합니다.
 
 **판정 결과 표시 (RESULT, 모드 공통)**: `TEST_MODE` 값과 무관하게 항상 처리됩니다.
 - `"correct"` 수신 → `OK:CORRECT\n`을 **먼저** 회신 → LED에 O 모양 1초간 표시 후 소등
@@ -232,6 +240,9 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
   (`match_score`는 펌웨어가 쓰지 않아 전달하지 않음) |
 | `POST /progress` | 진행 표시 — `current`/`total`을 `P<current><total>`로 변환해 BLE 전송 (LED 표시는
   펌웨어가 하지 않음, 수신 확인만) |
+| `GET /button` | 버튼 A 누적 입력 — `{"seq", "last_button", "last_at", "microbit_connected"}`. web이 폴링해
+  시범 단계 진입 때 적어 둔 seq보다 커지면 확인으로 처리한다(seq가 작아지면 actuation 재시작 → 기준값 재설정) |
+| `POST /button/simulate` | 버튼 입력 흉내(seq +1) — micro:bit 없이 web 흐름 시험용, BLE는 건드리지 않음 |
 
 `/command` 응답 예 (`MOCK_HARDWARE=true`): `{"status": "mocked", "sent": "G1", "target_signal": "정지", "gesture": 1}`
 
@@ -245,7 +256,9 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
    연동~~ → `state_machine.py`에 구현 완료(2026-09-21, `services/web/README.md` 참고)
 4. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
    완료(2026-09-21, LED 표시 없이 수신 확인만)
-5. BTN(버튼 입력) 프로토콜 필요 여부 검토 — 아직 펌웨어에 없고 사용 계획도 불명확
+5. ~~BTN(버튼 입력) 프로토콜 필요 여부 검토~~ → 버튼 A를 web 확인 버튼 대용으로 쓰기로 하고 펌웨어·
+   `ble_bridge`·`GET /button` 구현(2026-09-28, mock 테스트만). 남은 것: 펌웨어 재플래시 후 실물 확인,
+   web 폴링(이동혁), 03 §5-3·`shared/schemas/microbit_protocol.md` 반영
 
 ## 로컬 실행
 

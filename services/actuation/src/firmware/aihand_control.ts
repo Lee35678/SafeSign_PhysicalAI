@@ -4,6 +4,7 @@
 //  - production(false): "G1"~"G7" 경량 명령만 처리 (실전 배포용)
 //  - test(true): "IDX:", "HAND:", "G:" 명령까지 지원 (캘리브레이션/디버깅용)
 //  - "correct"/"incorrect"(판정 결과)와 "P<current><total>"(진행 표시)는 TEST_MODE와 무관하게 항상 처리
+//  - 버튼 A를 누르면 "BTN:A"를 RPi5로 올린다(web 확인 버튼 대용) — TEST_MODE와 무관
 // =========================================================
 
 // =========================================================
@@ -241,6 +242,16 @@ bluetooth.onUartDataReceived(serial.delimiters(Delimiters.NewLine), function () 
     else return;
 
     bluetooth.uartWriteString("OK" + g + "\n");
+});
+
+// ==== 버튼 A — web 확인 버튼 대용 (BTN, TEST_MODE와 무관하게 항상 처리) ====
+// 누르면 "BTN:A\n"을 알림으로 올린다. 회신(OK...)과 구분하는 건 ble_bridge._on_notify 몫이다.
+// 수신 핸들러와 다른 fiber에서 돌기 때문에 손이 움직이는 중에도 바로 보낸다.
+// ⚠️ 여기서 LED를 쓰지 말 것 — showString은 몇 초간 화면을 잡아 O/X 표시(showResult)와 부딪힌다.
+//    눌렸다는 피드백은 web 화면 전환(시범 → 판정)이 대신한다.
+// 버튼 B는 테스트용 READY 재표시로 남겨 둔다(아래).
+input.onButtonPressed(Button.A, function () {
+    bluetooth.uartWriteString("BTN:A\n");
 });
 
 // ==== 테스트용 코드 ====

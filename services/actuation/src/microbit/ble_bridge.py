@@ -8,7 +8,11 @@
   "correct"/"incorrect"(판정 결과, "OK:CORRECT\n"/"OK:INCORRECT\n"을 **먼저** 회신한 뒤 LED에 O/X 1초
   표시 — 2026-09-23 ACK-first로 변경. 이전엔 LED 2초 뒤 회신이라 ACK_TIMEOUT_S를 넘겨 매번 timeout이었다),
   "P<current><total>"(진행 표시, 둘 다 한 자리 숫자, LED 표시 없이 "OKP<current><total>\n"만 회신 —
-  진행 표시는 web 화면 쪽 담당)을 처리한다. BTN(버튼 입력)은 아직 펌웨어에 구현되어 있지 않다.
+  진행 표시는 web 화면 쪽 담당)을 처리한다.
+- 버튼 A를 누르면 펌웨어가 **요청 없이** "BTN:A\n"을 알림으로 올린다(web 확인 버튼 대용, 2026-09-28).
+  회신 칸이 하나뿐이라 이걸 회신으로 받으면 대기 중인 명령이 엉뚱한 줄로 "ok" 처리되고 버튼 입력은
+  사라진다 — `_on_notify`가 BTN 줄을 회신에서 빼내 `_button`의 seq만 올린다. web은 `GET /button`으로
+  seq를 폴링한다(누른 횟수를 세는 방식이라 한 번 못 읽어도 다음 폴링에 잡힌다).
 - 손가락 서보 동시 구동 시 전류 급증으로 BLE 연결이 끊길 수 있어(세션 6), 쓰기 실패 시 재연결 후
   1회 재시도한다 (03_인터페이스계약서 §7의 "타임아웃+1회 재시도" 정책과 동일 기조).
   이 현상은 전원 구조로 설명된다(document/11_하드웨어설계서.md §4.4) — 7.5V 3A 어댑터 하나가
@@ -25,6 +29,7 @@ import asyncio
 import contextlib
 import logging
 import os
+from datetime import datetime, timezone
 
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
@@ -45,12 +50,43 @@ _last_reply: "str | None" = None
 # (예: web이 /command와 /result를 병렬로 보냄)이 서로의 대기 이벤트를 지우고 회신을 가로챈다.
 _send_lock: "asyncio.Lock | None" = None
 
+# 버튼 입력 누적. seq는 프로세스가 살아 있는 동안 계속 올라간다(재시작하면 0부터).
+_button: dict = {"seq": 0, "last_button": None, "last_at": None}
+
+
+def _record_button(name: str) -> None:
+    _button["seq"] += 1
+    _button["last_button"] = name
+    _button["last_at"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    log.info("micro:bit 버튼 %s (seq=%d)", name, _button["seq"])
+
+
+def button_state() -> dict:
+    return dict(_button)
+
+
+def simulate_button(name: str = "A") -> dict:
+    """실물 없이 버튼 입력을 흉내 낸다(web 쪽 테스트용). BLE는 건드리지 않는다."""
+    _record_button(name)
+    return button_state()
+
 
 def _on_notify(_sender, data: bytearray) -> None:
+    """알림 한 번에 여러 줄이 붙어 와도(예: "OK3\\nBTN:A\\n") 줄 단위로 나눠 처리한다.
+
+    알림 사이에 걸친 줄은 이어 붙이지 않는다 — 펌웨어가 보내는 줄은 모두 20바이트(알림 한 번 크기)
+    미만이라 잘려 올 일이 없고, 줄바꿈 없이 오는 회신도 그대로 한 줄로 받는다."""
     global _last_reply
-    _last_reply = data.decode("utf-8", errors="replace").strip()
-    if _reply_event is not None:
-        _reply_event.set()
+    for line in data.decode("utf-8", errors="replace").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("BTN:"):
+            _record_button(line[4:])
+            continue
+        _last_reply = line
+        if _reply_event is not None:
+            _reply_event.set()
 
 
 async def _connect_once() -> bool:
