@@ -75,6 +75,91 @@ button:hover {
   font-size: 0.85rem;
 }
 
+/* SC-03 하위 단계 (판정 타이밍 스펙 §4.2): demo = 사진 크게 + 확인 버튼, judging = 카메라 + 사진 작게 */
+.phase-demo .phase-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.phase-judging .phase-badge {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.sign-example {
+  margin: 1rem auto;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  background: #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sign-example img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: white;
+}
+
+.sign-image-missing {
+  display: none;
+  color: #6b7280;
+  padding: 1rem;
+}
+
+.sign-example.missing img {
+  display: none;
+}
+
+.sign-example.missing .sign-image-missing {
+  display: block;
+}
+
+.phase-judging .sign-example {
+  max-width: 140px;
+  margin: 0.5rem auto 0;
+}
+
+.phase-judging .sign-image-missing {
+  font-size: 0.75rem;
+  padding: 0.25rem;
+}
+
+.demo-panel,
+.judging-panel {
+  display: none;
+}
+
+.phase-demo .demo-panel,
+.phase-judging .judging-panel {
+  display: block;
+}
+
+.demo-guide {
+  font-size: 1.1rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.judging-guide {
+  margin: 0.5rem 0 0;
+  color: #1e40af;
+}
+
+button.confirm-btn {
+  font-size: 1.25rem;
+  padding: 1rem 3rem;
+}
+
+button.confirm-btn:disabled {
+  background: #9ca3af;
+  cursor: wait;
+}
+
 .camera-preview {
   margin: 1rem auto;
   width: 100%;

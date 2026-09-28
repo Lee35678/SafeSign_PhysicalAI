@@ -79,14 +79,37 @@ function renderCurriculumList(curriculum) {
 document.getElementById("curriculum-start-btn").addEventListener("click", async () => {
   await apiPost("/api/start");
   lastOverlayKey = null;
+  shownSignImage = null;
+  applyPhase("demo");   // /api/start는 첫 수신호 시범과 함께 phase "demo"로 시작한다
   show("screen-training");
   startPolling();
 });
 
 // ---- SC-03 (+03a/03b) / SC-04 / SC-05 ----
 
+// 판정 타이밍 스펙 §4.3 — 예시 사진은 picar 명령명(영문)으로 저장한다(URL 한글 인코딩 회피).
+// state_machine.py PICAR_COMMANDS의 command와 같은 이름이다.
+const SIGN_IMAGES = {
+  정지: "stop",
+  서행: "slow",
+  좌회전_유도: "turn_left",
+  우회전_유도: "turn_right",
+  확인_완료: "complete",
+  후진: "reverse",
+  주의: "caution",
+};
+
+let currentPhase = "demo";   // SC-03 하위 단계 — /api/state의 phase ("demo" | "judging")
+let confirmPending = false;
+let requestSeq = 0;          // 폴링 응답이 순서를 벗어나 도착하면(확인 직전에 보낸 요청 등) 버린다
+let renderedSeq = 0;
+let shownSignImage = null;
+
 async function refreshTraining() {
+  const seq = ++requestSeq;
   const state = await apiGet("/api/state");
+  if (seq <= renderedSeq) return;
+  renderedSeq = seq;
   renderDeviceStatus(state.devices);
 
   if (state.state === "camera_fail") {
@@ -113,8 +136,11 @@ async function refreshTraining() {
   document.getElementById("signal-progress").textContent =
     `${state.progress.current} / ${state.progress.total}`;
   document.getElementById("attempt-count").textContent = state.attempts ?? 0;
+  renderSignImage(state.target_signal);
+  renderPhase(state);
 
-  const liveScore = state.live_judgment ? state.live_judgment.match_score : 0;
+  // 시범 단계에서는 백엔드가 판정을 멈춰 live_judgment가 직전 판정값으로 남아 있다 — 0으로 둔다.
+  const liveScore = currentPhase === "judging" && state.live_judgment ? state.live_judgment.match_score : 0;
   setMatchScore(liveScore);
 
   const result = state.last_result;
@@ -162,6 +188,96 @@ function showOverlay(result) {
     }, 2500);
   }
 }
+
+// ---- SC-03 시범 단계: 예시 사진 + 확인 버튼 (판정 타이밍 스펙 §4.2) ----
+
+function renderSignImage(signal) {
+  if (signal === shownSignImage) return;
+  shownSignImage = signal;
+  const figure = document.getElementById("sign-example");
+  const img = document.getElementById("sign-image");
+  const name = SIGN_IMAGES[signal];
+  document.getElementById("sign-image-missing").textContent = name
+    ? `예시 사진 준비 중 (images/${name}.jpg)`
+    : "예시 사진 준비 중";
+  if (!name) {
+    figure.classList.add("missing");
+    img.removeAttribute("src");
+    return;
+  }
+  // 사진이 아직 저장소에 없으면 error 이벤트로 자리표시 문구를 보여준다
+  figure.classList.remove("missing");
+  img.alt = `${signal} 예시 사진`;
+  img.src = `images/${name}.jpg`;
+}
+
+document.getElementById("sign-image").addEventListener("error", () => {
+  document.getElementById("sign-example").classList.add("missing");
+});
+
+document.getElementById("sign-image").addEventListener("load", () => {
+  document.getElementById("sign-example").classList.remove("missing");
+});
+
+function applyPhase(phase) {
+  currentPhase = phase === "judging" ? "judging" : "demo";
+  const screen = document.getElementById("screen-training");
+  screen.classList.toggle("phase-demo", currentPhase === "demo");
+  screen.classList.toggle("phase-judging", currentPhase === "judging");
+  document.getElementById("phase-badge").textContent = currentPhase === "demo" ? "시범" : "판정 중";
+}
+
+function renderPhase(state) {
+  applyPhase(state.phase);
+  // 오답 뒤 시범 단계면 AI Hand가 다시 보여주는 중이다 (스펙 §3 — 오답 피드백 + 재시범 + 사진 + 확인)
+  const result = state.last_result;
+  const retrying = result && result.signal === state.target_signal && result.outcome === "wrong";
+  document.getElementById("demo-guide").textContent = retrying
+    ? "AI Hand가 다시 보여줍니다. 사진과 비교해 보고, 준비되면 확인을 누르세요 (Space)"
+    : "AI Hand와 사진을 보고, 준비되면 확인을 누르세요 (Space)";
+}
+
+function isConfirmVisible() {
+  // 오버레이(정답/오답 연출)가 떠 있는 동안은 버튼이 가려져 있다 — 사라진 뒤에만 받는다 (스펙 §4.2)
+  return (
+    document.getElementById("screen-training").classList.contains("active") &&
+    currentPhase === "demo" &&
+    document.getElementById("training-overlay").classList.contains("hidden")
+  );
+}
+
+async function confirmJudging() {
+  if (!isConfirmVisible() || confirmPending) return;
+  confirmPending = true;
+  const btn = document.getElementById("confirm-btn");
+  btn.disabled = true;
+  try {
+    const result = await apiPost("/api/confirm");
+    if (result.status === "ok") {
+      renderedSeq = requestSeq;   // 확인 전에 보낸 폴링 응답("demo")이 늦게 와서 화면을 되돌리지 않게
+      applyPhase("judging");
+      setMatchScore(0);
+    }
+  } catch (err) {
+    // 네트워크 오류 — 다음 폴링이 실제 phase로 화면을 맞춘다
+  } finally {
+    confirmPending = false;
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("confirm-btn").addEventListener("click", (event) => {
+  // 마우스로 누른 뒤 포커스가 남으면 다음 스페이스바가 버튼 기본 동작과 겹친다
+  event.currentTarget.blur();
+  confirmJudging();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.code !== "Space" || !isConfirmVisible()) return;
+  event.preventDefault();   // 페이지 스크롤 방지
+  if (event.repeat) return; // 누르고 있을 때의 반복 입력 무시
+  confirmJudging();
+});
 
 document.getElementById("camera-retry-btn").addEventListener("click", () => {
   // 손이 다시 보이면 상태머신이 자동으로 SC-03에 복귀한다(state_machine.py _poll_once) — 이 버튼은

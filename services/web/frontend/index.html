@@ -30,28 +30,47 @@
       <button id="curriculum-start-btn">교육 시작</button>
     </section>
 
-    <!-- SC-03 (+ SC-03a/03b 오버레이): 수신호 시범/인식 핵심 화면 -->
-    <section id="screen-training" class="screen">
+    <!-- SC-03 (+ SC-03a/03b 오버레이): 수신호 시범/인식 핵심 화면.
+         하위 단계 phase(demo/judging)에 따라 main.js가 phase-demo / phase-judging 클래스를 붙인다
+         (proposals/web_판정_타이밍_스펙.md §4.2). -->
+    <section id="screen-training" class="screen phase-demo">
       <header class="training-header">
         <span id="signal-progress" class="badge">1 / 7</span>
         <span id="attempt-badge" class="badge">시도 <span id="attempt-count">0</span>회</span>
+        <span id="phase-badge" class="badge phase-badge">시범</span>
       </header>
       <h1 id="signal-name">-</h1>
       <p id="signal-desc" class="muted"></p>
 
-      <div class="camera-preview" id="camera-preview">
-        <div class="camera-placeholder">
-          <span>카메라 인식 중…</span>
-          <p class="muted small">
-            (실물 영상 미리보기는 vision 서비스에 프레임 스트리밍 엔드포인트가 추가되면 연결 예정)
-          </p>
-        </div>
+      <!-- 예시 사진 — 시범 단계에서는 크게, 판정 중에는 카메라 옆에 작게 -->
+      <figure class="sign-example" id="sign-example">
+        <img id="sign-image" alt="" />
+        <figcaption id="sign-image-missing" class="sign-image-missing">예시 사진 준비 중</figcaption>
+      </figure>
+
+      <!-- 시범 단계: 확인 버튼(스페이스바)을 눌러야 판정이 시작된다 -->
+      <div class="demo-panel">
+        <p id="demo-guide" class="demo-guide">AI Hand와 사진을 보고, 준비되면 확인을 누르세요 (Space)</p>
+        <button id="confirm-btn" class="confirm-btn">확인 (Space)</button>
       </div>
 
-      <div class="match-score-row">
-        <label>일치율</label>
-        <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
-        <span id="match-score-value">0%</span>
+      <!-- 판정 단계 -->
+      <div class="judging-panel">
+        <p class="judging-guide">카메라 앞에서 수신호를 보여주세요</p>
+        <div class="camera-preview" id="camera-preview">
+          <div class="camera-placeholder">
+            <span>카메라 인식 중…</span>
+            <p class="muted small">
+              (실물 영상 미리보기는 vision 서비스에 프레임 스트리밍 엔드포인트가 추가되면 연결 예정)
+            </p>
+          </div>
+        </div>
+
+        <div class="match-score-row">
+          <label>일치율</label>
+          <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
+          <span id="match-score-value">0%</span>
+        </div>
       </div>
 
       <div id="training-overlay" class="overlay hidden"></div>
