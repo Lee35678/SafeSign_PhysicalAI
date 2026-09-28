@@ -1,14 +1,15 @@
-# 통합 테스트 · KPI 측정 · CI 계획서 (v0.2 — 초안)
+# 통합 테스트 · KPI 측정 · CI 계획서 (v0.3 — 초안)
 
 **팀명**: 심기일전 · **작성자**: 송승호 (하드웨어·로봇동작 R, 팀장)
-**최초 작성**: 2026-09-28(월) · **기준 커밋**: `dev` `ba8d98f` + 미커밋 테스트 정리분
+**최초 작성**: 2026-09-28(월) · **기준 커밋**: `dev` `d2503de` + 미커밋 실물 스크립트(`scripts/rpi/`)
 **일정**: W4 테스트·보완 마감 2026-10-04(일) **D-6** · 제출 2026-10-08(목) **D-10** · 최종 발표 2026-10-12(월)
 
 > **이 문서의 범위**: 서비스 4개(web·vision·actuation·picar)를 **엮어서** 검증하는 방법과, 그 결과로
 > KPI를 **어떻게 잴지**, 그리고 이를 GitHub에서 **자동으로 돌리는 방법(CI)**을 한 곳에 정리한다.
 > 서비스 하나 안의 단위 테스트는 각 서비스 `tests/`, 시행 원본 로그·혼동행렬은
 > [06_테스트·평가리포트](06_테스트·평가리포트.md), picar 하드웨어 실측은 [13](13_picar_하드웨어_검증리포트.md),
-> 하드웨어 설계 수치는 [11](11_하드웨어설계서.md), 실물 실행 명령은 [루트 README §4](../README.md)가 각각 다룬다 — 중복해서 적지 않고 링크한다.
+> 하드웨어 설계 수치는 [11](11_하드웨어설계서.md), 실물 실행 명령은 [루트 README §4](../README.md),
+> 실물 기동·종료 스크립트는 [17](17_실물실행_스크립트_사용법.md)이 각각 다룬다 — 중복해서 적지 않고 링크한다.
 >
 > 📝 **표기**: 이 문서 안의 `§n`은 이 문서의 절이다. 수치 옆의 표시는 다음 뜻이다.
 > **실측**(측정값) · **코드값**(현재 코드 기본값) · **잠정**(문서상 임시값) · **추정**(계산·추론, 측정 안 함).
@@ -27,7 +28,7 @@
 | --- | --- | --- |
 | 단위 테스트 | ✅ **135개 수집 · 113 통과 · 22 xfail · 실패 0** (2026-09-28) | 없음 — 바로 추가 가능 |
 | 계약 테스트 | 🟡 착수 가능 | `jsonschema`·`httpx` 테스트 의존성 없음 |
-| mock 통합 테스트 | 🔴 지금은 의미 없음 | mock 카메라가 손 미검출만 발행 → **판정이 한 번도 안 일어남** (§2.3) |
+| mock 통합 테스트 | 🔴 지금은 의미 없음 — 단, **docker compose(mock) 빌드·기동은 2026-09-28 확인**(§2.3) | mock 카메라가 손 미검출만 발행 → **판정이 한 번도 안 일어남** (실행으로 확인) |
 | 실물 E2E — web 없는 전 구간 | ✅ 2026-09-25 **7/7 성공** (데모 스크립트, 반응 시작 25~47ms) | — |
 | 실물 E2E — web 전 구간 | 🔴 불가 | web 판정 타이밍 ①-a 미구현, RPi5 쿨러 미장착 |
 | CI (GitHub Actions) | ⬜ 없음 (`.github/` 부재) | 저장소 관리자 권한, 테스트 의존성 정리 |
@@ -41,6 +42,7 @@
 3. **지연의 가장 큰 문제는 호출 순서와 재시도다.** `/command`(0.8초 대기)가 맨 앞이라 micro:bit·picar가 **약 0.85초 늦게** 반응하고, 재시도하면 AI Hand·picar가 **동작을 두 번** 한다(§4).
 4. **KPI는 재는 방법에 구멍이 있다.** 특히 판정 지연은 지금 방식대로면 **실제보다 작게** 기록된다(§5.6). 최종 시행 전에 회의로 확정해야 한다.
 5. **실물 실행은 네이티브가 기준이다**(README §4). `docker-compose.hw.yml`은 실물 전 구간에서 검증되지 않았다(§2.4).
+   Docker는 개발 PC mock 실행·통합 테스트·CI에만 쓰고, 실물은 `scripts/rpi/` 스크립트(tmux)로 띄운다([17](17_실물실행_스크립트_사용법.md)).
 
 ---
 
@@ -130,6 +132,19 @@ actuation BLE 전송 실패 경로(`timeout`·`write_failed`·`microbit_unreacha
 | actuation·picar mock은 `mocked`만 돌려주고 **호출을 받았는지 확인할 수단이 없음** | `ble_bridge.py:166`, picar `controller.py` |
 | compose에 healthcheck가 없음 → `docker compose up --wait`가 "실행됨"만 확인하고 "준비됨"은 보장하지 않음 | `docker-compose.yml` |
 
+#### docker compose(mock) 점검 결과 (2026-09-28, 개발 PC Docker Desktop)
+
+| 항목 | 결과 |
+| --- | --- |
+| 이미지 빌드 | ✅ web 259MB · actuation 260MB · picar 258MB · vision 1.53GB · data-tools 1.88GB |
+| 기동·`/health` | ✅ 4개 running, 포트 8000~8003, web `/api/state` devices 3개 ok |
+| 장치 호출(mock) | ✅ `/command` → `G1`, `/result` → `correct`, `/progress` → `P17` 모두 `mocked`(14~20ms), `/picar` → `ok` |
+| 세션 흐름 | ✅ `/api/start` → `training` → 손 미검출로 **3.0초에 `camera_fail`(SC-04)** — 설계값(15회 × 0.2초)과 일치. `last_dispatch`는 끝까지 `null`(판정 없음) |
+| pip 의존성 (Python 3.11, x86_64·aarch64) | ✅ 5개 서비스 전부 바이너리 휠로 설치 가능(lgpio는 `manylinux_2_34`, bleak의 Linux 의존성 dbus-fast 포함) |
+| 발견 1 | picar 빌드 폴더에 SD 카드 이미지(`reference/`, 14.9GB, gitignore 대상)가 있어 빌드마다 전송됐다 → `services/picar/.dockerignore` 추가로 해결 |
+| 발견 2 | `python:3.11-slim`의 기반이 **Debian 13(trixie)**로 바뀌어 있다. RPi 호스트는 Bookworm(Debian 12). 태그를 `python:3.11-slim-bookworm`으로 고정할지 검토(§6.3) |
+| 발견 3 | 고정 버전과 실제 설치 버전이 다르다 — data-tools OpenCV 4.11.0(고정 4.10), vision 이미지 OpenCV 5.0.0(mediapipe가 끌어옴) |
+
 #### 새로 필요한 기능
 
 | 기능 | 내용 | 담당 |
@@ -172,6 +187,14 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 
 - **기준 경로는 네이티브 4개 프로세스다**([README §4](../README.md)). 2026-09-25 전 구간 통합도 이 방식으로 했다.
 - `docker-compose.hw.yml`은 **actuation·picar 단독 검증에만** 쓴다. web의 `PICAR_URL`(`http://picar:8000`)을 덮어쓰지 않고, vision 이미지에는 picamera2가 없어서 compose로는 전 구간을 띄울 수 없다. hw.yml을 쓸 때만 네이티브 uvicorn 종료·`/run/dbus` 마운트를 확인한다.
+- 매번 실행의 번거로움은 **`scripts/rpi/` 스크립트(tmux)**로 줄인다 — 명령 하나로 기동·종료, SSH가 끊겨도 서비스 유지([17](17_실물실행_스크립트_사용법.md)).
+- **시연에 Docker를 쓰지 않는 이유**: 검증된 경로가 네이티브뿐이고, 시연영상 촬영(W5)까지 새 실행 방식을 검증할 시간이 없으며, KPI·지연에 이득이 없다. vision을 컨테이너로 돌리려면 다음이 **모두** 필요하다(시연 뒤 과제, vision 담당 이동혁과 협의):
+  1. 기반 이미지 교체 — `debian:bookworm`(arm64) + Raspberry Pi apt 저장소·키링 → `python3-picamera2`(RPi판 libcamera). 시스템 Python용 패키지라 `python:3.11-slim`의 Python으로는 불러올 수 없다
+  2. 카메라 장치 권한 — `/dev/video*`·`/dev/media*`·`/dev/v4l-subdev*`·`/dev/dma_heap`, `/run/udev`(읽기 전용). 현실적으로 `privileged: true`가 필요할 것으로 추정
+  3. numpy 충돌 해결 — apt picamera2 계열(simplejpeg)은 시스템 numpy 1.x 기준, requirements는 `numpy>=2` (vision README의 `numpy.dtype size changed`)
+  4. 모델 파일 2개를 보드에 복사, `MOCK_CAMERA=false`·`CAMERA_SOURCE=csi`, 보드에서 직접 빌드(인터넷 필요)
+  5. 네이티브와 같은 성능 확인 — `camera.state=running`, 판정 약 26fps, 판정 지연 39~72ms 수준
+  - USB 웹캠이면 지금 이미지(OpenCV 포함)에 `/dev/video0`만 넘겨도 될 가능성이 높지만(추정), 평가 데이터를 CSI로 찍었으므로 KPI를 다시 재야 한다
 
 #### 자동 판정과 육안 확인
 
@@ -200,11 +223,12 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 1. RPi5·RPi4B 재부팅 → 양쪽 `vcgencmd get_throttled`가 `0x0`인지 확인. 이 값은 한 번 선 비트가 부팅 전까지 남으므로 **재부팅 직후** 기록한다(13 §2). 쿨러 장착 여부도 기록.
 2. micro:bit 펌웨어: 저장소 `aihand_control.ts`를 **통째로** 플래시했는지와 일자를 기록(08 펌웨어 불일치, README §4.1).
 3. picar: 1회차는 바퀴를 띄우고, 이후 주행 공간 확보. **USB-C 어댑터 동시 연결 금지**(헤더 5V 역류 방지 없음). 배터리 스위치를 손 닿는 곳에 두고 누적 구동 시간 기록 시작(배터리 전압 측정 수단 없음, 13 §4).
-4. 기동: 터미널 1 RPi4B picar → 2 RPi5 actuation(먼저 `bluetoothctl show | grep Discovering` → `no`) → 3 vision `bash scripts/run_rpi5.sh` → 4 web(`PICAR_URL=http://192.168.50.10:8000`, `services/web` 폴더에서).
+4. 기동: **`bash scripts/rpi/start_all.sh`** — RPi4B picar → RPi5 actuation → vision → web을 tmux로 띄우고 1·4·5번 점검 일부(남은 uvicorn, `Discovering`, 모델 파일, 두 보드 커밋, `get_throttled`, `/health`)를 자동으로 한다([17](17_실물실행_스크립트_사용법.md)). 수동이면 터미널 1 RPi4B picar → 2 RPi5 actuation(먼저 `bluetoothctl show | grep Discovering` → `no`) → 3 vision `bash scripts/run_rpi5.sh` → 4 web(`PICAR_URL=http://192.168.50.10:8000`, `services/web` 폴더에서).
 5. README §4.3 health 4종 확인: vision `model.loaded: true`·`camera.state: running`, actuation `microbit_connected: true`, picar `hardware.i2c.reachable: true`·`max_speed_pct: 50`, web devices 3개 ok. 실물 모드 확인(`MOCK_HARDWARE=false`로 띄웠는지, 응답에 `mocked`가 없는지).
 6. AI Hand 화각 확인: 손을 치우고 AI Hand를 '정지' 자세로 둔 채 손 미검출이 나오는지(데모 스크립트의 화각 점검과 같은 방법).
 7. 모니터링: RPi5 `watch -n2 'vcgencmd measure_temp; vcgencmd get_throttled'`, RPi4B `watch -n1 vcgencmd get_throttled`.
-8. 종료: **역순 Ctrl+C**(web → vision → actuation → picar). picar는 **정지 상태에서만** 끈 뒤 배터리 스위치 OFF.
+8. 종료: **`bash scripts/rpi/stop_all.sh`** — picar 정지 명령을 먼저 보낸 뒤 **역순 Ctrl+C**(web → vision → actuation → picar). 수동이면 같은 순서로 Ctrl+C. picar는 **정지 상태에서만** 끈 뒤 배터리 스위치 OFF.
+9. 실행 환경 기록: `start_all.sh`가 남긴 `~/safesign_logs/<시각>/env.txt`(커밋·온도·`get_throttled`·`/health` 원문)를 06 §1-1에 옮긴다.
 
 **육안 기록 양식** (시도마다 1행, 06 §1-2에 첨부)
 
@@ -246,7 +270,9 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 | 전체 | `python -m pytest` |
 | 서비스 하나 | `python -m pytest services/web` |
 | 마지막 실패만 다시 | `python -m pytest --lf` |
-| 실물 (보드에서) | `python -m pytest --run-hw -m hw services/actuation` 등 — 환경변수로 주소 지정 |
+| 실물 기동·종료·상태 (RPi5에서) | `bash scripts/rpi/start_all.sh` · `stop_all.sh` · `status.sh` ([17](17_실물실행_스크립트_사용법.md)) |
+| 실물 hw 테스트 (보드에서) | `python -m pytest --run-hw -m hw services/actuation` 등 — 환경변수로 주소 지정 |
+| mock 스택만 띄워 보기 (개발 PC) | Docker Desktop 실행 → `docker compose up -d --build` → `docker compose ps` → `docker compose down` |
 | mock 통합 (예정) | `docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait` 후 `python -m pytest tests/integration --run-integration` |
 | CI 실패 재현 | CI와 같은 Python 3.11 가상환경을 만들고 `pip install -r services/<svc>/requirements-test.txt` 후 같은 명령 (§3.4 #1) |
 
@@ -263,8 +289,8 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.** S2·S3·S4·S6은 �
 | Settings → Actions 허용 | 저장소 관리자(Lee35678) |
 | 브랜치 보호: `dev`·`main` PR 머지 전 unit job 통과 필수 | 저장소 관리자 |
 | 비공개 저장소면 무료 한도 월 2,000분 → integration job은 PR·수동 실행 때만 | 팀 합의 |
-| 미커밋 파일 커밋: `conftest.py`, `pytest.ini`, `test_judging_timing_spec.py`, `.claude/agents/`, 이 문서 | 송승호 |
-| `.gitignore`에 `.pytest_cache/` 추가 (지금 무시되지 않아 딸려 들어갈 수 있음) | 송승호 |
+| ✅ ~~미커밋 파일 커밋~~ → `conftest.py`·`pytest.ini`·`test_judging_timing_spec.py`·이 문서는 `dev`에 반영(2026-09-28 `67ef27b`·`a8f7640`·`d2503de`). `.claude/agents/`는 `.gitignore:54`(`.claude/`)에 걸려 **공유되지 않는다** — 공유하려면 `.gitignore`를 `.claude/*` + `!.claude/agents/`로 바꿀지 팀이 정한다 | 송승호 |
+| `.pytest_cache/`는 조치 불필요 — 폴더 안의 자체 `.gitignore`가 스스로를 무시한다(v0.2의 "`.gitignore`에 추가" 항목은 틀린 내용이었다) | — |
 
 ### 3.2 파일 구성
 
@@ -341,8 +367,8 @@ jobs:
 | --- | --- | --- | --- |
 | 1 | **고정 버전으로 한 번도 돌려 본 적 없음.** 지금까지는 호스트 Python 3.13·fastapi 0.141·bleak 3.0으로만 통과. CI는 3.11·fastapi 0.115·httpx 0.27·bleak 0.22 | 실측 (버전 차이). 3.12 전용 문법은 코드에 없음 | 드러나는 실패를 고친다 — CI의 목적 |
 | 2 | picar `lgpio==0.2.2.0`이 x86 러너에서 빌드 실패 | 추정 | `requirements-hw.txt`로 분리 (테스트는 mock 경로라 불필요) |
-| 3 | vision mediapipe·opencv가 `libGL.so.1`을 못 찾음. mediapipe 1.0.x는 호스트(3.13)에 설치돼 있지만 **3.11용 휠 여부는 미확인** | 추정 | `apt-get install -y libgl1 libglib2.0-0` 단계 추가, `requirements-test.txt` 작성 때 3.11 가상환경에서 먼저 설치해 본다 |
-| 4 | 미커밋 파일을 CI가 못 봄 | 확인 | §3.1 커밋 |
+| 3 | vision mediapipe·opencv가 CI **러너 호스트**에서 `libGL.so.1`을 못 찾을 수 있음. Docker 이미지는 Dockerfile이 `libgl1`을 설치해 문제없음을 확인했다(2026-09-28, 이미지 안 mediapipe 1.0.1·cv2 5.0.0 import 정상). mediapipe 1.x의 3.11용 휠(x86_64·aarch64)도 있음 | 추정 (러너만) | unit job에 `apt-get install -y libgl1 libglib2.0-0` 단계 추가 |
+| 4 | ✅ ~~미커밋 파일을 CI가 못 봄~~ → 커밋 완료 (§3.1) | 확인 | — |
 | 5 | 스펙 인수 테스트의 xfail은 **구현 감지 조건부**다(`xfail(not PHASE_READY, strict=True)` 등, `test_judging_timing_spec.py:126-152`). 스펙 §8 이름대로 구현하면 조건이 바뀌어 **자동으로 일반 테스트가 된다 — 마커를 지울 필요 없음**. 빨간불이 나는 경우는 두 가지다: ① 감지는 됐는데 동작이 스펙과 다를 때(정상적인 실패), ② 이름이 스펙 §8과 달라 감지가 안 됐는데 동작은 맞을 때(strict XPASS) | 확인 (코드) | 구현 PR을 `dev`에 병합할 때(송승호, 14 §8 ⑪) 스펙 §8 이름과 대조한다 |
 
 ### 3.5 운영 규칙 (제안)
@@ -566,7 +592,8 @@ web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 
 
 | # | 할 일 | 목표 | 선행 | 에이전트 |
 | --- | --- | --- | --- | --- |
-| 1 | `.gitignore`에 `.pytest_cache/` 추가, `conftest.py`·`pytest.ini`·테스트 정리분·`.claude/agents/`·이 문서·회의안건 커밋 | 09-28(월) | — | 직접 |
+| 1 | ✅ ~~테스트 정리분·이 문서·회의안건 커밋~~ → 완료(2026-09-28). `.claude/agents/` 공유 여부는 팀 결정(§3.1) | 09-28(월) | — | 직접 |
+| 1-a | **실물 스크립트 첫 검증** — 바퀴를 띄우고 [17 §6](17_실물실행_스크립트_사용법.md) 체크리스트(특히 SSH 끊김 내성, 종료 뒤 BLE 연결 잔류 없음). 결과는 17 §9 | ⑥ 재시험(10-02) 전 | 두 보드 tmux 설치 | `hw-tester` |
 | 2 | 서비스별 `requirements-test.txt`, picar `requirements-hw.txt` 분리 (Dockerfile 반영). 3.11 가상환경에서 먼저 설치해 본다 | 09-29(화) | — | `sw-tester` |
 | 3 | `.github/workflows/ci.yml` unit job → 초록불 (§3.4 #1~#3 해결) | 09-29(화) | 2, 관리자 Actions 허용 | `sw-tester` |
 | 4 | [test_judging_timing_spec.py](../services/web/tests/test_judging_timing_spec.py) 보완: `test_changing_wrong_class_restarts_the_hold`의 시간 여유 60ms 확대, xfail에 `raises=` 지정 | 09-29(화) | — | `sw-tester` |
@@ -609,6 +636,8 @@ web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 
 | 김지훈 | data 테스트(데이터셋 JSON 스키마 검증) · 자체 촬영 데이터 확인: 좌표 6자리 반올림 안 됨, ext03 210건 `variant` 누락, ext03 `정지_t09` handedness 혼재 | 04 §2-4·§6 |
 | **저장소 관리자 (Lee35678)** | Settings → Actions 허용, `dev`·`main` 브랜치 보호 | §3.1 |
 | 전원 | 03에 빠진 인터페이스(`/latest`, `/reset`, `/health`, `/result`·`/progress` 본문) 문서화 여부 — 문서 대조는 `spec-keeper` | §2.2 |
+| 서비스별 담당 (web 이동혁·조은수, vision 이동혁, data 김지훈, actuation·picar 송승호) | Dockerfile 기반 이미지를 `python:3.11-slim-bookworm`으로 고정할지, requirements 고정 버전과 실제 설치 버전 차이(OpenCV) 정리 — 제안 | §2.3 점검 결과 |
+| 전원 | `.claude/agents/`(테스트·PM 에이전트)를 저장소로 공유할지 — 공유하면 `.gitignore` 수정 | §3.1 |
 
 ### 6.4 결정 대기
 
@@ -643,5 +672,6 @@ web `_post_with_retry`는 모든 장치 호출을 실패 원인과 상관없이 
 
 | 버전 | 일자 | 내용 |
 | --- | --- | --- |
+| v0.3 | 2026-09-28 | **정정**: `.pytest_cache/`는 자체 `.gitignore`로 이미 무시되므로 조치 불필요(§3.1·§6.1 #1), `.claude/agents/`는 `.gitignore:54`로 공유되지 않음을 명시, 커밋 완료 반영(`67ef27b`·`a8f7640`·`d2503de`). **추가**: docker compose(mock) 빌드·기동·장치 호출·SC-04 전환 점검 결과와 발견 3건(§2.3 — picar 빌드 폴더 14.9GB → `.dockerignore`, 기반 이미지 trixie, OpenCV 버전 차이), 시연에 Docker를 쓰지 않는 이유와 vision 컨테이너화 전제조건(§2.4), 실물 스크립트 `scripts/rpi/` 연결(§0·§2.4 당일 절차 4·8·9·§2.6, [17](17_실물실행_스크립트_사용법.md)), 할 일 1-a 스크립트 실물 첫 검증, §6.3 기반 이미지 고정·에이전트 공유 여부 |
 | v0.2 | 2026-09-28 | `sw-tester`·`hw-tester`·`evaluator` 검토 반영. **정정**: web 백엔드 담당을 14 §8대로 이동혁으로(①-a·②-a·③), `/progress` 실측 32~38·38~39ms, web 없는 데모 반응 시작 25~47ms(마지막 장치 기준), `/command` 회신 시점 단서, 완료 기준 합계 재계산(picar 제외 현재 2.0~2.2 · 권장 1.2~1.4초), 100ms 간격 문구, BLE 재연결 시간(스캔 + 연결), 실물 실행 방식을 네이티브로, `motion_active` 판정에 육안 정지 확인 추가, 장치 호출 합계(정답 6·오답 5초), 스펙 xfail은 구현 감지 조건부라 마커 제거 불필요(§3.4 #5), 데모 CSV는 공통 지연 열만 비교 가능, 치명 오분류 정의 3갈래(코드는 이미 A안), 측정 절차의 `get_throttled`·`repo_commit`·`mocked` 확인 방법, AP 경유 측정 범위. **추가**: 계약 테스트 대상표, stub vision 인터페이스, 시나리오별 파일명, 실물 hw 테스트 목록, 시행 당일 절차·역할·육안 기록 양식·안전·복구, 로컬 실행 명령(§2.6), 마커 사용 현황, 표본 계산 검산, 온라인 시행의 서보 누적 위험, 집계 규칙(§5.7)·집계 스크립트 명세(§5.8), 할 일 일정을 14 §8에 맞춤, 결정 대기·리스크 후보 추가 |
 | v0.1 | 2026-09-28 | 최초 작성. 테스트 준비 상태 점검(서비스 4개 병렬 조사), 테스트 불안정 원인 정리 결과, 통합 테스트 3층 구조·시나리오 S1~S7, GitHub Actions 계획, 지연 분석, KPI 측정 방법과 미결 사항 7건(회의안건 연계), 담당별 할 일 |
