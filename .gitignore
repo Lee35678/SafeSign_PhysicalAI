@@ -29,6 +29,9 @@ services/vision/training/_dummy_dataset/
 # 웹캠 진단 로그 (원본 랜드마크 포함 — 용량이 크고 일회성이라 공유하지 않는다)
 services/vision/logs/
 
+# web 시행 로그 CSV (web_판정_타이밍_스펙 §7.1 — 결과 정리 후 필요한 것만 문서에 붙인다)
+services/web/logs/
+
 # 비교용 모델 (train_svm.py --out models/cmp_*.joblib)
 services/vision/models/cmp_*
 
