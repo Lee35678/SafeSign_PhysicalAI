@@ -93,6 +93,100 @@ button:hover {
   padding: 1rem;
 }
 
+.hidden {
+  display: none !important;
+}
+
+/* SC-03 시범/판정 단계 (web 할 일 ①-b, 스펙 §4.2)
+   phase-demo: 예시 사진 크게, 카메라 숨김 / phase-judging: 카메라 + 사진을 옆에 작게 */
+.training-stage {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 1rem auto;
+  max-width: 640px;
+}
+
+.sign-photo {
+  margin: 0;
+  flex: none;
+}
+
+.sign-photo img,
+.sign-photo-missing {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #e5e7eb;
+}
+
+.sign-photo-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.sign-photo figcaption {
+  margin-top: 0.25rem;
+}
+
+/* 세로가 낮은 노트북 화면에서도 확인 버튼이 스크롤 없이 보이게 사진 높이를 화면 절반(3:4 비율)으로 제한 */
+.phase-demo .sign-photo {
+  width: min(360px, 80vw, calc(50vh * 3 / 4));
+}
+
+.phase-demo .camera-preview {
+  display: none;
+}
+
+.phase-judging .sign-photo {
+  width: 120px;
+}
+
+.phase-judging .camera-preview {
+  margin: 0;
+  flex: 1;
+}
+
+.confirm-panel {
+  margin-top: 0.5rem;
+}
+
+.confirm-hint {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+button.confirm-btn {
+  font-size: 1.25rem;
+  padding: 0.9rem 3.5rem;
+}
+
+button.confirm-btn:disabled {
+  background: #93c5fd;
+  cursor: default;
+}
+
+.judging-hint {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.hold-hint {
+  margin: 0.75rem auto 0;
+  max-width: 480px;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+}
+
 .match-score-row {
   display: flex;
   align-items: center;

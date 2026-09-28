@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>SafeSign - 산업 안전 수신호 교육</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," /><!-- 브라우저의 /favicon.ico 404 요청 방지 -->
 </head>
 <body>
   <!-- 09_화면목록.md SC-01~SC-07. main.js가 .screen 중 하나에만 "active"를 붙여 전환한다. -->
@@ -39,20 +40,42 @@
       <h1 id="signal-name">-</h1>
       <p id="signal-desc" class="muted"></p>
 
-      <div class="camera-preview" id="camera-preview">
-        <div class="camera-placeholder">
-          <span>카메라 인식 중…</span>
-          <p class="muted small">
-            (실물 영상 미리보기는 vision 서비스에 프레임 스트리밍 엔드포인트가 추가되면 연결 예정)
-          </p>
+      <!-- 판정 타이밍 (web 할 일 ①-b, proposals/web_판정_타이밍_스펙.md §4.2).
+           phase="demo": 예시 사진 크게 + 확인 버튼 / phase="judging": 카메라 + 사진 작게 + 일치율.
+           main.js renderPhase()가 #training-stage의 phase-demo·phase-judging 클래스를 바꾼다. -->
+      <div id="training-stage" class="training-stage phase-demo">
+        <figure class="sign-photo">
+          <img id="sign-photo-img" alt="" />
+          <div id="sign-photo-missing" class="sign-photo-missing hidden">예시 사진 준비 중</div>
+          <figcaption class="muted small">정답 자세 (사람 손)</figcaption>
+        </figure>
+
+        <div class="camera-preview" id="camera-preview">
+          <div class="camera-placeholder">
+            <span>카메라 인식 중…</span>
+            <p class="muted small">
+              (실물 영상 미리보기는 vision 서비스에 프레임 스트리밍 엔드포인트가 추가되면 연결 예정)
+            </p>
+          </div>
         </div>
       </div>
 
-      <div class="match-score-row">
+      <div id="confirm-panel" class="confirm-panel hidden">
+        <p class="confirm-hint">AI Hand와 사진을 보고, 준비되면 확인을 누르세요</p>
+        <button id="confirm-btn" class="confirm-btn">확인</button>
+        <p id="confirm-keys" class="muted small">Space 키 또는 micro:bit A 버튼으로도 확인할 수 있어요</p>
+      </div>
+
+      <p id="judging-hint" class="judging-hint hidden">손을 카메라에 보여주세요 — 판정 중</p>
+
+      <div id="match-score-row" class="match-score-row">
         <label>일치율</label>
         <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
         <span id="match-score-value">0%</span>
       </div>
+
+      <!-- below_tau / out_of_distribution — 판정은 계속되므로 화면을 덮지 않고 문구만 띄운다 (스펙 §5 결정) -->
+      <p id="hold-hint" class="hold-hint hidden"></p>
 
       <div id="training-overlay" class="overlay hidden"></div>
     </section>

@@ -7,6 +7,23 @@ let pollTimer = null;
 let overlayGen = 0;
 let lastOverlayKey = null;
 let lastCompleted = [];   // SC-05 집계 - "결과 저장"(⑨)이 다시 쓴다
+let lastTrainingState = null;  // 오버레이가 사라질 때 확인 버튼을 다시 그리는 데 쓴다 (①-b)
+let confirmInFlight = false;   // 확인 요청 중복 방지 — 버튼 클릭과 스페이스바가 겹쳐도 한 번만 보낸다
+let holdGen = 0;
+
+// 수신호 → 예시 사진 (스펙 §4.3). 파일명은 picar 명령명(state_machine.py PICAR_COMMANDS의 command)과 같다.
+const SIGN_IMAGES = {
+  "정지": "images/stop.jpg",
+  "서행": "images/slow.jpg",
+  "좌회전_유도": "images/turn_left.jpg",
+  "우회전_유도": "images/turn_right.jpg",
+  "확인_완료": "images/complete.jpg",
+  "후진": "images/reverse.jpg",
+  "주의": "images/caution.jpg",
+};
+
+// 판정은 계속되고 화면 안내만 하는 사유 (스펙 §5 결정 — 물리 피드백·시도 횟수 없음)
+const HOLD_OUTCOMES = ["below_tau", "out_of_distribution"];
 
 function show(screenId) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
@@ -80,6 +97,8 @@ function renderCurriculumList(curriculum) {
 document.getElementById("curriculum-start-btn").addEventListener("click", async () => {
   await apiPost("/api/start");
   lastOverlayKey = null;
+  lastTrainingState = null;
+  hideOverlay();
   show("screen-training");
   startPolling();
 });
@@ -123,9 +142,118 @@ async function refreshTraining() {
     const key = `${result.signal}:${result.outcome}:${result.attempt}`;
     if (key !== lastOverlayKey) {
       lastOverlayKey = key;
-      showOverlay(result);
+      if (HOLD_OUTCOMES.includes(result.outcome)) {
+        showHoldHint(result);
+      } else {
+        showOverlay(result);
+      }
     }
   }
+
+  lastTrainingState = state;
+  renderPhase(state);
+}
+
+// ---- SC-03 시범/판정 단계 (web 할 일 ①-b, 스펙 §4.2) ----
+
+function overlayVisible() {
+  return !document.getElementById("training-overlay").classList.contains("hidden");
+}
+
+// 확인 버튼이 "보이는" 조건 — 스페이스바도 이때만 받는다. 정답/오답 오버레이가 덮고 있는 동안은 받지 않는다
+// (오버레이가 사라진 뒤 사진 + 확인 버튼 화면으로 이어진다, 스펙 §4.2).
+function confirmAvailable() {
+  const state = lastTrainingState;
+  return Boolean(state) && state.state === "training" && state.phase === "demo"
+    && document.getElementById("screen-training").classList.contains("active") && !overlayVisible();
+}
+
+function renderPhase(state) {
+  const demo = state.phase === "demo";
+  const stage = document.getElementById("training-stage");
+  stage.classList.toggle("phase-demo", demo);
+  stage.classList.toggle("phase-judging", !demo);
+  setSignPhoto(state.target_signal);
+
+  document.getElementById("confirm-panel").classList.toggle("hidden", !confirmAvailable());
+  document.getElementById("judging-hint").classList.toggle("hidden", demo);
+  // 시범 동안 vision 판정은 멈춰 있어 live_judgment는 지난 값이다 — 일치율은 판정 중에만 보인다
+  document.getElementById("match-score-row").classList.toggle("hidden", demo);
+  if (demo) document.getElementById("hold-hint").classList.add("hidden");
+
+  const btn = document.getElementById("confirm-btn");
+  btn.disabled = confirmInFlight;
+  btn.textContent = confirmInFlight ? "확인 중…" : "확인";
+
+  // micro:bit 버튼 A는 BLE가 끊긴 동안 입력이 사라진다(03 §7) — 끊겼으면 안내에서 빼고 Space를 쓰게 한다
+  const actuation = (state.devices || {}).actuation;
+  const bleDown = Boolean(actuation) && (actuation.status !== "ok" || actuation.microbit_connected === false);
+  document.getElementById("confirm-keys").textContent = bleDown
+    ? "Space 키로도 확인할 수 있어요 (micro:bit 연결 끊김 — A 버튼은 지금 동작하지 않아요)"
+    : "Space 키 또는 micro:bit A 버튼으로도 확인할 수 있어요";
+}
+
+function setSignPhoto(signal) {
+  const img = document.getElementById("sign-photo-img");
+  const src = SIGN_IMAGES[signal] || "";
+  if (img.dataset.src === src) return;
+  img.dataset.src = src;
+  img.alt = signal ? `${signal} 정답 자세` : "";
+  setPhotoMissing(!src);
+  if (src) img.src = src;
+  else img.removeAttribute("src");
+}
+
+function setPhotoMissing(missing) {
+  document.getElementById("sign-photo-img").classList.toggle("hidden", missing);
+  document.getElementById("sign-photo-missing").classList.toggle("hidden", !missing);
+}
+
+document.getElementById("sign-photo-img").addEventListener("error", () => setPhotoMissing(true));
+document.getElementById("sign-photo-img").addEventListener("load", () => setPhotoMissing(false));
+
+async function confirmReady() {
+  if (confirmInFlight || !confirmAvailable()) return;
+  confirmInFlight = true;
+  renderPhase(lastTrainingState);
+  try {
+    // 판정 중이거나 이미 확인됐으면(micro:bit A가 먼저 눌린 경우 등) 서버가 {"status": "ignored"}를 돌려준다
+    await apiPost("/api/confirm");
+  } catch (err) {
+    console.warn("확인 요청 실패", err);
+  } finally {
+    confirmInFlight = false;
+  }
+  refreshTraining();
+}
+
+document.getElementById("confirm-btn").addEventListener("click", (event) => {
+  // 포커스가 남으면 다음 Space가 버튼 클릭으로도 들어간다 — 아래 keydown 처리와 겹치지 않게 푼다
+  event.currentTarget.blur();
+  confirmReady();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.code !== "Space" || !confirmAvailable()) return;
+  event.preventDefault();          // 페이지 스크롤 방지
+  if (event.repeat) return;        // 누르고 있을 때의 반복 입력은 무시
+  confirmReady();
+});
+
+function showHoldHint(result) {
+  const hint = document.getElementById("hold-hint");
+  const myGen = ++holdGen;
+  hint.textContent = `${result.message ?? "조금 더 정확히 해주세요"} (일치율 ${result.match_score}%)`;
+  hint.classList.remove("hidden");
+  setTimeout(() => {
+    if (myGen === holdGen) hint.classList.add("hidden");
+  }, 3000);
+}
+
+function hideOverlay() {
+  overlayGen++;
+  document.getElementById("training-overlay").classList.add("hidden");
+  document.getElementById("hold-hint").classList.add("hidden");
 }
 
 function setMatchScore(score) {
@@ -147,19 +275,26 @@ function showOverlay(result) {
       <p>picar 동작 중…</p>
     `;
     setTimeout(() => {
-      if (myGen === overlayGen) overlay.classList.add("hidden");
+      if (myGen === overlayGen) {
+        overlay.classList.add("hidden");
+        if (lastTrainingState) renderPhase(lastTrainingState);   // 다음 수신호 시범 화면으로
+      }
     }, 2000);
   } else {
-    // wrong / below_tau / out_of_distribution 모두 SC-03b, 메시지만 다르다
-    // (03_인터페이스계약서 §4 — 자세를 다듬으라는 뜻과 다른 수신호를 하고 있다는 뜻을 구분).
+    // 오답(SC-03b). below_tau / out_of_distribution은 오버레이 대신 showHoldHint()로 문구만 띄운다
+    // (스펙 §5 결정 — 판정이 계속되므로 화면을 덮지 않는다. 두 사유의 문구 구분은 03 §4 그대로).
     overlay.className = "overlay wrong";
     overlay.innerHTML = `
       <h2>${result.message ?? "다시 시도하세요"}</h2>
       <p>일치율 ${result.match_score}%</p>
       <p>권장 재도전 횟수 ${result.recommended_retry}회 · 현재 시도 ${result.attempt}회</p>
+      <p>AI Hand가 다시 보여줍니다</p>
     `;
     setTimeout(() => {
-      if (myGen === overlayGen) overlay.classList.add("hidden");
+      if (myGen === overlayGen) {
+        overlay.classList.add("hidden");
+        if (lastTrainingState) renderPhase(lastTrainingState);   // 재시범 사진 + 확인 버튼으로
+      }
     }, 2500);
   }
 }

@@ -53,6 +53,10 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   구현. 프레임워크 없이 바닐라 JS 유지(팀 논의 전까지). 수료증(SC-06)은 `<canvas>`로 그려 PNG 다운로드/
   인쇄(PDF 저장)를 제공한다. 카메라 실시간 영상 미리보기는 vision에 프레임 스트리밍 엔드포인트가 없어
   자리표시자만 표시한다(§ "아직 확정 안 된 것" 참고).
+  - **SC-03 시범/판정 단계** (①-b, 2026-09-29): `phase == "demo"`면 예시 사진(`frontend/images/<command>.jpg`, 김지훈 ⑩)을
+    크게 + 확인 버튼(Space·micro:bit A), `judging`이면 카메라 영역 + 사진 작게 + 일치율. Space는 확인 버튼이 보일 때만
+    받고(`preventDefault`, `event.repeat` 무시), 정답/오답 오버레이가 떠 있는 동안은 받지 않는다. `below_tau`/OOD는
+    오버레이 대신 판정 화면 안 문구로 보여준다. SC-05 "결과 저장 (CSV)"는 ⑨(김지훈, UTF-8 BOM)
 
 ## 화면 ↔ 상태 매핑 (09_화면목록.md 참고, 2026-09-18 갱신)
 
