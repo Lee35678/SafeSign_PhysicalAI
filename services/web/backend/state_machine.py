@@ -8,6 +8,8 @@
     시범 단계에서는 판정하지 않고 SC-04 카운트도 세지 않는다 — 9/25 시험에서 방금 맞힌 손모양이 다음 수신호의
     오답으로 잡히고, 시범을 보는 사이 SC-04로 넘어가던 문제.
   - 학습자가 확인 버튼(POST /api/confirm, 스페이스바)을 누르면 vision /reset → phase="judging".
+    micro:bit 버튼 A도 같은 확인으로 받는다(스펙 §9, 보조 입력) — 시범 단계에서만 actuation GET /button의 `seq`를
+    폴링해, 시범이 끝난 뒤 적어 둔 기준값보다 커지면 확인한다. 시범 도중·판정 중에 누른 입력은 세지 않는다.
   - 정답은 즉시 확정. 오답은 **같은 오답 클래스가 WRONG_CONFIRM_S(1초) 이상 이어질 때만** 확정한다 — 버튼을
     누르고 손을 올리는 도중의 과도 자세를 거르기 위해서다. 손 미검출이 나오면 새로 센다
     (기준 구현: services/actuation/scripts/aihand_vision_picar_demo.py `_listen()`, 9/25 실물 7/7).
@@ -89,6 +91,10 @@ POLL_INTERVAL_S = float(os.getenv("VISION_POLL_INTERVAL_S", "0.2"))
 # vision 호출 타임아웃 — 지정하지 않으면 httpx 기본 5초라 vision이 멈추면 폴링도 5초씩 멈췄다(16 §4.7 #6).
 # /latest는 저장된 최신 판정을 돌려줄 뿐이라 로컬에서 수 ms다.
 VISION_TIMEOUT_S = float(os.getenv("VISION_TIMEOUT_S", "0.5"))
+# micro:bit 버튼 A를 확인 입력으로 쓸지 (스펙 §9). 호출 시점에 읽는다 — 테스트는 conftest에서 끄고 필요한 테스트만 켠다.
+BUTTON_CONFIRM_ENABLED = os.getenv("MICROBIT_BUTTON_CONFIRM", "1").strip().lower() not in ("0", "off", "false", "no")
+# actuation GET /button 타임아웃 — 보조 입력이라 짧게. 실패는 조용히 넘긴다.
+BUTTON_TIMEOUT_S = float(os.getenv("BUTTON_TIMEOUT_S", "0.3"))
 # 같은 오답 클래스가 이만큼 이어져야 오답 확정 (스펙 §2 #4). 호출 시점에 읽는다 — 테스트가 바꿔 끼운다.
 WRONG_CONFIRM_S = float(os.getenv("WRONG_CONFIRM_S", "1.0"))
 # 시행 로그 CSV 폴더 (스펙 §7.1). 쓰는 시점에 읽는다. 파일 이름은 web 기동 시각 — 기동마다 새 파일.
@@ -205,6 +211,9 @@ def _fresh_session() -> dict:
         "wrong_since": 0.0,        # 그 클래스가 처음 보인 시각(monotonic)
         # 이번 시도의 시각 기준점(monotonic) — 시행 로그 demo_ms·observe_ms·listen_ms (스펙 §7.2)
         "trial": {},               # t_demo, t_demo_done, demo_ok, demo_ms, t_confirm
+        # micro:bit 버튼 A 기준 seq — 시범 단계에서 처음 조회한 값. None이면 다음 조회 때 기준값만 잡는다(스펙 §9)
+        "button_seq_base": None,
+        "last_confirm_source": None,  # 최근 확인 입력: "web"(버튼·스페이스바) | "microbit_button"
         "attempts": {},            # signal -> 현재 회차 시도 횟수
         "completed": [],           # [{"signal", "attempts", "match_score"}] 완료 순서대로
         "camera_fail_streak": 0,
@@ -365,6 +374,7 @@ def _send_demo(target_signal: str, gen: int) -> None:
     with _lock:
         if _session.get("_gen") == gen:       # 그사이 재시작됐으면 옛 결과는 버린다
             _record_demo(result)
+            _session["button_seq_base"] = None  # 시범 도중 누른 버튼 A는 세지 않는다 — 시범이 끝난 뒤로 기준을 다시 잡는다
 
 
 def _ms(start: "float | None", end: "float | None"):
@@ -429,11 +439,13 @@ def _poll_once(vision_client: httpx.Client) -> None:
         state = _session["state"]
         if state not in ("training", "camera_fail"):
             return
-        # 시범 단계 — 판정도, 손 미검출 집계도 하지 않는다 (스펙 §4.1)
-        if _session["phase"] != "judging":
-            return
+        judging = _session["phase"] == "judging"
         target_signal = _current_target_signal()
         gen = _session["_gen"]
+    # 시범 단계 — 판정도, 손 미검출 집계도 하지 않는다 (스펙 §4.1). micro:bit 버튼 A만 본다 (스펙 §9)
+    if not judging:
+        _poll_button()
+        return
     if target_signal is None:
         return
 
@@ -540,6 +552,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
         # 정답이면 다음 수신호 시범, 오답이면 방금 보낸 재시범을 볼 차례 — 확인 버튼을 기다린다
         _session["phase"] = "demo"
         _session["trial"] = {}
+        _session["button_seq_base"] = None   # 판정 중에 누른 버튼 A가 확인으로 새지 않게 기준을 다시 잡는다
         if outcome == "correct":
             _session["completed"].append({
                 "signal": target_signal, "attempts": attempt_no, "match_score": match_score,
@@ -627,6 +640,7 @@ def get_state():
             "attempts": _session["attempts"].get(target_signal, 0) if target_signal else 0,
             "last_dispatch": _session["last_dispatch"],
             "last_demo": _session["last_demo"],
+            "last_confirm_source": _session["last_confirm_source"],
             "devices": _session["devices"],
             "completed": _session["completed"],
             "certificate_issued_at": _session["certificate_issued_at"],
@@ -648,12 +662,11 @@ def start():
     return {"state": "training", "phase": "demo", "target_signal": CURRICULUM[0]}
 
 
-@router.post("/confirm")
-def confirm():
-    """확인 버튼(스페이스바) — 시범을 본 학습자가 판정을 시작한다 (스펙 §4.1).
+def _confirm(source: str) -> dict:
+    """확인 입력 처리 — 화면 확인 버튼·스페이스바(`POST /api/confirm`)와 micro:bit 버튼 A가 같은 경로를 쓴다 (스펙 §4.1·§9).
 
-    `phase == "demo"`일 때만 받는다(판정 중 연타는 무시). vision `/reset`으로 시범 동안 쌓인 N프레임 연속판정
-    누적을 버린 뒤 판정 단계로 넘어간다 — 그래야 시범 전에 들고 있던 손모양이 곧바로 판정되지 않는다."""
+    `phase == "demo"`일 때만 받는다(판정 중 연타·두 입력의 동시 도착은 무시). vision `/reset`으로 시범 동안 쌓인 N프레임
+    연속판정 누적을 버린 뒤 판정 단계로 넘어간다 — 그래야 시범 전에 들고 있던 손모양이 곧바로 판정되지 않는다."""
     with _confirm_lock:
         with _lock:
             if _session["state"] != "training" or _session["phase"] != "demo":
@@ -669,7 +682,49 @@ def confirm():
             _session["_last_dispatched"] = None
             _session["wrong_cls"] = None
             _session["camera_fail_streak"] = 0
-        return {"status": "ok", "phase": "judging", "vision_reset": _public(reset)}
+            _session["button_seq_base"] = None
+            _session["last_confirm_source"] = source
+        return {"status": "ok", "phase": "judging", "source": source, "vision_reset": _public(reset)}
+
+
+def _poll_button() -> None:
+    """시범 단계에서 micro:bit 버튼 A(actuation `GET /button`)를 확인 입력으로 받는다 (스펙 §9, 03 §5-3).
+
+    actuation이 누른 횟수 `seq`를 세고 web이 폴링한다(pull). 시범 단계에서 처음 읽은 값을 기준으로 적고,
+    그보다 커지면 `_confirm`을 부른다. 기준값은 시범이 끝날 때·판정이 확정될 때 비워 두므로 시범 도중·판정 중에
+    누른 입력은 확인으로 새지 않는다. seq가 기준보다 작으면 actuation이 재시작된 것이라 기준만 다시 잡는다.
+    버튼은 보조 입력이다 — 조회 실패(연결 실패·타임아웃·이상한 응답)는 조용히 넘긴다(BLE가 끊긴 동안 누른 입력은
+    actuation에도 올라오지 않으므로 화면 확인 버튼·스페이스바를 항상 함께 둔다, 03 §7)."""
+    if not BUTTON_CONFIRM_ENABLED:
+        return
+    with _lock:
+        if _session["state"] != "training" or _session["phase"] != "demo":
+            return
+        gen, base = _session["_gen"], _session["button_seq_base"]
+    try:
+        response = httpx.get(f"{ACTUATION_URL}/button", timeout=BUTTON_TIMEOUT_S)
+        if response.status_code >= 400:
+            return
+        seq = int(response.json()["seq"])
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return
+    with _lock:
+        # 조회하는 사이 재시작·단계 전환·기준 재설정이 있었으면 이번 값은 버린다
+        if _session["_gen"] != gen or _session["phase"] != "demo" or _session["button_seq_base"] != base:
+            return
+        if base is None or seq < base:
+            _session["button_seq_base"] = seq
+            return
+        if seq == base:
+            return
+    logger.info("micro:bit 버튼 A 확인 (seq %d → %d)", base, seq)
+    _confirm("microbit_button")
+
+
+@router.post("/confirm")
+def confirm():
+    """확인 버튼(스페이스바) — 시범을 본 학습자가 판정을 시작한다 (스펙 §4.1). 처리는 `_confirm`."""
+    return _confirm("web")
 
 
 @router.post("/certificate")

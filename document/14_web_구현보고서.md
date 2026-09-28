@@ -1,4 +1,4 @@
-# web 구현 보고서 (v1.6 — 초안)
+# web 구현 보고서 (v1.7 — 초안)
 
 **팀명**: 심기일전 · **담당**: 조은수 (웹 R · 성능측정 R)
 **최초 작성**: 2026-09-27 (초안 정리: 송승호 — 조은수 검토·보완 필요) · **대상**: `services/web`
@@ -144,7 +144,7 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 | --- | --- | --- |
 | GET | `/api/state` | 화면 렌더링용 전체 상태 — `state`, **`phase`**(`demo`/`judging`), `target_signal`, `signal_info`, `curriculum`, `progress`, `last_result`, `live_judgment`, `attempts`, `last_dispatch`, **`last_demo`**, `devices`, `completed`, `certificate_issued_at` |
 | POST | `/api/start` | 세션 초기화 후 SC-03 시작 (장치 상태는 유지). 첫 수신호 시범 `/command`(demo)를 백그라운드로 보내고 `phase: "demo"` |
-| POST | `/api/confirm` | 확인 버튼(스페이스바) — `phase == "demo"`일 때만 vision `/reset` 뒤 `judging`, 그 밖에는 `{"status": "ignored"}` (2026-09-28). |
+| POST | `/api/confirm` | 확인 버튼(스페이스바) — `phase == "demo"`일 때만 vision `/reset` 뒤 `judging`, 그 밖에는 `{"status": "ignored"}` (2026-09-28). micro:bit 버튼 A도 같은 처리(`_confirm`)를 쓴다 — 어느 입력인지는 `/api/state`의 `last_confirm_source` |
 | POST | `/api/certificate` | 7종 완료 시 수료증 발급 시각·집계 확정, 미완료면 `not_completed` |
 | GET | `/health` | web 자체 상태 |
 
@@ -154,6 +154,7 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 | --- | --- | --- | --- |
 | vision | `GET /latest` | `judgment_result` | 해당 폴링 건너뜀 (타임아웃 0.5초, 비JSON 응답 포함) |
 | vision | `POST /reset` | — | 무시 (`/api/confirm` 응답의 `vision_reset`에 결과 기록) |
+| actuation | `GET /button` | 03 §5-3 (`seq`) | 시범 단계에서만 0.2초마다(타임아웃 0.3초). 실패는 조용히 넘김 — 보조 입력 (2026-09-29, D12) |
 | actuation | `POST /command` | `aihand_command` (`servo_angles`는 스키마 호환용 placeholder — 실제 동작은 `target_signal`로 결정) | 연결 실패·4xx/5xx만 재시도 1회, **읽기 타임아웃·본문 실패는 재시도 없이** 기록하고 진행 (03 §5-5) |
 | actuation | `POST /result`, `/progress` | — | 연결 실패·4xx/5xx·읽기 타임아웃 재시도 1회, 본문 실패는 기록만 |
 | picar | `POST /picar` | `picar_command` | `/command`와 같음 (`partial`은 실패, LED 실패는 `picar_led_ok`로 따로 기록) |
@@ -176,6 +177,7 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 | D9 | **판정 타이밍 재설계**: 시범 + 예시 사진 → 확인 버튼(스페이스바) → 판정, 오답 1초 유지 | 9/25 실물에서 학습자가 AI Hand를 보기 전에 오답 처리됨(§6.2). 고정 보는 시간(3초)은 학습자마다 달라 버튼으로 대체 — `proposals/web_판정_타이밍_스펙` | 2026-09-27 스펙 확정, **2026-09-28 백엔드 구현**(`c8f1fd3`), 화면 ①-b 대기 |
 | D10 | `below_tau`/OOD는 **화면 안내만** — 물리 피드백·시도 횟수·시행 로그 없음 | 손을 올리는 도중에도 자주 나오는 값이라 매번 재시범하면 따라 할 틈이 없다. 데모 스크립트(9/25 실물 7/7)와 같은 처리 — 스펙 §5 | 2026-09-28 이동혁 |
 | D11 | 장치 호출 순서 **`/picar` → `/result` → `/command` → `/progress`**, 응답은 본문 `status`까지 판정 | `/command`가 맨 앞이면 손 동작 회신(0.8초)만큼 picar·micro:bit 반응이 약 0.85초 늦었다(스펙 §7.3). 본문 실패·읽기 타임아웃을 재시도하면 AI Hand·picar가 두 번 움직인다(03 §5-5) | 2026-09-28 이동혁 |
+| D12 | micro:bit **버튼 A도 확인 입력**으로 받는다(web이 actuation `GET /button`을 폴링, pull). 기준 `seq`는 시범 `/command` 응답 뒤 처음 읽은 값 | 학습자가 키보드 없이 AI Hand 옆에서 확인. push(actuation → web)는 역방향 의존이 생겨 pull. 기준을 시범 뒤로 잡아 AI Hand 동작 중·판정 중 누름이 확인으로 새지 않게. BLE가 끊기면 입력이 사라져 스페이스바를 항상 병행 — 스펙 §9 | 2026-09-29 송승호 |
 
 ---
 
@@ -186,8 +188,9 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 vision·actuation·picar 서버 없이 `httpx` 호출만 patch해서 검증한다. 테스트 중 시행 로그는 `tests/conftest.py`가 임시 폴더로 돌린다 —
 **반드시 `pytest`로 실행**한다(`python tests/…py`로 직접 돌리면 실제 `logs/`에 가짜 행이 쓰인다).
 
-**2026-09-28 `dev` 병합 후 실행: 35개 전부 통과** (`python -m pytest -q`, 2.0초) — `test_judging_timing_spec.py` 26개(①-a 13 · ③ 9 · ②-a 4, 선작성한
-인수 테스트의 xfail 22개가 모두 통과로 바뀜)와 아래 `test_state_machine.py` 9개. 저장소 전체는 144개 통과.
+**2026-09-29 실행: 49개 전부 통과** (`python -m pytest -q`, 2.0초) — 버튼 A `test_microbit_button_confirm.py` 14개(D12, conftest가 버튼 폴링을 기본으로 끄고
+이 파일만 켬) 추가. 아래는 2026-09-28 `dev` 병합 때 35개 — `test_judging_timing_spec.py` 26개(①-a 13 · ③ 9 · ②-a 4, 선작성한
+인수 테스트의 xfail 22개가 모두 통과로 바뀜)와 아래 `test_state_machine.py` 9개. 저장소 전체는 144개 통과(버튼 A 추가 후 158개).
 인수 테스트 목록과 구현 계약은 [판정 타이밍 스펙](proposals/web_판정_타이밍_스펙.md) §8.
 
 `test_state_machine.py` (2026-09-27 작성, ①-a 이후에도 깨지지 않게 9/28 수정):
@@ -275,6 +278,7 @@ vision·actuation·picar 서버 없이 `httpx` 호출만 patch해서 검증한�
 | ③ ✅ | **완료**(2026-09-28 `c8f1fd3`) — **`_post_with_retry` 본문 `status` 확인** — `partial`·`timeout`을 성공으로 세지 않게. ②의 로그가 왜곡되므로 KPI 전에. 본문 실패는 재시도 없이 기록만, **`/command`·`/picar` 읽기 타임아웃 재시도 금지**(이중 전송 방지) | 이동혁 | **판정 기준 [03 §5-5](03_인터페이스계약서.md)**, §7, `08_리스크레지스터` |
 | ⑪ ✅ | **완료**(2026-09-28 백엔드 병합 시 35개 통과 확인, §6.1 — 프론트엔드·⑨ 병합 때 회귀 확인은 계속) — **web 단위 테스트** — 인수 테스트 22개 선작성(2026-09-28, 구현 계약 스펙 §8).  ①-a(시범 단계 판정·SC-04 무시, `/api/confirm`·`/reset`, 오답 1초, 시범 `/command`만 전송), ②-a(CSV 1행·열), ③(`timeout`·`error`·`partial` 실패 판정), 기존 9개 회귀. 구현 브랜치가 올라오면 병합 전에 붙인다 | 송승호 | 스펙 §6 마지막 항목 |
 | ④ ✅ | ~~**picar LED 잔류**~~ → **picar 쪽에서 해결**(2026-09-28, 송승호): LED를 켠 명령 뒤 2초에 picar가 스스로 끈다. **web은 할 일 없음** | — | §7, `13_picar_하드웨어_검증리포트` §5 #8 |
+| ⑫ ✅ | **micro:bit 버튼 A 확인 입력 — web 연동**(스펙 §9, D12) — 2026-09-29 송승호 구현, 단위 테스트 14개. 실물 확인은 설계서 §9.1 ④, 화면 안내 문구(“Space 또는 micro:bit A”)는 ①-b에서 | 송승호 | 스펙 §9 |
 
 **재시험 (①~③ 반영 후)**
 
@@ -318,6 +322,7 @@ vision·actuation·picar 서버 없이 `httpx` 호출만 patch해서 검증한�
 | 버전 | 날짜 | 내용 |
 | --- | --- | --- |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
+| v1.7 | 2026-09-29 | micro:bit 버튼 A web 연동(송승호) — §4.1 `/api/confirm`·`last_confirm_source`, §4.2 `GET /button`, §5 D12, §6.1 49개, §8 ⑫ |
 | v1.6 | 2026-09-29 | 백엔드 병합(`c8f1fd3` → `dev` `1da641b`) 동기화(송승호) — 머리말 기준 코드, §3.1 폴링 조건, §4.1 `phase`·`last_demo`·`/api/confirm`, §4.2 실패 처리(03 §5-5), §5 D9 상태·D10(`below_tau`/OOD 안내만)·D11(호출 순서·본문 판정) 추가, §6.1 35개 통과·`pytest` 실행 주의, §6.2 가짜 장치 E2E, §7 이슈 4건 해소, §8 ①-a·②-a·③·⑪ 완료, §9 `below_tau` 확정. §3.2·§3.3은 이동혁이 `c8f1fd3`에서 갱신 |
 | v1.5 | 2026-09-28 | (추가, 송승호) §7 이슈 2건 — 비JSON 응답 시 폴링 스레드 중단, `/latest` 타임아웃 없음. 근거·우선순위는 [16 §1.3·§4.7](16_통합테스트_KPI_CI.md) |
 | v1.4 | 2026-09-28 | (추가) ⑤ 옛 문구 정리 완료(송승호). 단위 테스트를 구현 담당에서 빼 송승호 전담 ⑪로 분리. §8 남은 작업을 3명 분담(조은수·이동혁·김지훈)으로 — ①·②를 `-a`/`-b`로 나누고 담당 열, ⓪ 인터페이스 약속, ⑩ 예시 사진, 일정 제안 추가. §9 표에 결정 담당 열과 KPI “완료” 정의 행 추가 |
