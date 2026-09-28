@@ -45,8 +45,18 @@ OK:CORRECT\n / OK:INCORRECT\n         (correct/incorrect 처리 완료)
 OKP<current><total>\n예) OKP37\n        (P<current><total> 처리 완료)
 ```
 
-> ⚠️ **미구현**: `BTN:A|B|AB`(버튼 입력)는 BLE 전환 후 아직 펌웨어에 없음. 필요 시 구현하면 이
-> 파일에 형식을 추가할 것.
+**버튼 입력 (요청 없이 올라옴, 2026-09-28)**
+
+```
+BTN:A\n              버튼 A를 누를 때마다 1회 (web 확인 버튼 대용, LED 표시 없음)
+```
+
+- `BTN:A|B|AB` 중 **A만** 쓴다. B는 TEST_MODE 전용(`READY` 재표시)
+- 🔴 회신과 섞지 말 것 — `ble_bridge._on_notify`가 알림을 줄 단위로 나눠 `BTN:` 줄은 회신에서 빼고 `seq`만 올린다.
+  회신 대기 중에 온 `BTN:A`를 회신으로 받으면 `/command`가 손 동작이 끝나기 전에 `ok`로 돌아간다
+- actuation `GET /button` → `{"seq", "last_button", "last_at", "microbit_connected"}`, `POST /button/simulate`로 seq +1
+  (형식·web 쪽 사용 기준은 03 §5-3)
+- BLE가 끊긴 동안 누른 입력은 사라진다 — web 스페이스바를 항상 함께 둘 것(03 §7)
 
 ## 손가락 서보 동시 구동 제한
 
