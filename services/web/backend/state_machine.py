@@ -694,11 +694,19 @@ def _poll_button() -> None:
     그보다 커지면 `_confirm`을 부른다. 기준값은 시범이 끝날 때·판정이 확정될 때 비워 두므로 시범 도중·판정 중에
     누른 입력은 확인으로 새지 않는다. seq가 기준보다 작으면 actuation이 재시작된 것이라 기준만 다시 잡는다.
     버튼은 보조 입력이다 — 조회 실패(연결 실패·타임아웃·이상한 응답)는 조용히 넘긴다(BLE가 끊긴 동안 누른 입력은
-    actuation에도 올라오지 않으므로 화면 확인 버튼·스페이스바를 항상 함께 둔다, 03 §7)."""
+    actuation에도 올라오지 않으므로 화면 확인 버튼·스페이스바를 항상 함께 둔다, 03 §7).
+
+    🔴 2026-09-29 실물에서 발견: `start()`는 첫 시범을 **백그라운드 스레드**로 보낸다(응답까지 실측 약 0.8초).
+    그동안 이 폴링(0.2초 간격)이 먼저 돌면 `button_seq_base`가 시범이 끝나기도 전에 잡혀서, 시범 도중 누른
+    입력이 시범이 끝나기 전에 확인으로 확정돼 버렸다(오답 재시범·정답 후 다음 시범은 `_send_demo`가 폴링 루프
+    안에서 동기로 돌아 같은 문제가 없다 — 오직 세션 시작 직후만 해당). → 이번 시범이 실제로 응답할 때까지는
+    아예 조회하지 않는다."""
     if not BUTTON_CONFIRM_ENABLED:
         return
     with _lock:
         if _session["state"] != "training" or _session["phase"] != "demo":
+            return
+        if _session["trial"].get("t_demo_done") is None:
             return
         gen, base = _session["_gen"], _session["button_seq_base"]
     try:
