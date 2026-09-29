@@ -1,0 +1,243 @@
+"""회원가입·로그인·결과 저장(backend/members.py) 단위 테스트 — 실제 Supabase 없이.
+
+Supabase는 httpx.MockTransport 로 흉내 낸다(Auth 관리자 API · 비밀번호 로그인 · PostgREST · rpc).
+로컬 저장소는 임시 폴더를 쓴다(conftest.py 의 MEMBER_DATA_DIR).
+
+실행: cd services/web && python -m pytest tests/test_members.py -q
+"""
+from __future__ import annotations
+
+import json
+import sys
+import uuid
+from pathlib import Path
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from backend import members  # noqa: E402
+
+
+class FakeSupabase:
+    """아주 작은 가짜 Supabase — 계정·회원·세션을 메모리에 둔다. online=False면 연결 실패를 흉내 낸다."""
+
+    def __init__(self):
+        self.users = {}          # email -> {id, password, meta}
+        self.members = {}        # user_id -> row
+        self.sessions = {}       # id -> payload
+        self.seq = 0
+        self.online = True
+        self.fail_members_insert = False
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if not self.online:
+            raise httpx.ConnectError("offline", request=request)
+        assert request.headers["apikey"] == "service-key"
+        path, method = request.url.path, request.method
+        body = json.loads(request.content) if request.content else None
+
+        if path == "/auth/v1/admin/users" and method == "POST":
+            if body["email"] in self.users:
+                return httpx.Response(422, json={"code": 422, "error_code": "email_exists",
+                                                 "msg": "A user with this email address has already been registered"})
+            uid = str(uuid.uuid4())
+            self.users[body["email"]] = {"id": uid, "password": body["password"], "meta": body["user_metadata"]}
+            assert body["email_confirm"] is True
+            return httpx.Response(200, json={"id": uid, "email": body["email"]})
+        if path.startswith("/auth/v1/admin/users/") and method == "DELETE":
+            uid = path.rsplit("/", 1)[-1]
+            self.users = {e: u for e, u in self.users.items() if u["id"] != uid}
+            return httpx.Response(200, json={})
+        if path == "/auth/v1/token" and method == "POST":
+            u = self.users.get(body["email"])
+            if not u or u["password"] != body["password"]:
+                return httpx.Response(400, json={"error": "invalid_grant", "error_description": "Invalid login credentials"})
+            return httpx.Response(200, json={"access_token": "t", "user": {"id": u["id"], "user_metadata": u["meta"]}})
+        if path == "/rest/v1/members" and method == "POST":
+            if self.fail_members_insert:
+                return httpx.Response(404, json={"message": "relation public.members does not exist"})
+            self.seq += 1
+            row = {**body, "member_code": f"SS-{self.seq:05d}", "created_at": "2026-09-29T00:00:00Z"}
+            self.members[body["user_id"]] = row
+            return httpx.Response(201, json=[row])
+        if path == "/rest/v1/members" and method == "GET":
+            uid = request.url.params["user_id"].removeprefix("eq.")
+            row = self.members.get(uid)
+            return httpx.Response(200, json=[row] if row else [])
+        if path == "/rest/v1/rpc/save_training_session" and method == "POST":
+            p = body["payload"]
+            self.sessions.setdefault(p["id"], p)      # on conflict do nothing
+            return httpx.Response(200, json=p["id"])
+        return httpx.Response(404, json={"message": f"no route {method} {path}"})
+
+
+@pytest.fixture
+def fake(tmp_path, monkeypatch):
+    monkeypatch.setattr(members, "MEMBER_DATA_DIR", tmp_path)
+    fs = FakeSupabase()
+    members.set_store(members.SupabaseStore("https://proj.supabase.co", "service-key",
+                                            transport=httpx.MockTransport(fs.handler)))
+    members._set_member(None)
+    yield fs
+    members.set_store(None)
+    members._set_member(None)
+
+
+@pytest.fixture
+def local(tmp_path, monkeypatch):
+    monkeypatch.setattr(members, "MEMBER_DATA_DIR", tmp_path)
+    members.set_store(members.LocalStore())
+    members._set_member(None)
+    yield tmp_path
+    members.set_store(None)
+    members._set_member(None)
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    app.include_router(members.router, prefix="/api/auth")
+    return TestClient(app)
+
+
+RESULTS = {"started_at": "2026-09-29T06:00:00+00:00", "completed_at": "2026-09-29T06:09:00+00:00",
+           "results": [{"order_no": 1, "signal": "정지", "attempts": 1, "match_score": 92},
+                       {"order_no": 2, "signal": "서행", "attempts": 3, "match_score": 81}]}
+
+
+# ── Supabase ────────────────────────────────────────────────────────────────
+def test_signup_assigns_member_code_and_logs_in(fake):
+    r = _client().post("/api/auth/signup", json={"email": "Kim@Example.com", "password": "secret1",
+                                                 "name": "김학습", "org": "A공장"}).json()
+    assert r["status"] == "ok"
+    assert r["member"]["member_code"] == "SS-00001" and r["member"]["email"] == "kim@example.com"
+    assert "user_id" not in r["member"], "내부 ID는 화면에 내보내지 않는다"
+    assert members.current_member()["member_code"] == "SS-00001"
+
+
+def test_second_signup_gets_next_code_and_duplicate_is_refused(fake):
+    c = _client()
+    c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"})
+    r2 = c.post("/api/auth/signup", json={"email": "b@x.kr", "password": "secret1", "name": "나"}).json()
+    assert r2["member"]["member_code"] == "SS-00002"
+    dup = c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"}).json()
+    assert dup["status"] == "error" and dup["reason"] == "email_taken"
+
+
+@pytest.mark.parametrize("body, reason", [
+    ({"email": "not-an-email", "password": "secret1", "name": "가"}, "invalid_email"),
+    ({"email": "a@x.kr", "password": "123", "name": "가"}, "weak_password"),
+    ({"email": "a@x.kr", "password": "secret1", "name": "  "}, "name_required"),
+])
+def test_signup_validation(fake, body, reason):
+    r = _client().post("/api/auth/signup", json=body).json()
+    assert r["status"] == "error" and r["reason"] == reason
+    assert fake.users == {}, "검증에 걸리면 Supabase를 부르지 않는다"
+
+
+def test_failed_member_row_rolls_back_auth_user(fake):
+    fake.fail_members_insert = True
+    r = _client().post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"}).json()
+    assert r["status"] == "error"
+    assert fake.users == {}, "회원 행이 없으면 Auth 계정도 되돌린다 — 안 그러면 다시 가입할 수 없다"
+
+
+def test_login_and_wrong_password(fake):
+    c = _client()
+    c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"})
+    c.post("/api/auth/logout")
+    assert members.current_member() is None
+    bad = c.post("/api/auth/login", json={"email": "a@x.kr", "password": "nope"}).json()
+    assert bad["reason"] == "invalid_credentials"
+    ok = c.post("/api/auth/login", json={"email": "A@x.kr ", "password": "secret1"}).json()
+    assert ok["status"] == "ok" and ok["member"]["member_code"] == "SS-00001"
+
+
+def test_offline_signup_and_login_say_offline(fake):
+    fake.online = False
+    c = _client()
+    assert c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"}).json()["reason"] == "offline"
+    assert c.post("/api/auth/login", json={"email": "a@x.kr", "password": "secret1"}).json()["reason"] == "offline"
+
+
+def test_results_saved_per_member(fake):
+    _client().post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"})
+    state = members.save_session_results(RESULTS)
+    assert state["status"] == "saved"
+    (saved,) = fake.sessions.values()
+    assert saved["member_code"] == "SS-00001" and saved["user_id"] == members.current_member()["user_id"]
+    assert saved["total_attempts"] == 4 and saved["first_try_correct"] == 1
+    assert [r["signal"] for r in saved["results"]] == ["정지", "서행"]
+
+
+def test_offline_results_are_queued_then_flushed_once(fake):
+    _client().post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"})
+    fake.online = False
+    assert members.save_session_results(RESULTS)["status"] == "queued"
+    assert members.pending_count() == 1 and fake.sessions == {}
+    assert members.flush_pending() == {"sent": 0, "left": 1}, "아직 오프라인이면 대기열을 그대로 둔다"
+    fake.online = True
+    assert members.flush_pending() == {"sent": 1, "left": 0}
+    assert len(fake.sessions) == 1 and members.pending_count() == 0
+    assert members.store_status()["last_save"]["status"] == "saved"
+
+
+def test_guest_results_stay_local(fake):
+    c = _client()
+    assert c.post("/api/auth/guest").json()["member"]["guest"] is True
+    assert members.save_session_results(RESULTS)["status"] == "saved_local"
+    assert fake.sessions == {}, "게스트 결과는 회원 DB에 올리지 않는다"
+    lines = (members.MEMBER_DATA_DIR / "results_local.jsonl").read_text(encoding="utf-8").splitlines()
+    assert json.loads(lines[0])["member_code"] == "GUEST"
+
+
+# ── 로컬 저장소 (키 없음) ───────────────────────────────────────────────────
+def test_local_store_signup_login_and_hash(local):
+    c = _client()
+    r = c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"}).json()
+    assert r["member"]["member_code"] == "SS-00001"
+    raw = (local / "members_local.json").read_text(encoding="utf-8")
+    assert "secret1" not in raw, "비밀번호 원문을 저장하면 안 된다"
+    assert c.post("/api/auth/login", json={"email": "a@x.kr", "password": "x"}).json()["reason"] == "invalid_credentials"
+    assert c.post("/api/auth/login", json={"email": "a@x.kr", "password": "secret1"}).json()["status"] == "ok"
+    assert members.save_session_results(RESULTS)["status"] == "saved_local"
+    assert c.get("/api/auth/me").json()["store"]["backend"] == "local"
+
+
+# ── state_machine 연결 ─────────────────────────────────────────────────────
+def test_finished_session_is_saved_for_the_member_who_started(fake, monkeypatch):
+    import time
+    from datetime import datetime
+    from unittest.mock import patch
+    from backend import state_machine as sm
+
+    c = _client()
+    c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret1", "name": "가"})
+    with patch.object(sm.httpx, "post", lambda *a, **k: httpx.Response(200, json={"status": "ok"})):
+        sm.start()                                          # 가(SS-00001)로 시작
+    c.post("/api/auth/logout")
+    c.post("/api/auth/signup", json={"email": "b@x.kr", "password": "secret1", "name": "나"})   # 도중에 다른 사람
+
+    sm._session["completed"] = [{"signal": s, "attempts": 1, "match_score": 90} for s in sm.CURRICULUM]
+    sm._session["completed"][3] = {"signal": sm.CURRICULUM[3], "attempts": 3, "match_score": 40, "given_up": True}
+    sm._save_member_results(sm._session["_gen"])
+    end = time.monotonic() + 3
+    while not fake.sessions and time.monotonic() < end:
+        time.sleep(0.02)
+    (saved,) = fake.sessions.values()
+    assert saved["member_code"] == "SS-00001", "시작한 사람의 기록이다"
+    assert len(saved["results"]) == 7 and saved["results"][3]["given_up"] is True
+    assert saved["first_try_correct"] == 6
+    assert sm.get_state()["member"]["member_code"] == "SS-00001"
+
+    monkeypatch.delenv("LOG_SUBJECT", raising=False)
+    row = sm._trial_row(when=datetime.now(), t_dec=0.0, target_signal="정지", attempt=1, outcome="correct",
+                        judgment={}, trial={}, dispatch={})
+    assert row["subject"] == "SS-00001", "KPI 시행 로그 대상자 열 = 회원코드"
+    monkeypatch.setenv("LOG_SUBJECT", "ext04")
+    row = sm._trial_row(when=datetime.now(), t_dec=0.0, target_signal="정지", attempt=1, outcome="correct",
+                        judgment={}, trial={}, dispatch={})
+    assert row["subject"] == "ext04", "LOG_SUBJECT가 있으면 그것이 우선"

@@ -77,6 +77,8 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter
 
+from backend import members
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -231,6 +233,10 @@ def _fresh_session() -> dict:
         "devices": {},             # vision/actuation/picar 최근 /health 스냅샷
         "live_judgment": None,     # 매 폴링 갱신되는 실시간 match_score (SC-03 진행 표시용)
         "certificate_issued_at": None,
+        # 회원 (2026-09-29, backend/members.py) — /api/start 때 로그인해 있던 학습자로 고정한다.
+        # 도중에 로그아웃·다른 사람 로그인이 있어도 이 회차 기록은 시작한 사람에게 저장된다.
+        "member": None,
+        "started_at": None,        # ISO 8601 — 회원 결과 저장용
     }
 
 
@@ -410,7 +416,8 @@ def _trial_row(*, when: datetime, t_dec: float, target_signal: str, attempt: int
         # 시범 응답 전에 확인을 눌렀으면 "본 시간"은 정의되지 않는다 — 음수 대신 빈 값
         observe_ms=_ms(t_done, t_confirm) if observed else "",
         listen_ms=_ms(t_confirm, t_dec),
-        subject=os.getenv("LOG_SUBJECT", ""),
+        # 대상자: LOG_SUBJECT(외부인 KPI 시행용 ID)가 우선, 없으면 로그인한 회원코드 (supabase/README.md §5)
+        subject=os.getenv("LOG_SUBJECT") or (_session.get("member") or {}).get("member_code") or "",
     )
     for key, col in (("picar", "picar"), ("result", "microbit"), ("aihand", "aihand")):
         r = dispatch.get(key)
@@ -566,6 +573,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
 
     match_score = judgment.get("match_score", 0)
     next_signal = None
+    finished = False
     with _lock:
         if _session.get("_gen") != gen:
             return                            # 전송하는 사이 재시작됨 — 새 세션을 건드리지 않는다
@@ -594,6 +602,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
             _session["curriculum_index"] += 1
             if _session["curriculum_index"] >= len(CURRICULUM):
                 _session["state"] = "summary"
+                finished = True
             else:
                 next_signal = _current_target_signal()
         else:
@@ -602,6 +611,9 @@ def _poll_once(vision_client: httpx.Client) -> None:
     _write_trial_row(_trial_row(when=when, t_dec=t_dec, target_signal=target_signal, attempt=attempt_no,
                                 outcome=outcome, judgment=judgment, trial=trial, dispatch=dispatch_results))
 
+    if finished:
+        _save_member_results(gen)
+
     if next_signal is not None:
         try:
             vision_client.post(f"{VISION_URL}/reset")
@@ -609,6 +621,27 @@ def _poll_once(vision_client: httpx.Client) -> None:
             pass
         # 정답 자세(/command correct_pose)가 끝난 뒤에 보낸다 — /command는 손 동작 후 회신하므로 순서가 보장된다
         _send_demo(next_signal, gen)
+
+
+def _save_member_results(gen: int) -> None:
+    """7종을 끝낸 회차를 회원 기록에 저장한다 (SC-05 "결과 저장" — 예전 CSV 내려받기를 대신한다).
+
+    Supabase 호출은 최대 수 초가 걸릴 수 있어 폴링 스레드를 막지 않게 따로 보낸다. 오프라인이면 members가
+    대기열에 넣고 나중에 다시 보낸다. 저장 상태는 /api/state `result_save`로 화면에 나간다."""
+    with _lock:
+        if _session.get("_gen") != gen:
+            return
+        member = _session.get("member")
+        payload = {
+            "started_at": _session.get("started_at"),
+            "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "results": [
+                {"order_no": i + 1, "signal": c["signal"], "attempts": c["attempts"],
+                 "match_score": c["match_score"], "given_up": bool(c.get("given_up"))}
+                for i, c in enumerate(_session["completed"])
+            ],
+        }
+    threading.Thread(target=members.save_session_results, args=(payload, member), daemon=True).start()
 
 
 def _poll_loop() -> None:
@@ -679,6 +712,9 @@ def get_state():
             "devices": _session["devices"],
             "completed": _session["completed"],
             "certificate_issued_at": _session["certificate_issued_at"],
+            # 회원 (2026-09-29) — 이 회차의 학습자와 회원 기록 저장 상태(saved·queued·saved_local·failed)
+            "member": members._public(_session.get("member")),
+            "result_save": members.store_status(),
         }
 
 
@@ -691,7 +727,10 @@ def start():
         _session.update(_fresh_session())
         _session["state"] = "training"
         _session["devices"] = devices
+        _session["member"] = members.current_member()     # 이 회차의 학습자로 고정 (게스트·미로그인이면 게스트/None)
+        _session["started_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
         gen = _session["_gen"]
+    members.reset_last_save()
     # 첫 수신호 시범 — /command는 손 동작 뒤 회신(최대 1.5초 × 2)이라 응답을 늦추지 않게 스레드로 보낸다 (스펙 §4.1)
     threading.Thread(target=_send_demo, args=(CURRICULUM[0], gen), daemon=True).start()
     return {"state": "training", "phase": "demo", "target_signal": CURRICULUM[0]}

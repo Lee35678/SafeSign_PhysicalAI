@@ -67,6 +67,12 @@ tests/                           카메라 없이 도는 단위 테스트 (정�
 | `GET /latest` | 최신 판정 결과(judgment_result). **웹 상태머신이 폴링하는 실제 런타임 경로** |
 | `POST /predict` | landmark_frame 하나를 직접 넣어 분류기만 테스트(카메라 미사용, 개발용) |
 | `POST /reset` | 다음 수신호로 넘어갈 때 N프레임 누적 초기화 |
+| `GET /stream` | **Camera Module 3 라이브 영상 (MJPEG)** — web이 `/api/camera/stream`으로 중계해 학습 화면에 띄운다 (2026-09-29, 예시 사진 대신) |
+| `GET /snapshot.jpg` | 최신 프레임 한 장 (점검용) |
+
+라이브 영상은 판정을 느리게 하지 않게 만들었다(`perception/preview.py`): 캡처 루프는 최신 프레임 참조만 넘기고, JPEG 인코딩은
+**보는 화면이 있을 때만** 스트림 쪽에서 한다. 가로 640 이하·초당 15장(`STREAM_WIDTH`·`STREAM_FPS`·`STREAM_QUALITY`).
+`/health`의 `preview.viewers`로 지금 보는 화면 수를 볼 수 있다. 카메라가 없으면 "NO CAMERA" 안내 화면이 나온다.
 
 카메라가 이 서비스에 직결되어 있어서, 런타임에는 외부가 프레임을 보내는 게 아니라 **이 서비스가 스스로
 카메라 루프를 돌며 최신 판정을 만들어 둔다**. 그래서 웹은 `/latest`만 읽으면 된다.

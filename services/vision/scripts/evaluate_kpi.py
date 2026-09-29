@@ -7,8 +7,16 @@
 이 스크립트가 그 계산을 한다.
 
 **테이크 단위로 센다.** KPI의 "전체 시도 수"는 프레임이 아니라 **한 번의 시도**다. 한 테이크의
-3프레임은 같은 시도이고, 운영에서도 N=3 연속 프레임이 같아야 확정하므로(05_모델카드 §3-6)
-그 규칙을 그대로 적용해 테이크 하나를 한 번의 판정으로 집계한다. 프레임 단위 수치도 참고로 낸다.
+3프레임은 같은 시도이고, 테이크 하나를 한 번의 판정으로 집계한다. 프레임 단위 수치도 참고로 낸다.
+
+**판정 규칙 (2026-09-29 회의 결정, KPI 안건 7)**
+  - **공식 = 3연속**: 테이크 안에서 N(=3)프레임 연속 같은 클래스로 확정돼야 그 클래스, 아니면 미판정.
+    운영(vision smoothing, 05_모델카드 §3-6)과 같은 정의다.
+  - **참고 = 최빈값**: 확정된 프레임들의 최빈값(예전 방식). 3장 중 1장만 맞아도 정답이 되므로 느슨하다.
+  - 둘 다 운영과 딱 같지는 않다 — 촬영 도구는 약 0.15초 간격 3장뿐이고, 운영은 초당 약 26프레임을
+    확정될 때까지 본다. 그래서 3연속은 실제보다 엄격(하한), 최빈값은 느슨(상한)하다. 보고서에 둘 다 적는다.
+
+**제외한 촬영자** (`EXCLUDED_SUBJECTS`, `--include-excluded`로 포함): 폐기 결정과 이유를 여기 남긴다.
 
 모델을 여러 개 비교하려면 `models/cmp_*.joblib` 에 두면 자동으로 함께 평가한다.
 """
@@ -33,6 +41,13 @@ CLASSES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_�
 CRITICAL = "정지"
 AMBIGUOUS = "애매한자세"
 KPI = {"accuracy": 92.0, "misclass": 3.0, "reject": 5.0, "macro_f1": 0.90}
+N_CONSECUTIVE = 3        # 운영 smoothing.N_FRAMES 기본값과 같다
+
+# 폐기한 촬영자 — 결과를 본 뒤 조용히 빼지 않도록 이유를 코드에 같이 둔다
+EXCLUDED_SUBJECTS = {
+    "ext03": "2026-09-29 팀 결정으로 폐기 — 좌회전_유도·서행 20테이크가 정의와 다른 손모양(V자 / 중지+약지)으로 "
+             "촬영됨(9/22, 70테이크를 8분에 촬영). 팀원 3명 210시도로 다시 측정한다",
+}
 
 
 def load(data_dir: Path) -> list[dict]:
@@ -52,23 +67,47 @@ def load(data_dir: Path) -> list[dict]:
     return out
 
 
-def judge_take(frames: list[dict]) -> tuple[str, bool, str | None]:
-    """한 테이크(=한 시도)의 최종 판정. 운영의 N프레임 규칙과 같은 방식.
+def frame_judgments(frames: list[dict]) -> list[dict]:
+    """테이크의 프레임을 촬영 순서(f1, f2, f3 …)대로 판정한다. 운영과 같은 classify.predict 경로."""
+    ordered = sorted(frames, key=lambda f: f["file"])
+    return [classify.predict({"hand_detected": True, "handedness": f["handedness"],
+                              "landmarks": f["landmarks"]}) for f in ordered]
 
-    프레임별 판정 중 **확정된 것들의 최빈값**을 결과로 삼고, 확정이 하나도 없으면 미판정이다.
-    """
-    votes, reasons = [], []
-    for f in frames:
-        r = classify.predict({"hand_detected": True, "handedness": f["handedness"],
-                              "landmarks": f["landmarks"]})
-        if r["is_reject"]:
-            reasons.append(r.get("reason"))
-        else:
-            votes.append(r["predicted_class"])
+
+def _top_reason(judged: list[dict]) -> str | None:
+    top = collections.Counter(r.get("reason") for r in judged if r["is_reject"]).most_common(1)
+    return top[0][0] if top else None
+
+
+def judge_consecutive(judged: list[dict], n: int = N_CONSECUTIVE) -> tuple[str, bool, str | None]:
+    """공식 — n프레임 연속 같은 클래스로 확정된 첫 구간의 클래스. 없으면 미판정."""
+    run_cls, run = None, 0
+    for r in judged:
+        cls = None if r["is_reject"] else r["predicted_class"]
+        run = run + 1 if cls is not None and cls == run_cls else (1 if cls is not None else 0)
+        run_cls = cls
+        if run >= n:
+            return cls, False, None
+    return "negative", True, (_top_reason(judged) or "awaiting_consecutive_frames")
+
+
+def judge_mode(judged: list[dict]) -> tuple[str, bool, str | None]:
+    """참고 — 확정된 프레임들의 최빈값. 확정이 하나도 없으면 미판정."""
+    votes = [r["predicted_class"] for r in judged if not r["is_reject"]]
     if not votes:
-        top = collections.Counter(reasons).most_common(1)
-        return "negative", True, (top[0][0] if top else None)
+        return "negative", True, _top_reason(judged)
     return collections.Counter(votes).most_common(1)[0][0], False, None
+
+
+def wilson_upper(k: int, n: int, z: float = 1.96) -> float:
+    """비율 k/n 의 95% Wilson 신뢰 상한(%). "0건" 주장에는 이 값을 함께 적는다(16 §5.7)."""
+    if n == 0:
+        return 100.0
+    ph = k / n
+    denom = 1 + z * z / n
+    centre = (ph + z * z / (2 * n)) / denom
+    half = z * ((ph * (1 - ph) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    return (centre + half) * 100
 
 
 def evaluate(samples: list[dict], model_path: Path | None):
@@ -89,14 +128,24 @@ def evaluate(samples: list[dict], model_path: Path | None):
 
         rows = []
         for (subject, cls, take), fs in sorted(takes.items(), key=lambda kv: str(kv[0])):
-            pred, rej, reason = judge_take(fs)
+            judged = frame_judgments(fs)
+            pred, rej, reason = judge_consecutive(judged)
+            m_pred, m_rej, m_reason = judge_mode(judged)
             rows.append({"cls": cls, "subject": subject, "take": take,
-                         "pred": pred, "reject": rej, "reason": reason,
+                         "pred": pred, "reject": rej, "reason": reason,              # 공식 (3연속)
+                         "mode_pred": m_pred, "mode_reject": m_rej, "mode_reason": m_reason,  # 참고 (최빈값)
+                         "frames": ["REJ:" + str(r.get("reason")) if r["is_reject"] else r["predicted_class"]
+                                    for r in judged],
                          "orientation": fs[0]["orientation"], "n": len(fs)})
         return mode, rows
     finally:
         model_store.MODEL_PATH = original
         model_store.load_bundle(force=True)
+
+
+def as_mode_rule(rows: list[dict]) -> list[dict]:
+    """참고 규칙(최빈값)으로 바꿔 끼운 행 — kpi_table을 그대로 쓰기 위해."""
+    return [{**r, "pred": r["mode_pred"], "reject": r["mode_reject"], "reason": r["mode_reason"]} for r in rows]
 
 
 def kpi_table(rows: list[dict]) -> dict:
@@ -127,9 +176,20 @@ def main() -> int:
     ap.add_argument("--data", type=Path,
                     default=SERVICE_ROOT.parent / "data" / "datasets" / "self_recorded")
     ap.add_argument("--subject", default=None, help="특정 촬영자만")
+    ap.add_argument("--include-excluded", action="store_true",
+                    help=f"폐기한 촬영자({', '.join(EXCLUDED_SUBJECTS)})도 포함 — 비교용")
+    ap.add_argument("--compare", action="store_true",
+                    help="models/cmp_*.joblib 비교 모델도 평가 (개발 데이터용 — 최종 KPI 측정에는 쓰지 않는다)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="결과 JSON 저장 경로 (KPI 표·촬영자별·테이크별 판정). 06 보고서에 붙일 원본")
     args = ap.parse_args()
 
     samples = load(args.data)
+    if not args.include_excluded:
+        dropped = collections.Counter(s["subject"] for s in samples if s["subject"] in EXCLUDED_SUBJECTS)
+        samples = [s for s in samples if s["subject"] not in EXCLUDED_SUBJECTS]
+        for subj, n in dropped.items():
+            print(f"[제외] {subj} {n}건 — {EXCLUDED_SUBJECTS[subj]}")
     if args.subject:
         samples = [s for s in samples if s["subject"] == args.subject]
     if not samples:
@@ -150,9 +210,10 @@ def main() -> int:
         print(f"\n  촬영자 {len(subs)}명 — 모델은 공개 데이터로만 학습했으므로 이 데이터는")
         print("  전부 처음 보는 입력이다. 촬영자별 분해는 아래 참고.")
 
-    candidates = [("현재 모델", None)] + [
+    # 비교 모델은 --compare 일 때만 — KPI 데이터로 여러 모델을 재보고 고르면 그 자체가 오염이다(최종 측정은 운영 모델 하나)
+    candidates = [("현재 모델", None)] + ([
         (p.name, p) for p in sorted((SERVICE_ROOT / "models").glob("cmp_*.joblib"))
-    ]
+    ] if args.compare else [])
 
     results = {}
     for name, path in candidates:
@@ -166,15 +227,18 @@ def main() -> int:
     print("=" * 78)
     print("KPI 표 (테이크 단위 = 한 번의 시도)")
     print("=" * 78)
-    print(f"  {'모델':<26}{'모드':<20}{'정답률':>8}{'오분류':>8}{'미판정':>8}{'MacroF1':>9}{'치명':>6}")
+    print(f"  공식: {N_CONSECUTIVE}연속 · 참고: 최빈값")
+    print(f"  {'모델':<22}{'규칙':<10}{'시도':>5}{'정답률':>8}{'오분류':>8}{'미판정':>8}{'MacroF1':>9}{'치명':>6}")
     print("  " + "-" * 76)
     for name, (mode, rows, k) in results.items():
         if not k:
             continue
-        print(f"  {name:<26}{mode:<20}{k['accuracy']:>7.1f}%{k['misclass']:>7.1f}%"
-              f"{k['reject']:>7.1f}%{k['macro_f1']:>9.3f}{k['critical']:>6}")
+        km = kpi_table(as_mode_rule(rows))
+        for label, kk in ((f"{N_CONSECUTIVE}연속(공식)", k), ("최빈값(참고)", km)):
+            print(f"  {name:<22}{label:<10}{kk['n']:>5}{kk['accuracy']:>7.1f}%{kk['misclass']:>7.1f}%"
+                  f"{kk['reject']:>7.1f}%{kk['macro_f1']:>9.3f}{kk['critical']:>6}")
     print("  " + "-" * 76)
-    print(f"  {'KPI 목표':<46}{'>=92%':>8}{'<=3%':>8}{'<=5%':>8}{'>=0.90':>9}{'0':>6}")
+    print(f"  {'KPI 목표':<37}{'>=92%':>8}{'<=3%':>8}{'<=5%':>8}{'>=0.90':>9}{'0':>6}")
 
     # 현재 모델 상세
     mode, rows, k = results.get("현재 모델", (None, [], {}))
@@ -205,21 +269,18 @@ def main() -> int:
     print("=" * 78)
     n = k["n"]
     wrong = round(k["misclass"] / 100 * n)
-    # Wilson 상한 (95%)
-    z = 1.96
-    ph = wrong / n
-    denom = 1 + z * z / n
-    centre = (ph + z * z / (2 * n)) / denom
-    half = z * ((ph * (1 - ph) / n + z * z / (4 * n * n)) ** 0.5) / denom
-    upper = (centre + half) * 100
+    upper = wilson_upper(wrong, n)
+    n_stop = sum(1 for r in rows if r["cls"] == CRITICAL)
+    crit_upper = wilson_upper(k["critical"], n_stop)
     print(f"  시도 {n}회 중 오분류 {wrong}회  ->  오분류율 95% 신뢰 상한 {upper:.1f}%")
+    print(f"  정지 시도 {n_stop}회 중 치명 오분류 {k['critical']}회  ->  95% 신뢰 상한 {crit_upper:.1f}%")
     verdict = ("확정 가능 — 상한이 KPI(3%) 안에 든다" if upper <= KPI["misclass"]
                else f"아직 확정 불가 — 상한 {upper:.1f}% > KPI 3%. 시도 수를 더 늘려야 한다")
     print(f"  => {verdict}")
     if upper > KPI["misclass"]:
-        need = int(3 / 0.03) if wrong == 0 else None
+        need = next((m for m in range(n, 5000) if wilson_upper(wrong, m) <= KPI["misclass"]), None)
         if need:
-            print(f"     오분류 0회를 유지한다면 약 {need}시도에서 상한이 3%로 내려간다")
+            print(f"     오분류 {wrong}회를 유지한다면 {need}시도에서 상한이 3% 이하로 내려간다")
 
     # ---- 소속 게이트 (애매한 자세) ----
     amb = [s for s in samples if s["cls"] == AMBIGUOUS]
@@ -339,6 +400,22 @@ def main() -> int:
                 print("  이들이 미판정/오답으로 가야 하고, 관대하게 하려면 정답으로 가야 한다.")
                 print("  τ와 게이트 퍼센타일로 그 지점을 조절한다.")
 
+    if args.out:
+        km = kpi_table(as_mode_rule(rows))
+        report = {
+            "rule_official": f"{N_CONSECUTIVE}연속", "rule_reference": "최빈값",
+            "excluded_subjects": {} if args.include_excluded else EXCLUDED_SUBJECTS,
+            "model": {"feature_mode": mode, **((model_store.load_bundle() or {}).get("metadata") or {})},
+            "kpi": {"official": k, "reference": km, "target": KPI,
+                    "misclass_wilson_upper": upper, "critical_wilson_upper": crit_upper, "n_stop": n_stop},
+            "per_subject": {s: {"official": kpi_table([r for r in rows if r["subject"] == s]),
+                                "reference": kpi_table(as_mode_rule([r for r in rows if r["subject"] == s]))}
+                            for s in sorted(subs)},
+            "takes": rows,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+        print(f"\n결과 저장: {args.out}")
     return 0
 
 

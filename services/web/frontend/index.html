@@ -2,124 +2,247 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SafeSign - 산업 안전 수신호 교육</title>
-  <link rel="stylesheet" href="style.css" />
+  <!-- style.css = Gemini AI Edition 테마 원본(stitch_safesign_design_system_final) · app.css = 회원·라이브 영상 등 추가 요소 -->
+  <link rel="stylesheet" href="style.css?v=20260929-g1" />
+  <link rel="stylesheet" href="app.css?v=20260929-g1" />
   <link rel="icon" href="data:," /><!-- 브라우저의 /favicon.ico 404 요청 방지 -->
 </head>
 <body>
-  <!-- 09_화면목록.md SC-01~SC-07. main.js가 .screen 중 하나에만 "active"를 붙여 전환한다. -->
+  <!-- 상단 표시줄: 브랜드 · 학습자(회원) · 장치 상태 -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">SafeSign</span>
+      <span class="brand-sub">산업 안전 수신호 교육</span>
+    </div>
+    <div class="topbar-right">
+      <div id="member-chip" class="member-chip hidden">
+        <span id="member-code" class="member-code"></span>
+        <span id="member-name" class="member-name"></span>
+        <button id="logout-btn" class="btn-secondary btn-small" type="button">로그아웃</button>
+      </div>
+      <div id="device-status-bar" class="device-status-bar"></div>
+    </div>
+  </header>
+
+  <!-- 09_화면목록.md SC-01~SC-07 (+ 회원 로그인·가입). main.js가 .screen 하나에만 "active"를 붙여 전환한다. -->
   <div id="app">
 
     <!-- SC-07: 중간 이탈 후 재접속 안내 (세션 이어하기 미구현, 2026-09-18 결정) -->
-    <section id="screen-reentry" class="screen">
-      <h1>이전 학습이 종료되었습니다</h1>
-      <p>처음부터 다시 시작합니다.</p>
-      <button id="reentry-confirm-btn">확인</button>
+    <section id="screen-reentry" class="screen screen-notice">
+      <div class="notice-card">
+        <div class="notice-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg></div>
+        <h1>이전 학습이 종료되었습니다</h1>
+        <p>처음부터 다시 시작합니다.</p>
+        <p class="notice-sub">이어하기는 지원하지 않아요 — 7종을 처음부터 학습합니다</p>
+        <button id="reentry-confirm-btn" type="button">확인</button>
+      </div>
     </section>
 
-    <!-- SC-01: 랜딩(접속) -->
+    <!-- SC-01: 랜딩 -->
     <section id="screen-landing" class="screen">
-      <h1>SafeSign 안전 수신호 교육</h1>
-      <p>AI Hand와 함께 산업 현장 안전 수신호를 배워봅시다.</p>
-      <button id="start-btn">시작하기</button>
+      <div class="landing-copy">
+        <h1>
+          <span class="landing-brand">SafeSign</span>
+          <span class="landing-title">AI Hand와 함께 배우는<br />산업 안전 수신호</span>
+        </h1>
+        <p class="landing-lead">AI Hand가 시범을 보이면 따라 해 보세요. 카메라가 손모양을 판정하고, picar가 신호대로 움직입니다.</p>
+        <button id="start-btn" type="button">시작하기</button>
+      </div>
+      <div id="landing-signs" class="landing-signs" aria-label="배울 수신호 7종"></div>
     </section>
 
-    <!-- SC-02: 교육 시작 확인 (커리큘럼 7종 미리보기) -->
-    <section id="screen-curriculum" class="screen">
-      <h1>배울 수신호 7종</h1>
-      <ol id="curriculum-list" class="curriculum-list"></ol>
-      <button id="curriculum-start-btn">교육 시작</button>
-    </section>
+    <!-- 회원: 로그인 / 회원가입 (2026-09-29, backend/members.py — Supabase) -->
+    <section id="screen-auth" class="screen">
+      <div class="auth-layout">
+        <div class="auth-copy screen-head">
+          <h1 id="auth-title">로그인</h1>
+          <p id="auth-lead">학습 기록은 회원마다 저장됩니다. 처음이면 회원가입을 하세요 — 회원코드를 드립니다.</p>
+          <p id="auth-store-note" class="auth-note"></p>
+        </div>
 
-    <!-- SC-03 (+ SC-03a/03b 오버레이): 수신호 시범/인식 핵심 화면 -->
-    <section id="screen-training" class="screen">
-      <header class="training-header">
-        <span id="signal-progress" class="badge">1 / 7</span>
-        <span id="attempt-badge" class="badge">시도 <span id="attempt-count">0</span></span>
-      </header>
-      <h1 id="signal-name">-</h1>
-      <p id="signal-desc" class="muted"></p>
+        <div class="auth-card">
+          <div class="auth-tabs" role="tablist">
+            <button id="tab-login" class="auth-tab" role="tab" type="button" aria-selected="true">로그인</button>
+            <button id="tab-signup" class="auth-tab" role="tab" type="button" aria-selected="false">회원가입</button>
+          </div>
 
-      <!-- 판정 타이밍 (web 할 일 ①-b, proposals/web_판정_타이밍_스펙.md §4.2).
-           phase="demo": 예시 사진 크게 + 확인 버튼 / phase="judging": 카메라 + 사진 작게 + 일치율.
-           main.js renderPhase()가 #training-stage의 phase-demo·phase-judging 클래스를 바꾼다. -->
-      <div id="training-stage" class="training-stage phase-demo">
-        <figure class="sign-photo">
-          <img id="sign-photo-img" alt="" />
-          <div id="sign-photo-missing" class="sign-photo-missing hidden">예시 사진 준비 중</div>
-          <figcaption class="muted small">정답 자세 (사람 손)</figcaption>
-        </figure>
+          <form id="login-form" class="auth-form" novalidate>
+            <label for="login-email">이메일</label>
+            <input id="login-email" name="email" type="email" autocomplete="username" required />
+            <label for="login-password">비밀번호</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+            <p id="login-error" class="form-error" role="alert"></p>
+            <button id="login-submit" type="submit">로그인</button>
+          </form>
 
-        <div class="camera-preview" id="camera-preview">
-          <div class="camera-placeholder">
-            <span>카메라 인식 중…</span>
-            <p class="muted small">
-              (실물 영상 미리보기는 vision 서비스에 프레임 스트리밍 엔드포인트가 추가되면 연결 예정)
-            </p>
+          <form id="signup-form" class="auth-form hidden" novalidate>
+            <div class="field-row">
+              <div class="field">
+                <label for="signup-name">이름</label>
+                <input id="signup-name" name="name" type="text" autocomplete="name" required />
+              </div>
+              <div class="field">
+                <label for="signup-org">소속 <small>(선택)</small></label>
+                <input id="signup-org" name="org" type="text" autocomplete="organization" />
+              </div>
+            </div>
+            <label for="signup-email">이메일</label>
+            <input id="signup-email" name="email" type="email" autocomplete="username" required />
+            <div class="field-row">
+              <div class="field">
+                <label for="signup-password">비밀번호 <small>(6자 이상)</small></label>
+                <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="6" required />
+              </div>
+              <div class="field">
+                <label for="signup-password2">비밀번호 확인</label>
+                <input id="signup-password2" name="password2" type="password" autocomplete="new-password" required />
+              </div>
+            </div>
+            <p id="signup-error" class="form-error" role="alert"></p>
+            <button id="signup-submit" type="submit">가입하고 회원코드 받기</button>
+          </form>
+
+          <div class="auth-guest">
+            <button id="guest-btn" class="btn-secondary" type="button">게스트로 학습</button>
+            <p>게스트는 학습 기록이 회원 DB에 저장되지 않아요</p>
           </div>
         </div>
       </div>
+    </section>
 
-      <div id="confirm-panel" class="confirm-panel hidden">
-        <p class="confirm-hint">AI Hand와 사진을 보고, 준비되면 확인을 누르세요</p>
-        <button id="confirm-btn" class="confirm-btn">확인</button>
-        <p id="confirm-keys" class="muted small">Space 키 또는 micro:bit A 버튼으로도 확인할 수 있어요</p>
+    <!-- 가입 완료 — 회원코드 안내 -->
+    <section id="screen-welcome" class="screen screen-notice">
+      <div class="notice-card">
+        <div class="notice-icon welcome-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></div>
+        <h1>가입이 완료되었습니다</h1>
+        <p><span id="welcome-name"></span> 님의 회원코드</p>
+        <p id="welcome-code" class="welcome-code"></p>
+        <p class="notice-sub">다음부터는 이메일과 비밀번호로 로그인하세요. 학습 기록은 이 회원코드로 저장됩니다.</p>
+        <button id="welcome-continue-btn" type="button">교육으로 이동</button>
       </div>
+    </section>
 
-      <p id="judging-hint" class="judging-hint hidden">손을 카메라에 보여주세요 — 판정 중</p>
-
-      <div id="match-score-row" class="match-score-row">
-        <label>일치율</label>
-        <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
-        <span id="match-score-value">0%</span>
+    <!-- SC-02: 교육 시작 확인 -->
+    <section id="screen-curriculum" class="screen">
+      <div class="screen-head">
+        <h1>배울 수신호 7종</h1>
+        <p>순서대로 시범 → 따라 하기 → 판정을 반복합니다. 정답이면 picar가 그 신호대로 움직여요.</p>
       </div>
+      <ol id="curriculum-list" class="curriculum-list"></ol>
+      <div class="screen-actions">
+        <button id="curriculum-back-btn" class="btn-secondary" type="button">처음으로</button>
+        <button id="curriculum-start-btn" type="button">교육 시작</button>
+      </div>
+    </section>
 
-      <!-- below_tau / out_of_distribution — 판정은 계속되므로 화면을 덮지 않고 문구만 띄운다 (스펙 §5 결정) -->
-      <p id="hold-hint" class="hold-hint hidden"></p>
+    <!-- SC-03 (+ SC-03a/03b 오버레이): 시범 / 판정.
+         예시 사진 대신 Camera Module 3 라이브 영상을 보여 준다(2026-09-29 회의 결정) — 한 <img>가 두 단계에서
+         자리만 옮긴다(app.css). phase-demo: 영상 + 3단계 안내·확인 / phase-judging: 영상 크게 + 손모양·일치율·안내 -->
+    <section id="screen-training" class="screen">
+      <header class="training-header">
+        <div class="badge">
+          <small>수신호</small>
+          <div id="signal-progress"><b>1</b> / 7</div>
+          <div id="progress-steps" class="progress-steps"></div>
+        </div>
+        <div class="signal-title">
+          <h1 id="signal-name">-</h1>
+          <p id="signal-desc"></p>
+        </div>
+        <div id="attempt-badge" class="badge">
+          <small>시도</small>
+          <span id="attempt-count">0</span><span id="attempt-max"></span>
+        </div>
+      </header>
+
+      <div id="training-stage" class="training-stage phase-demo">
+        <div id="camera-preview" class="camera-preview">
+          <img id="camera-img" class="camera-feed hidden" alt="카메라 라이브 영상 (거울처럼 좌우 반전)" />
+          <div id="camera-placeholder" class="camera-placeholder">
+            <span>카메라 연결 중…</span>
+            <p id="camera-placeholder-sub">연결이 안 되면 3초마다 다시 시도합니다</p>
+          </div>
+          <span class="camera-tag">LIVE</span>
+        </div>
+
+        <div id="sign-guide" class="sign-guide">
+          <p class="sign-guide-label">정답 손모양</p>
+          <div id="guide-fingers" class="finger-pattern"></div>
+          <p id="guide-text" class="sign-guide-text"></p>
+        </div>
+
+        <div id="confirm-panel" class="confirm-panel hidden">
+          <ol class="demo-steps">
+            <li>AI Hand의 <b>시범</b>을 보세요</li>
+            <li>화면 속 내 손으로 <b>같은 손모양</b>을 만드세요</li>
+            <li>준비되면 <b>확인</b>을 누르세요</li>
+          </ol>
+          <div class="confirm-row">
+            <button id="confirm-btn" class="confirm-btn" type="button">확인</button>
+            <p id="confirm-keys" class="confirm-keys"><kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd> 버튼으로도 확인할 수 있어요</p>
+          </div>
+          <p class="signal-picar"><span class="chip">picar</span><span id="signal-picar-text"></span></p>
+        </div>
+
+        <p id="judging-hint" class="judging-hint hidden">손을 카메라에 보여주세요 — 판정 중</p>
+
+        <div id="match-score-row" class="match-score-row hidden">
+          <label for="match-score-value">일치율</label>
+          <span id="match-score-value">0%</span>
+          <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
+        </div>
+
+        <!-- below_tau / out_of_distribution — 판정은 계속되므로 화면을 덮지 않고 문구만 띄운다 (스펙 §5 결정) -->
+        <div id="hold-hint" class="hold-hint hidden" role="status">
+          <span class="hold-icon" aria-hidden="true">!</span>
+          <div class="hold-text"><strong id="hold-title"></strong><small id="hold-sub"></small></div>
+        </div>
+      </div>
 
       <div id="training-overlay" class="overlay hidden"></div>
     </section>
 
     <!-- SC-04: 카메라 인식 실패 -->
-    <section id="screen-camera-fail" class="screen">
-      <h1>카메라 위치를 조정해주세요</h1>
-      <p>손이 잘 보이지 않습니다. 카메라 앞으로 손을 옮겨 다시 시도해주세요.</p>
-      <p>재시도 버튼, Space 키 또는 micro:bit A를 누르면 시범부터 다시 봅니다.</p>
-      <button id="camera-retry-btn">재시도</button>
-    </section>
-
-    <!-- SC-05: 학습 완료/집계 -->
-    <section id="screen-summary" class="screen">
-      <h1>수고하셨습니다 — 7종 완료</h1>
-      <table id="summary-table" class="summary-table">
-        <thead>
-          <tr><th>수신호</th><th>시도 횟수</th><th>정답 시 일치율</th></tr>
-        </thead>
-        <tbody id="summary-tbody"></tbody>
-      </table>
-      <div class="summary-actions">
-        <!-- 결과 저장을 먼저 둔다 - 수료증을 누르면 SC-06으로 넘어가 이 화면으로 돌아올 수 없다 -->
-        <button id="export-btn" class="btn-secondary">결과 저장 (CSV)</button>
-        <button id="certificate-btn">수료증 발급받기</button>
-        <p id="export-status" class="muted small"></p>
+    <section id="screen-camera-fail" class="screen screen-notice">
+      <div class="notice-card">
+        <div class="notice-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg></div>
+        <h1>카메라 위치를 조정해주세요</h1>
+        <p>손이 잘 보이지 않습니다. 카메라 앞으로 손을 옮겨 다시 시도해주세요.</p>
+        <p class="notice-sub">재시도 버튼, <kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd>를 누르면 시범부터 다시 봅니다</p>
+        <button id="camera-retry-btn" type="button">재시도</button>
       </div>
     </section>
 
-    <!-- SC-06: 수료증 발급 -->
+    <!-- SC-05: 학습 완료 — 결과는 회원 기록(Supabase)에 자동 저장된다 (예전 CSV 내려받기를 대신한다) -->
+    <section id="screen-summary" class="screen">
+      <h1 class="summary-title"><small>학습 완료</small>수고하셨습니다<span id="summary-sub"></span></h1>
+      <div class="summary-actions">
+        <div id="save-status" class="save-status" role="status"></div>
+        <button id="save-retry-btn" class="btn-secondary hidden" type="button">지금 다시 저장</button>
+        <button id="certificate-btn" type="button">수료증 발급받기</button>
+      </div>
+      <table class="summary-table">
+        <thead><tr><th>수신호</th><th>시도 횟수</th><th>정답 시 일치율</th></tr></thead>
+        <tbody id="summary-tbody"></tbody>
+      </table>
+    </section>
+
+    <!-- SC-06: 수료증 -->
     <section id="screen-certificate" class="screen">
+      <canvas id="certificate-canvas" width="800" height="560" aria-label="수료증"></canvas>
       <h1>수료증이 발급되었습니다</h1>
-      <canvas id="certificate-canvas" width="800" height="560"></canvas>
       <div class="certificate-actions">
-        <button id="certificate-download-btn">이미지로 저장</button>
-        <button id="certificate-print-btn">인쇄 / PDF로 저장</button>
-        <button id="restart-btn">다시 학습하기</button>
+        <button id="certificate-download-btn" type="button">이미지로 저장</button>
+        <button id="certificate-print-btn" class="btn-secondary" type="button">인쇄 / PDF로 저장</button>
+        <button id="restart-btn" class="btn-secondary" type="button">다시 학습하기</button>
+        <button id="finish-btn" class="btn-secondary" type="button">끝내기 (로그아웃)</button>
       </div>
     </section>
 
   </div>
 
-  <footer id="device-status-bar" class="device-status-bar"></footer>
-
-  <script src="main.js?v=20260929-2"></script>
+  <script src="main.js?v=20260929-g1"></script>
 </body>
 </html>

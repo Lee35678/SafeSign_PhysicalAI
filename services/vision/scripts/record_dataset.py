@@ -187,6 +187,8 @@ def main() -> int:
                     help="7종 대신 '애매한자세'만 촬영 (τ 미판정 검증용, 20~30컷 권장)")
     ap.add_argument("--landmarker", default=str(SERVICE_ROOT / "models" / "hand_landmarker.task"))
     ap.add_argument("--no-mirror", action="store_true")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="같은 촬영자 ID의 파일이 이미 있어도 덮어쓴다 (기본은 막는다 — KPI 원본 보호)")
     add_camera_args(ap, default_source="usb")   # --source/--camera/--size/--fps/--list-cameras 등
     args = ap.parse_args()
 
@@ -227,6 +229,15 @@ def main() -> int:
         missing = want - {s[0] for s in shapes}
         if missing:
             raise SystemExit(f"모르는 클래스: {sorted(missing)}")
+
+    # 테이크 번호는 1부터 다시 시작하고 파일 이름이 {ID}_{클래스}_t01_f1 꼴이라, 같은 ID로 같은 폴더에 다시 찍으면
+    # 옛 파일을 경고 없이 덮어쓴다(2026-09-29 발견). KPI 원본이 섞이거나 사라지지 않게 시작 전에 막는다.
+    existing = sorted(args.out.glob(f"*/{args.subject_id}_*.json"))
+    if existing and not args.overwrite:
+        raise SystemExit(
+            f"{args.out} 에 촬영자 '{args.subject_id}'의 파일이 이미 {len(existing)}개 있습니다 "
+            f"(예: {existing[0].relative_to(args.out)}).\n"
+            "  다른 폴더에 찍으려면 --out <폴더>, 다른 ID를 쓰려면 --subject-id, 정말 덮어쓰려면 --overwrite")
 
     total_planned = len(shapes) * args.takes * args.burst
     print("=" * 70)

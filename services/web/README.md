@@ -9,6 +9,11 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 진행합니다 (03_인터페이스계약서 §5-2·§7 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
 보드를 분리했습니다, 02_설계문서 §1-1).
 
+> **2026-09-29 갱신 (이동혁)**: 화면을 **Gemini AI Edition 디자인**(`stitch_safesign_design_system_final/`)으로 새로 만들었다.
+> **회원가입·로그인**(회원코드 SS-00001 자동 부여)과 **회원별 학습 결과 저장(Supabase)** 을 추가하고, SC-05의 CSV 내려받기를
+> 회원 기록 자동 저장으로 바꿨다. 회의 결정대로 **수신호 예시 사진을 빼고 Camera Module 3 라이브 영상**을 보여 준다.
+> 설정은 [supabase/README.md](supabase/README.md).
+>
 > **2026-09-22 갱신**: SC-01~SC-06 전체 흐름을 `/api/state` 폴링 기반으로 구현했다(SC-07은 프론트엔드가
 > 최초 로드 시 상태를 보고 판단). below_tau/out_of_distribution 구분, SC-04(카메라 인식 실패) 자동
 > 전환, 시도 횟수·수신호별 집계, 수료증(SC-06) 발급까지 포함. 화면 디자인/레이아웃은 여전히 최소
@@ -49,14 +54,25 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   - vision/actuation/picar의 `GET /health`를 5초 간격으로 확인해 `devices`로 노출한다.
   - 손 미검출(no_hand/normalize_failed)이 `CAMERA_FAIL_STREAK_THRESHOLD`(잠정 15회)회 연속되면 SC-04로
     전환하고, 손이 다시 보이면 자동으로 SC-03에 복귀한다.
-- `frontend/` — SC-01~SC-07 화면 전체를 `index.html`의 `.screen` 섹션 + `main.js`의 폴링/전환 로직으로
-  구현. 프레임워크 없이 바닐라 JS 유지(팀 논의 전까지). 수료증(SC-06)은 `<canvas>`로 그려 PNG 다운로드/
-  인쇄(PDF 저장)를 제공한다. 카메라 실시간 영상 미리보기는 vision에 프레임 스트리밍 엔드포인트가 없어
-  자리표시자만 표시한다(§ "아직 확정 안 된 것" 참고).
-  - **SC-03 시범/판정 단계** (①-b, 2026-09-29): `phase == "demo"`면 예시 사진(`frontend/images/<command>.jpg`, 김지훈 ⑩)을
-    크게 + 확인 버튼(Space·micro:bit A), `judging`이면 카메라 영역 + 사진 작게 + 일치율. Space는 확인 버튼이 보일 때만
-    받고(`preventDefault`, `event.repeat` 무시), 정답/오답 오버레이가 떠 있는 동안은 받지 않는다. `below_tau`/OOD는
-    오버레이 대신 판정 화면 안 문구로 보여준다. SC-05 "결과 저장 (CSV)"는 ⑨(김지훈, UTF-8 BOM)
+  - **회원 결과 저장** (2026-09-29): 7종을 마쳐 SC-05로 넘어가는 순간 `backend/members.py`로 회원 기록에 저장한다.
+    회원은 `/api/start` 때 로그인해 있던 학습자로 고정한다. 저장 상태는 `/api/state`의 `result_save`, 이 회차의 학습자는 `member`.
+    KPI 시행 로그의 `subject` 열에는 회원코드가 들어간다(`LOG_SUBJECT`가 있으면 그 값이 우선).
+- `backend/members.py` — 회원가입·로그인·게스트·로그아웃(`/api/auth/*`)과 회원별 결과 저장. 브라우저는 Supabase에 직접
+  붙지 않고 백엔드만 `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`로 접근한다. 키가 없으면 로컬 모드(`data/`), 인터넷이 끊기면
+  결과를 대기열에 쌓았다가 30초마다 다시 보낸다. 자세한 설정·동작은 [supabase/README.md](supabase/README.md)
+  - `POST /api/auth/signup` `{email, password, name, org}` → 회원코드 부여 · `POST /api/auth/login` `{email, password}`
+  - `POST /api/auth/guest` · `POST /api/auth/logout` · `GET /api/auth/me` · `POST /api/auth/results/retry`(대기열 즉시 재전송)
+- `backend/camera.py` — `GET /api/camera/stream`: vision `GET /stream`(MJPEG)을 그대로 중계한다. 브라우저는 교육장 PC에서
+  열리는데 `VISION_URL`은 RPi5 기준 주소라, web을 거쳐야 주소·포트가 맞는다.
+- `frontend/` — `index.html`(화면 마크업) + `style.css`(**Gemini 테마 원본 그대로**) + `app.css`(회원·라이브 영상·손가락 패턴 등
+  원본에 없는 요소만) + `main.js`(폴링·전환). 프레임워크 없이 바닐라 JS. 수료증(SC-06)은 `<canvas>`(성명·회원코드 포함).
+  - 흐름: SC-01 → **로그인/회원가입**(가입 완료 시 회원코드 안내, 게스트 가능) → SC-02 → SC-03 → … → SC-06 → 다시 학습 / 끝내기(로그아웃)
+  - **SC-03 시범/판정 단계**: 두 단계 모두 **라이브 영상**(한 `<img>`가 자리만 옮긴다). 정답 손모양은 사진 대신 **손가락 패턴**
+    (엄지~소지 폄/접음)으로 보여 준다 — AI Hand가 구별하지 못하는 G3≈G6·G4≈G7(설계서 §4.7)도 이 패턴으로 구분된다.
+    Space는 확인 버튼이 보일 때만 받고(`preventDefault`, `event.repeat` 무시), 오버레이가 떠 있는 동안은 받지 않는다.
+    `below_tau`/OOD는 오버레이 대신 판정 화면 안 문구로 보여 준다.
+  - **SC-05**: 결과는 자동으로 회원 기록에 저장되고 화면에 상태가 나온다(저장됨 · 연결 대기 · 로컬 모드 · 게스트 · 실패).
+    예전 "결과 저장 (CSV)" 내려받기(⑨)는 이것으로 대신한다.
 
 ## 화면 ↔ 상태 매핑 (09_화면목록.md 참고, 2026-09-18 갱신)
 
@@ -89,8 +105,8 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 - [ ] 커리큘럼 순서(`CURRICULUM`)가 PRD §3.2 표 순서 그대로인데, 실제 교육 설계상 순서인지 확인 필요
 - [ ] SC-03b "권장 재도전 횟수" 산식 — 어느 문서에도 정의돼 있지 않아 `_recommended_retry_count`에
   match_score 구간별 잠정치(1~3회)로 구현. 실측/교육 설계 확정 필요
-- [ ] SC-03 카메라 실시간 영상 미리보기 — vision이 프레임 스트리밍 엔드포인트를 제공하지 않아 현재는
-  자리표시자만 표시. vision 담당과 스트리밍 방식(MJPEG/WebSocket 등) 협의 필요
+- [x] ~~SC-03 카메라 실시간 영상 미리보기~~ → 2026-09-29 MJPEG로 구현(vision `GET /stream` → web `/api/camera/stream`).
+  예시 사진은 회의 결정으로 뺐다. RPi5 실물에서 영상을 켠 채 `result_fps`가 떨어지지 않는지 확인 필요
 - [x] ~~`확인_완료` AI Hand 자세 gap (문서는 "주먹", actuation 코드는 "엄지만 펴기")~~ → 2026-09-25 해소:
   actuation `gesture5`를 주먹으로 수정·재플래시(`d3a209e`). 화면 설명과 실물 AI Hand 동작이 일치한다
 - [x] ~~`확인_완료` picar LED 설명~~ → "번갈아 2회 점멸 후 소등"에서 **"정지 + 적색·황색 LED 전부 동시 점멸"**로
@@ -105,6 +121,10 @@ docker compose up --build web
 ```
 
 ## 테스트
+
+`tests/test_members.py` — 가짜 Supabase(httpx.MockTransport)로 가입·로그인·회원코드·결과 저장·오프라인 대기열·재전송,
+로컬 모드, 시작한 회원에게 저장되는지. `tests/test_camera_proxy.py` — 영상 중계·vision 다운 시 503.
+테스트 동안 회원 파일·시행 로그는 임시 폴더를 쓰고 Supabase 키는 지운다(`tests/conftest.py`).
 
 `tests/test_state_machine.py` — vision/actuation/picar 실물·mock 서버 없이 httpx 호출만 patch해
 정답/오답/below_tau/out_of_distribution 분기, SC-04 임계값·자동 복귀, 4xx/5xx 실패 감지, SC-06 발급
