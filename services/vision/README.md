@@ -261,5 +261,6 @@ python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 �
 - [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — **RPi5 실물 확인 대기**
 - [ ] RPi5 실물에서 `result_fps` · 판정 지연 P95 측정 (mediapipe aarch64 휠 설치 여부 포함)
 - [x] ~~`hand_landmarker.task` 모델 번들 다운로드 → `models/`~~ (git 에 포함)
-- [ ] 실측 후 τ·N프레임 재검증, 05_모델카드 §7-3 실측 표 채우기
+- [x] ~~05_모델카드 §7-3 실측 표 채우기~~ → ✅ 2026-09-30 최종 KPI(팀원 3명 210시도, RPi5 CSI) 5개 달성. τ는 0.75 유지(최종 KPI에서 τ가 막은 시도 0건)
+- [ ] 기울인 손 게이트 과차단(최종 KPI 미판정 10건 중 7건 우기울임) — 개발용 데이터로 조정 후 **새 평가 데이터로** 재측정
 - [ ] `/latest` 폴링 → WebSocket 전환 검토 (지연 KPI 여유 없을 때)
