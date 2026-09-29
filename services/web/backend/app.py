@@ -21,6 +21,30 @@ from backend.state_machine import router as state_machine_router
 from backend.state_machine import start_polling
 
 app = FastAPI(title="SafeSign Web Service")
+
+# 보안 헤더 (2026-09-30, document/18_DB설계서.md §5) — 화면은 같은 출처의 파일만 쓰므로 CSP로 외부 스크립트·프레임을 막는다.
+# style-src 'unsafe-inline': 진행 막대 폭 등을 style 속성으로 넣기 때문(스크립트는 인라인 금지 그대로).
+SECURITY_HEADERS = {
+    "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                                "img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; "
+                                "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",   # 카메라는 RPi5가 직접 — 브라우저 권한 불필요
+}
+
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    response = await call_next(request)
+    for k, v in SECURITY_HEADERS.items():
+        response.headers.setdefault(k, v)
+    if request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")     # 회원 정보가 브라우저 캐시에 남지 않게
+    return response
+
+
 app.include_router(state_machine_router, prefix="/api")
 app.include_router(members.router, prefix="/api/auth")
 app.include_router(camera_router, prefix="/api/camera")

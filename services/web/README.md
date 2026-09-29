@@ -62,15 +62,27 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   결과를 대기열에 쌓았다가 30초마다 다시 보낸다. 자세한 설정·동작은 [supabase/README.md](supabase/README.md)
   - `POST /api/auth/signup` `{email, password, name, org}` → 회원코드 부여 · `POST /api/auth/login` `{email, password}`
   - `POST /api/auth/guest` · `POST /api/auth/logout` · `GET /api/auth/me` · `POST /api/auth/results/retry`(대기열 즉시 재전송)
+  - (2026-09-30) `POST /api/auth/find-id` `{name, member_code}` → 가린 이메일 · `POST /api/auth/password/request` `{email}` →
+    6자리 인증 코드 메일 · `POST /api/auth/password/reset` `{email, code, new_password}`
+  - **보안**: 로그인 실패 5회/10분 잠금, 비밀번호 8자+영문·숫자, 모든 응답에 CSP 등 보안 헤더, `/api/*` `no-store`,
+    공용 PC 5분 무입력 자동 로그아웃. 결과에는 수신호별 **합격/불합격**(`passed`)이 함께 저장된다 — [18_DB설계서](../../document/18_DB설계서.md)
 - `backend/camera.py` — `GET /api/camera/stream`: vision `GET /stream`(MJPEG)을 그대로 중계한다. 브라우저는 교육장 PC에서
   열리는데 `VISION_URL`은 RPi5 기준 주소라, web을 거쳐야 주소·포트가 맞는다.
-- `frontend/` — `index.html`(화면 마크업) + `style.css`(**Gemini 테마 원본 그대로**) + `app.css`(회원·라이브 영상·손가락 패턴 등
-  원본에 없는 요소만) + `main.js`(폴링·전환). 프레임워크 없이 바닐라 JS. 수료증(SC-06)은 `<canvas>`(성명·회원코드 포함).
+- `frontend/` — `index.html`(화면 마크업) + `style.css`(Gemini 테마 구조 그대로, **색만 산업 안전 팔레트** — 2026-09-30) + `app.css`(회원·라이브 영상·손가락 패턴 등
+  원본에 없는 요소 + 디자인 방향 절) + `main.js`(폴링·전환) + `fonts/`(SUIT·Inter, OFL — 오프라인용 동봉).
+  - 디자인 (2026-09-30): Industrial Intelligence · Mission Control · Technical Editorial. 팔레트 Industrial Black `#111820`(배경) ·
+    Safety Orange `#F28C28`(핵심 강조, 주 버튼은 검정 글자) · Steel Gray `#687582`(보조 정보) · Signal White `#F4F6F8`(주요 텍스트) ·
+    Safe Green `#22C55E`(정상) · Alert Red `#EF4444`(위험 경고). SC-01 오른쪽은 제품 소개(손 관절 21점 인식 애니메이션),
+    판정 중 카메라에는 실시간 판정값 계기판(`live_judgment`: 손 검출 · 인식 수신호 · 신뢰도).
+  - 화면 기준 (2026-09-30): 시연 PC **1920×1080 전체 화면**. 노트북 1366×768(전체 화면)·1366×657(창 모드)도 전 화면이
+    스크롤·잘림 없이 들어간다 — 세로 820px·700px 이하에서 간격·글자만 줄인다(`app.css` "노트북 화면 맞춤"). 프레임워크 없이 바닐라 JS. 수료증(SC-06)은 `<canvas>`(성명·회원코드 포함).
   - 흐름: SC-01 → **로그인/회원가입**(가입 완료 시 회원코드 안내, 게스트 가능) → SC-02 → SC-03 → … → SC-06 → 다시 학습 / 끝내기(로그아웃)
   - **SC-03 시범/판정 단계**: 두 단계 모두 **라이브 영상**(한 `<img>`가 자리만 옮긴다). 정답 손모양은 사진 대신 **손가락 패턴**
     (엄지~소지 폄/접음)으로 보여 준다 — AI Hand가 구별하지 못하는 G3≈G6·G4≈G7(설계서 §4.7)도 이 패턴으로 구분된다.
     Space는 확인 버튼이 보일 때만 받고(`preventDefault`, `event.repeat` 무시), 오버레이가 떠 있는 동안은 받지 않는다.
     `below_tau`/OOD는 오버레이 대신 판정 화면 안 문구로 보여 준다.
+  - **일치율** (2026-09-30): 화면의 일치율 = **분류기가 본 목표 수신호 확률 × 100**(`_target_score`, vision `class_probabilities`).
+    판정과 같은 값이라 목표를 제대로 하면 높고(75점 이상이어야 정답) 다른 손동작이면 낮다. 시행 로그에는 `target_score` 열로 남는다
   - **SC-05**: 결과는 자동으로 회원 기록에 저장되고 화면에 상태가 나온다(저장됨 · 연결 대기 · 로컬 모드 · 게스트 · 실패).
     예전 "결과 저장 (CSV)" 내려받기(⑨)는 이것으로 대신한다.
 

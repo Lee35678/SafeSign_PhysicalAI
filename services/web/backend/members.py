@@ -19,6 +19,18 @@
     세션 ID를 web이 만들어 보내므로 재전송해도 한 번만 저장된다.
   - 로그인·가입: Supabase가 확인해야 하므로 오프라인이면 할 수 없다 → 화면이 게스트 진행을 안내한다.
     게스트 결과는 회원 DB에 올리지 않고 로컬 파일(results_local.jsonl)에만 남긴다.
+
+아이디·비밀번호 찾기 (2026-09-30)
+  - 아이디(이메일) 찾기: 이름 + 회원코드가 모두 맞으면 **가린 이메일**(k***@example.com)만 보여 준다.
+  - 비밀번호 찾기: 가입 이메일로 **6자리 인증 코드**(Supabase Auth recovery OTP) → 교육장 화면에서 코드 + 새 비밀번호.
+    메일 속 링크 방식은 교육장 서버가 인터넷 밖에서 열리지 않아 쓰지 않는다. 가입 여부와 관계없이 같은 안내를 돌려준다
+    (이메일로 가입 여부를 캐낼 수 없게). 로컬 모드에서는 메일을 못 보내므로 코드를 서버 로그에만 찍는다(개발용).
+
+보안 (2026-09-30, document/18_DB설계서.md §5)
+  - 키: service_role 키는 서버 환경변수에만. anon·publishable 키를 넣으면 기동 시 오류 로그로 알린다.
+  - 무차별 대입 방지: 로그인 실패 5회/10분이면 그 이메일·접속 주소를 10분 잠근다. 찾기·코드 요청도 횟수를 제한한다.
+  - 비밀번호: 8자 이상 + 영문과 숫자 포함. 입력 길이 제한(이름 30 · 소속 50 · 이메일 254 · 비밀번호 72).
+  - 로컬 모드 회원 파일은 scrypt 해시 + 파일 권한 600(POSIX).
 """
 from __future__ import annotations
 
@@ -37,8 +49,8 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,8 +62,12 @@ PENDING_RETRY_S = float(os.getenv("RESULTS_RETRY_INTERVAL_S", "30"))
 # 로컬 파일 폴더 — 쓰는 시점에 읽는다(테스트가 임시 폴더로 바꿔 끼운다)
 MEMBER_DATA_DIR = Path(os.getenv("MEMBER_DATA_DIR", str(Path(__file__).resolve().parents[1] / "data")))
 
-MIN_PASSWORD_LEN = 6          # Supabase Auth 기본 최소 길이와 같게
+MIN_PASSWORD_LEN = 8          # Supabase 기본(6)보다 엄격하게 — 영문·숫자 조합도 요구
+MAX_PASSWORD_LEN = 72         # bcrypt(Supabase Auth) 입력 한계
+MAX_NAME_LEN, MAX_ORG_LEN, MAX_EMAIL_LEN = 30, 50, 254
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_CODE_RE = re.compile(r"^SS-\d{5}$")
+RESET_CODE_TTL_S = 10 * 60     # 로컬 모드 인증 코드 유효 시간 (Supabase는 프로젝트 설정의 OTP 만료 시간)
 
 
 class MemberError(Exception):
@@ -77,16 +93,95 @@ def _public(member: Optional[dict]) -> Optional[dict]:
     return {k: member.get(k) for k in ("member_code", "name", "email", "org", "guest")}
 
 
-def _validate_signup(email: str, password: str, name: str) -> tuple[str, str]:
+def _validate_password(password: str) -> None:
+    pw = password or ""
+    if len(pw) > MAX_PASSWORD_LEN:
+        raise MemberError("weak_password", f"비밀번호는 {MAX_PASSWORD_LEN}자 이하로 해 주세요.")
+    if len(pw) < MIN_PASSWORD_LEN or not re.search(r"[A-Za-z]", pw) or not re.search(r"\d", pw):
+        raise MemberError("weak_password", f"비밀번호는 {MIN_PASSWORD_LEN}자 이상, 영문과 숫자를 함께 넣어 주세요.")
+
+
+def _clean_email(email: str) -> str:
     email = (email or "").strip().lower()
-    name = (name or "").strip()
-    if not _EMAIL_RE.match(email):
+    if len(email) > MAX_EMAIL_LEN or not _EMAIL_RE.match(email):
         raise MemberError("invalid_email", "이메일 주소 형식을 확인해 주세요.")
-    if len(password or "") < MIN_PASSWORD_LEN:
-        raise MemberError("weak_password", f"비밀번호는 {MIN_PASSWORD_LEN}자 이상이어야 합니다.")
+    return email
+
+
+def _validate_signup(email: str, password: str, name: str, org: str = "") -> tuple[str, str]:
+    email = _clean_email(email)
+    _validate_password(password)
+    name = (name or "").strip()
     if not name:
         raise MemberError("name_required", "이름을 입력해 주세요.")
+    if len(name) > MAX_NAME_LEN:
+        raise MemberError("name_too_long", f"이름은 {MAX_NAME_LEN}자 이하로 입력해 주세요.")
+    if len((org or "").strip()) > MAX_ORG_LEN:
+        raise MemberError("org_too_long", f"소속은 {MAX_ORG_LEN}자 이하로 입력해 주세요.")
     return email, name
+
+
+def mask_email(email: str) -> str:
+    """k***@example.com — 아이디 찾기에서 전체 이메일을 보여 주지 않는다."""
+    local, _, domain = (email or "").partition("@")
+    return f"{local[:1]}***@{domain}" if local and domain else "***"
+
+
+def _check_service_key(key: str) -> None:
+    """anon·publishable 키를 넣으면 가입·저장이 RLS에 막혀 이상하게 실패한다 — 기동 때 바로 알린다."""
+    if key.startswith("sb_publishable_"):
+        logger.error("SUPABASE_SERVICE_ROLE_KEY에 publishable(공개) 키가 들어 있습니다 — secret/service_role 키를 넣으세요")
+        return
+    parts = key.split(".")
+    if len(parts) == 3:
+        import base64
+        try:
+            pad = "=" * (-len(parts[1]) % 4)
+            role = json.loads(base64.urlsafe_b64decode(parts[1] + pad)).get("role")
+        except (ValueError, TypeError):
+            return
+        if role != "service_role":
+            logger.error("SUPABASE_SERVICE_ROLE_KEY의 역할이 '%s'입니다 — service_role 키를 넣으세요", role)
+
+
+class _Limiter:
+    """메모리 기반 시도 제한 — 창(window) 안에서 max회 넘으면 lock초 동안 막는다. 교육 스테이션 1대라 메모리로 충분하다."""
+
+    def __init__(self, max_hits: int, window_s: float, lock_s: float):
+        self.max_hits, self.window_s, self.lock_s = max_hits, window_s, lock_s
+        self._hits: dict[str, list[float]] = {}
+        self._locked: dict[str, float] = {}
+        self._lk = threading.Lock()
+
+    def locked_for(self, key: str) -> int:
+        with self._lk:
+            until = self._locked.get(key, 0.0)
+            return max(0, int(until - time.monotonic() + 0.999))
+
+    def hit(self, key: str) -> None:
+        now = time.monotonic()
+        with self._lk:
+            hits = [h for h in self._hits.get(key, []) if now - h < self.window_s] + [now]
+            self._hits[key] = hits
+            if len(hits) >= self.max_hits:
+                self._locked[key] = now + self.lock_s
+                self._hits[key] = []
+
+    def clear(self, key: str) -> None:
+        with self._lk:
+            self._hits.pop(key, None)
+            self._locked.pop(key, None)
+
+
+LOGIN_LIMIT = _Limiter(max_hits=5, window_s=600, lock_s=600)       # 실패 5회/10분 → 10분 잠금
+FIND_LIMIT = _Limiter(max_hits=10, window_s=600, lock_s=600)       # 아이디 찾기 10회/10분
+RESET_LIMIT = _Limiter(max_hits=3, window_s=600, lock_s=600)       # 코드 요청 3회/10분 (메일 발송 제한 보호)
+VERIFY_LIMIT = _Limiter(max_hits=5, window_s=600, lock_s=600)      # 코드 입력 실패 5회/10분
+
+
+def _locked_error(seconds: int) -> MemberError:
+    minutes = max(1, (seconds + 59) // 60)
+    return MemberError("too_many_attempts", f"시도가 너무 많습니다. {minutes}분 뒤에 다시 시도해 주세요.")
 
 
 # ══ 로컬 저장소 (키가 없을 때) ═══════════════════════════════════════════════════
@@ -111,13 +206,17 @@ class LocalStore:
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(p)      # 쓰다 죽어도 반쪽 파일이 남지 않게
+        try:
+            os.chmod(p, 0o600)   # 비밀번호 해시가 들어 있다 — 소유자만 읽게 (Windows에서는 효과가 제한적)
+        except OSError:
+            pass
 
     @staticmethod
     def _hash(password: str, salt: bytes) -> str:
         return hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2 ** 14, r=8, p=1).hex()
 
     def signup(self, email: str, password: str, name: str, org: str = "") -> dict:
-        email, name = _validate_signup(email, password, name)
+        email, name = _validate_signup(email, password, name, org)
         with self._lock:
             db = self._load()
             if email in db["users"]:
@@ -146,6 +245,40 @@ class LocalStore:
 
     def save_session(self, payload: dict) -> None:
         _append_jsonl("results_local.jsonl", payload)
+
+    def find_email(self, name: str, member_code: str) -> Optional[str]:
+        with self._lock:
+            users = self._load()["users"].values()
+        for m in users:
+            if m["member_code"] == member_code and m["name"] == name:
+                return m["email"]
+        return None
+
+    # 로컬 모드 인증 코드: {email: (code, 만료 monotonic)} — 메일을 못 보내므로 서버 로그로만 알린다(개발용)
+    _codes: dict[str, tuple[str, float]] = {}
+
+    def request_reset(self, email: str) -> None:
+        with self._lock:
+            known = email in self._load()["users"]
+        if not known:
+            return
+        code = f"{secrets.randbelow(10 ** 6):06d}"
+        LocalStore._codes[email] = (code, time.monotonic() + RESET_CODE_TTL_S)
+        logger.warning("[로컬 모드] 비밀번호 재설정 인증 코드 %s → %s (10분 유효, 메일 대신 로그에만 표시)", mask_email(email), code)
+
+    def confirm_reset(self, email: str, code: str, new_password: str) -> None:
+        saved = LocalStore._codes.get(email)
+        if not saved or saved[1] < time.monotonic() or not hmac.compare_digest(saved[0], (code or "").strip()):
+            raise MemberError("invalid_code", "인증 코드가 맞지 않거나 만료됐습니다.")
+        with self._lock:
+            db = self._load()
+            member = db["users"].get(email)
+            if member is None:
+                raise MemberError("invalid_code", "인증 코드가 맞지 않거나 만료됐습니다.")
+            salt = secrets.token_bytes(16)
+            member["salt"], member["hash"] = salt.hex(), self._hash(new_password, salt)
+            self._save(db)
+        LocalStore._codes.pop(email, None)
 
 
 # ══ Supabase 저장소 ══════════════════════════════════════════════════════════════
@@ -208,7 +341,7 @@ class SupabaseStore:
         return rows[0]
 
     def signup(self, email: str, password: str, name: str, org: str = "") -> dict:
-        email, name = _validate_signup(email, password, name)
+        email, name = _validate_signup(email, password, name, org)
         org = (org or "").strip() or None
         try:
             user = self._request("POST", "/auth/v1/admin/users", {
@@ -273,6 +406,48 @@ class SupabaseStore:
         """실패 시 SupabaseOffline(다시 보낼 것) 또는 SupabaseRejected(보내도 안 됨)."""
         self._request("POST", "/rest/v1/rpc/save_training_session", {"payload": payload})
 
+    def find_email(self, name: str, member_code: str) -> Optional[str]:
+        try:
+            rows = self._request("GET", f"/rest/v1/members?member_code=eq.{member_code}&select=email,name")
+        except SupabaseOffline:
+            raise MemberError("offline", OFFLINE_MESSAGE)
+        except SupabaseRejected as exc:
+            logger.error("아이디 찾기 조회 실패: %s", exc)
+            raise MemberError("find_failed", "지금은 찾을 수 없습니다. 잠시 후 다시 시도해 주세요.")
+        for row in rows or []:
+            if row.get("name") == name:          # 이름 비교는 URL 인코딩 문제를 피하려고 여기서 한다
+                return row.get("email")
+        return None
+
+    def request_reset(self, email: str) -> None:
+        """Supabase Auth가 재설정 메일을 보낸다 — 메일 템플릿에 {{ .Token }}(6자리 코드)이 있어야 한다(supabase/README.md)."""
+        try:
+            self._request("POST", "/auth/v1/recover", {"email": email})
+        except SupabaseOffline:
+            raise MemberError("offline", OFFLINE_MESSAGE)
+        except SupabaseRejected as exc:
+            # 없는 이메일·발송 제한 등 — 가입 여부를 드러내지 않도록 화면에는 같은 안내를 보낸다
+            logger.warning("재설정 메일 요청 거부(%s): %s", mask_email(email), exc)
+
+    def confirm_reset(self, email: str, code: str, new_password: str) -> None:
+        try:
+            verified = self._request("POST", "/auth/v1/verify",
+                                     {"type": "recovery", "email": email, "token": (code or "").strip()})
+        except SupabaseOffline:
+            raise MemberError("offline", OFFLINE_MESSAGE)
+        except SupabaseRejected:
+            raise MemberError("invalid_code", "인증 코드가 맞지 않거나 만료됐습니다.")
+        user_id = ((verified or {}).get("user") or {}).get("id")
+        if not user_id:
+            raise MemberError("invalid_code", "인증 코드가 맞지 않거나 만료됐습니다.")
+        try:
+            self._request("PUT", f"/auth/v1/admin/users/{user_id}", {"password": new_password})
+        except SupabaseOffline:
+            raise MemberError("offline", OFFLINE_MESSAGE)
+        except SupabaseRejected as exc:
+            logger.error("비밀번호 변경 거부: %s", exc)
+            raise MemberError("reset_failed", "비밀번호를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.")
+
 
 # ══ 파일 도우미 · 대기열 ═════════════════════════════════════════════════════════
 _file_lock = threading.Lock()
@@ -317,8 +492,11 @@ def get_store():
     """환경변수를 보고 저장소를 고른다(한 번만). 테스트는 set_store로 바꿔 끼운다."""
     global _store
     if _store is None:
-        _store = (SupabaseStore(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-                  if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else LocalStore())
+        if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+            _check_service_key(SUPABASE_SERVICE_ROLE_KEY)
+            _store = SupabaseStore(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        else:
+            _store = LocalStore()
     return _store
 
 
@@ -364,7 +542,9 @@ def save_session_results(payload: dict, member=_SENTINEL) -> dict:
     global _last_save
     if member is _SENTINEL:
         member = current_member()
-    results = payload.get("results") or []
+    # 합격 = 시도 상한(3회) 안에 정답, 불합격 = 상한을 넘겨 넘어감(given_up). DB는 given_up에서 passed를 계산하고,
+    # 로컬 파일에도 같은 값을 남긴다 (document/18_DB설계서.md §3)
+    results = [{**r, "passed": not r.get("given_up")} for r in (payload.get("results") or [])]
     record = {
         "id": str(uuid.uuid4()),
         "user_id": (member or {}).get("user_id"),
@@ -374,6 +554,7 @@ def save_session_results(payload: dict, member=_SENTINEL) -> dict:
         "total_attempts": sum(int(r.get("attempts", 0)) for r in results),
         "first_try_correct": sum(1 for r in results
                                  if int(r.get("attempts", 0)) == 1 and not r.get("given_up")),
+        "passed_count": sum(1 for r in results if r["passed"]),
         "results": results,
     }
     store = get_store()
@@ -452,16 +633,36 @@ def start_background() -> None:
 
 
 # ══ API (/api/auth/*) ═══════════════════════════════════════════════════════════
+# max_length는 큰 입력으로 서버를 괴롭히지 못하게 하는 상한 — 화면용 안내는 _validate_* 가 한다
 class SignupBody(BaseModel):
-    email: str
-    password: str
-    name: str
-    org: str = ""
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=128)
+    name: str = Field(max_length=100)
+    org: str = Field(default="", max_length=200)
 
 
 class LoginBody(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=128)
+
+
+class FindIdBody(BaseModel):
+    name: str = Field(max_length=100)
+    member_code: str = Field(max_length=20)
+
+
+class ResetRequestBody(BaseModel):
+    email: str = Field(max_length=320)
+
+
+class ResetConfirmBody(BaseModel):
+    email: str = Field(max_length=320)
+    code: str = Field(max_length=20)
+    new_password: str = Field(max_length=128)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 def _ok(member: dict) -> dict:
@@ -482,11 +683,89 @@ def signup(body: SignupBody):
 
 
 @router.post("/login")
-def login(body: LoginBody):
+def login(body: LoginBody, request: Request):
+    email = (body.email or "").strip().lower()
+    keys = (f"email:{email}", f"ip:{_client_ip(request)}")
+    wait = max(LOGIN_LIMIT.locked_for(k) for k in keys)
+    if wait:
+        return _error(_locked_error(wait))
     try:
-        return _ok(get_store().login(body.email, body.password))
+        member = get_store().login(body.email, body.password)
+    except MemberError as exc:
+        if exc.reason == "invalid_credentials":
+            for k in keys:
+                LOGIN_LIMIT.hit(k)
+        return _error(exc)
+    LOGIN_LIMIT.clear(keys[0])
+    return _ok(member)
+
+
+@router.post("/find-id")
+def find_id(body: FindIdBody, request: Request):
+    """아이디(이메일) 찾기 — 이름 + 회원코드가 모두 맞으면 가린 이메일만 돌려준다."""
+    key = f"ip:{_client_ip(request)}"
+    wait = FIND_LIMIT.locked_for(key)
+    if wait:
+        return _error(_locked_error(wait))
+    FIND_LIMIT.hit(key)
+    name, code = (body.name or "").strip(), (body.member_code or "").strip().upper()
+    if not name or not _CODE_RE.match(code):
+        return _error(MemberError("invalid_input", "이름과 회원코드(예: SS-00001)를 확인해 주세요."))
+    try:
+        email = get_store().find_email(name, code)
     except MemberError as exc:
         return _error(exc)
+    if not email:
+        return _error(MemberError("not_found", "일치하는 회원이 없습니다. 이름과 회원코드를 확인해 주세요."))
+    return {"status": "ok", "email_masked": mask_email(email)}
+
+
+RESET_SENT_MESSAGE = "가입된 이메일이면 인증 코드를 보냈습니다. 메일의 6자리 코드를 입력해 주세요."
+
+
+@router.post("/password/request")
+def password_request(body: ResetRequestBody, request: Request):
+    """비밀번호 재설정 인증 코드 요청. 가입 여부와 관계없이 같은 안내를 돌려준다."""
+    try:
+        email = _clean_email(body.email)
+    except MemberError as exc:
+        return _error(exc)
+    keys = (f"email:{email}", f"ip:{_client_ip(request)}")
+    wait = max(RESET_LIMIT.locked_for(k) for k in keys)
+    if wait:
+        return _error(_locked_error(wait))
+    for k in keys:
+        RESET_LIMIT.hit(k)
+    store = get_store()
+    try:
+        store.request_reset(email)
+    except MemberError as exc:
+        return _error(exc)
+    note = " (로컬 모드: 메일 대신 서버 로그에 코드가 찍힙니다)" if store.backend == "local" else ""
+    return {"status": "ok", "message": RESET_SENT_MESSAGE + note}
+
+
+@router.post("/password/reset")
+def password_reset(body: ResetConfirmBody, request: Request):
+    """인증 코드 + 새 비밀번호로 재설정한다. 성공해도 로그인시키지 않는다(새 비밀번호로 다시 로그인)."""
+    try:
+        email = _clean_email(body.email)
+        _validate_password(body.new_password)
+    except MemberError as exc:
+        return _error(exc)
+    key = f"email:{email}"
+    wait = VERIFY_LIMIT.locked_for(key)
+    if wait:
+        return _error(_locked_error(wait))
+    try:
+        get_store().confirm_reset(email, body.code, body.new_password)
+    except MemberError as exc:
+        if exc.reason == "invalid_code":
+            VERIFY_LIMIT.hit(key)
+        return _error(exc)
+    VERIFY_LIMIT.clear(key)
+    LOGIN_LIMIT.clear(f"email:{email}")
+    return {"status": "ok", "message": "비밀번호를 바꿨습니다. 새 비밀번호로 로그인해 주세요."}
 
 
 @router.post("/guest")

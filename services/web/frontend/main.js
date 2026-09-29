@@ -116,7 +116,6 @@ function renderDeviceStatus(devices) {
 // ---- SC-07 / SC-01 ----
 
 async function init() {
-  renderLandingSigns();
   try {
     const me = await apiGet("/api/auth/me");
     member = me.member;
@@ -129,12 +128,6 @@ async function init() {
   renderDeviceStatus(state.devices);
   // 09_화면목록 SC-07: 학습 중 이탈 후 재접속 — 세션 이어하기 미구현, 항상 처음부터.
   show(state.state && state.state !== "landing" ? "screen-reentry" : "screen-landing");
-}
-
-function renderLandingSigns() {
-  $("landing-signs").innerHTML =
-    SIGN_ORDER.map((s) => `<div class="sign-tile"><b>${esc(s)}</b>${fingerPattern(s)}</div>`).join("") +
-    `<div class="sign-tile-count">7종</div>`;
 }
 
 function rememberCurriculum(curriculum) {
@@ -160,15 +153,28 @@ function showAuth(tab) {
   (tab === "signup" ? $("signup-name") : $("login-email")).focus();
 }
 
-function setAuthTab(tab) {
-  const signup = tab === "signup";
-  $("tab-login").setAttribute("aria-selected", String(!signup));
-  $("tab-signup").setAttribute("aria-selected", String(signup));
-  $("login-form").classList.toggle("hidden", signup);
-  $("signup-form").classList.toggle("hidden", !signup);
-  $("auth-title").textContent = signup ? "회원가입" : "로그인";
-  $("login-error").textContent = "";
-  $("signup-error").textContent = "";
+// 인증 화면의 보기: login · signup · find(아이디 찾기) · reset(비밀번호 찾기 1단계) · reset2(코드 + 새 비밀번호)
+const AUTH_VIEWS = {
+  login: { form: "login-form", title: "로그인" },
+  signup: { form: "signup-form", title: "회원가입" },
+  find: { form: "find-id-form", title: "아이디 찾기" },
+  reset: { form: "reset-request-form", title: "비밀번호 찾기" },
+  reset2: { form: "reset-confirm-form", title: "비밀번호 재설정" },
+};
+
+function setAuthTab(view) {
+  Object.entries(AUTH_VIEWS).forEach(([name, v]) => $(v.form).classList.toggle("hidden", name !== view));
+  $("tab-login").setAttribute("aria-selected", String(view === "login"));
+  $("tab-signup").setAttribute("aria-selected", String(view === "signup"));
+  $("auth-title").textContent = AUTH_VIEWS[view].title;
+  document.querySelectorAll("#screen-auth .form-error, #screen-auth .form-result").forEach((el) => { el.textContent = ""; });
+}
+
+// 서버와 같은 규칙(8자 이상 + 영문·숫자) — 서버가 최종으로 다시 검사한다
+function passwordProblem(pw, pw2) {
+  if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return "비밀번호는 8자 이상, 영문과 숫자를 함께 넣어 주세요.";
+  if (pw !== pw2) return "비밀번호 확인이 일치하지 않습니다.";
+  return "";
 }
 
 $("tab-login").addEventListener("click", () => setAuthTab("login"));
@@ -210,8 +216,9 @@ $("login-form").addEventListener("submit", async (event) => {
 
 $("signup-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  if ($("signup-password").value !== $("signup-password2").value) {
-    $("signup-error").textContent = "비밀번호 확인이 일치하지 않습니다.";
+  const problem = passwordProblem($("signup-password").value, $("signup-password2").value);
+  if (problem) {
+    $("signup-error").textContent = problem;
     return;
   }
   const ok = await submitAuth("/api/auth/signup", {
@@ -227,6 +234,98 @@ $("signup-form").addEventListener("submit", async (event) => {
 });
 
 $("welcome-continue-btn").addEventListener("click", () => goCurriculum());
+
+// ---- 아이디(이메일) 찾기 · 비밀번호 찾기 ----
+
+$("goto-find-id").addEventListener("click", () => { setAuthTab("find"); $("find-name").focus(); });
+$("goto-reset").addEventListener("click", () => {
+  setAuthTab("reset");
+  $("reset-email").value = $("login-email").value;
+  $("reset-email").focus();
+});
+document.querySelectorAll(".back-to-login").forEach((b) => b.addEventListener("click", () => setAuthTab("login")));
+
+async function authCall(path, body, errorEl, submitBtn, busyText) {
+  const idle = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = busyText;
+  errorEl.textContent = "";
+  try {
+    const res = await apiPost(path, body);
+    if (res.status !== "ok") {
+      errorEl.textContent = res.message || "요청을 처리하지 못했습니다.";
+      return null;
+    }
+    return res;
+  } catch (err) {
+    errorEl.textContent = "서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    return null;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = idle;
+  }
+}
+
+$("find-id-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("find-id-result").textContent = "";
+  const res = await authCall("/api/auth/find-id", {
+    name: $("find-name").value, member_code: $("find-code").value.trim().toUpperCase(),
+  }, $("find-id-error"), $("find-id-submit"), "찾는 중…");
+  if (res) {
+    $("find-id-result").textContent = `가입한 이메일: ${res.email_masked}`;
+  }
+});
+
+$("reset-request-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const email = $("reset-email").value.trim();
+  const res = await authCall("/api/auth/password/request", { email },
+    $("reset-request-error"), $("reset-request-submit"), "보내는 중…");
+  if (res) {
+    setAuthTab("reset2");
+    $("reset-confirm-form").dataset.email = email;
+    $("reset-sent").textContent = res.message;
+    $("reset-code").focus();
+  }
+});
+
+$("reset-confirm-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const problem = passwordProblem($("reset-password").value, $("reset-password2").value);
+  if (problem) {
+    $("reset-confirm-error").textContent = problem;
+    return;
+  }
+  const email = $("reset-confirm-form").dataset.email || "";
+  const res = await authCall("/api/auth/password/reset", {
+    email, code: $("reset-code").value, new_password: $("reset-password").value,
+  }, $("reset-confirm-error"), $("reset-confirm-submit"), "바꾸는 중…");
+  if (res) {
+    $("reset-confirm-form").reset();
+    setAuthTab("login");
+    $("login-email").value = email;
+    $("login-error").textContent = "";
+    $("login-password").focus();
+    // 성공 안내는 로그인 폼 위 결과 줄 대신 오류 줄을 재사용하지 않고 제목 아래 안내로 보여 준다
+    $("auth-store-note").textContent = res.message;
+  }
+});
+
+// ---- 자리 비움 자동 로그아웃 (공용 교육장 PC) ----
+// 교육 중(SC-03·SC-04)이 아닐 때 5분 동안 입력이 없으면 로그아웃한다 — 다음 사람의 기록이 앞사람 계정에 쌓이지 않게.
+const IDLE_LOGOUT_MS = 5 * 60 * 1000;
+let lastInputAt = Date.now();
+["pointerdown", "keydown", "touchstart"].forEach((ev) =>
+  document.addEventListener(ev, () => { lastInputAt = Date.now(); }, { passive: true }));
+setInterval(() => {
+  if (!member) return;
+  const training = $("screen-training").classList.contains("active") || $("screen-camera-fail").classList.contains("active");
+  if (!training && Date.now() - lastInputAt > IDLE_LOGOUT_MS) {
+    lastInputAt = Date.now();
+    logout();
+  }
+}, 15000);
 
 $("guest-btn").addEventListener("click", async () => {
   const res = await apiPost("/api/auth/guest");
@@ -376,6 +475,7 @@ async function refreshTraining() {
   if (!$("screen-training").classList.contains("active")) show("screen-training");
   renderHeader(state);
   setMatchScore(state.live_judgment ? state.live_judgment.match_score : 0);
+  renderHud(state.live_judgment);
 
   const result = state.last_result;
   if (result) {
@@ -505,6 +605,22 @@ function setMatchScore(score) {
   $("match-score-value").textContent = `${value}%`;
 }
 
+// 카메라 계기판 — vision이 지금 보고 있는 것 (판정 중에만 보인다, app.css .phase-judging .camera-hud)
+const NO_HAND_REASONS = ["no_hand", "normalize_failed"];
+function renderHud(live) {
+  const hand = $("hud-hand"), pred = $("hud-pred"), conf = $("hud-conf");
+  if (!live) {
+    hand.textContent = pred.textContent = conf.textContent = "-";
+    hand.className = "";
+    return;
+  }
+  const noHand = live.is_reject && NO_HAND_REASONS.includes(live.reason);
+  hand.textContent = noHand ? "찾는 중" : "검출";
+  hand.className = noHand ? "warn" : "ok";
+  pred.textContent = noHand || !live.predicted_class ? "-" : live.predicted_class;
+  conf.textContent = noHand ? "-" : `${Math.round((live.confidence || 0) * 100)}%`;
+}
+
 const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>';
 const ICON_X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
@@ -585,7 +701,7 @@ function renderSummary(state) {
   const first = completed.filter(firstTry).length;
   const gaveUp = completed.filter((c) => c.given_up).length;
   $("summary-sub").textContent =
-    `${completed.length}종 완료 · 첫 시도 정답 ${first}종${gaveUp ? ` · 미완주 ${gaveUp}종` : ""}`;
+    `합격 ${completed.length - gaveUp} / ${completed.length}종 · 첫 시도 정답 ${first}종${gaveUp ? ` · 불합격 ${gaveUp}종` : ""}`;
 
   const tbody = $("summary-tbody");
   tbody.innerHTML = "";
@@ -593,9 +709,11 @@ function renderSummary(state) {
     const tr = document.createElement("tr");
     const score = Math.max(0, Math.min(100, item.match_score || 0));
     // given_up: 재시도 상한 초과로 넘어간 수신호 — match_score는 마지막 오답의 값이라 "정답 시 일치율"이 아니다
+    // 합격 = 시도 상한(3회) 안에 정답, 불합격 = 상한을 넘겨 넘어감 — DB training_results.passed와 같은 정의
     tr.innerHTML = `
       <td><span class="col-sign">${item.given_up ? '<span class="warn-mark">!</span>' : '<span class="ok-mark">✓</span>'}
-        ${esc(item.signal)}${item.given_up ? "<em>미완주</em>" : ""}</span></td>
+        ${esc(item.signal)}</span></td>
+      <td>${item.given_up ? '<span class="result-chip fail">불합격</span>' : '<span class="result-chip pass">합격</span>'}</td>
       <td class="col-attempts"><b>${esc(item.attempts)}</b>회</td>
       <td class="col-score"><span class="score-bar"><i style="width:${score}%"></i></span><b>${score}</b>%${firstTry(item) ? "<small>첫 시도 정답</small>" : ""}</td>`;
     tbody.appendChild(tr);
@@ -680,15 +798,18 @@ $("certificate-btn").addEventListener("click", async () => {
 function drawCertificate(completed, issuedAt) {
   const canvas = $("certificate-canvas");
   const ctx = canvas.getContext("2d");
-  const font = '"Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif';
+  const font = '"SUIT Variable", "Pretendard Variable", "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif';
 
-  ctx.fillStyle = "#ffffff";
+  // 인쇄용이라 흰 바탕 — 테두리는 Industrial Black, 위쪽 띠는 Safety Orange (산업 안전 팔레트)
+  ctx.fillStyle = "#F4F6F8";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "#4F46E5";
+  ctx.strokeStyle = "#111820";
   ctx.lineWidth = 6;
   ctx.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
+  ctx.fillStyle = "#F28C28";
+  ctx.fillRect(15, 15, canvas.width - 30, 10);
 
-  ctx.fillStyle = "#111827";
+  ctx.fillStyle = "#111820";
   ctx.textAlign = "center";
   ctx.font = `bold 32px ${font}`;
   ctx.fillText("수 료 증", canvas.width / 2, 86);
@@ -708,13 +829,13 @@ function drawCertificate(completed, issuedAt) {
 
   ctx.font = `15px ${font}`;
   completed.forEach((item, i) => {
-    const tag = item.given_up ? " (미완주)" : firstTry(item) ? " (첫 시도 정답)" : "";
+    const tag = item.given_up ? " — 불합격" : firstTry(item) ? " — 합격 (첫 시도)" : " — 합격";
     ctx.fillText(`${i + 1}. ${item.signal}  —  시도 ${item.attempts}회 / 최종 일치율 ${item.match_score}%${tag}`, 60, y);
     y += 30;
   });
 
   ctx.font = `14px ${font}`;
-  ctx.fillStyle = "#666";
+  ctx.fillStyle = "#687582";
   ctx.fillText(`발급일시: ${new Date(issuedAt * 1000).toLocaleString("ko-KR")}`, 60, canvas.height - 40);
 }
 
@@ -728,5 +849,13 @@ $("certificate-download-btn").addEventListener("click", () => {
 $("certificate-print-btn").addEventListener("click", () => window.print());
 $("restart-btn").addEventListener("click", () => goCurriculum());      // 같은 학습자로 다시
 $("finish-btn").addEventListener("click", () => logout());             // 다음 학습자를 위해 로그아웃
+
+// ---- 상단 관제 시계 ----
+function tickClock() {
+  const d = new Date();
+  $("sys-clock").textContent = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+}
+tickClock();
+setInterval(tickClock, 1000);
 
 init();

@@ -1,5 +1,7 @@
 # Supabase 설정 — 회원가입·로그인·회원별 학습 결과
 
+> **설계 설명(테이블·필드·합격 기준·보안)은 [document/18_DB설계서.md](../../../document/18_DB설계서.md)**. 이 문서는 설정 절차다.
+
 web 백엔드(`backend/members.py`)가 회원 정보와 학습 결과를 Supabase에 저장한다. 브라우저는 Supabase에 직접
 접근하지 않고, 키는 교육장 RPi5의 환경변수에만 둔다.
 
@@ -16,6 +18,13 @@ web 백엔드(`backend/members.py`)가 회원 정보와 학습 결과를 Supabas
    - `service_role` 키 (secret) — ⚠️ 모든 권한이 있는 키다. git·채팅·화면에 올리지 않는다.
 
 이메일 인증 메일 설정은 필요 없다. 백엔드가 관리자 API로 **인증을 마친 계정**을 만든다(교육장에서 메일을 확인할 수 없으므로).
+
+**비밀번호 찾기용 메일 설정 (2026-09-30)** — 비밀번호 찾기는 메일 속 **6자리 코드**를 교육장 화면에 입력하는 방식이다.
+1. **Authentication → Email Templates → Reset Password** 본문에 `{{ .Token }}`을 넣는다. 예: `인증 코드: {{ .Token }} (10분 안에 입력)`
+2. Supabase 기본 메일은 **시간당 몇 통**으로 제한된다 — 실제 운영은 **Project Settings → Authentication → SMTP**에 메일 서버를 연결한다.
+3. (선택) **Authentication → Providers → Email**에서 OTP 만료 시간을 확인한다(기본 1시간 — 10분 정도로 줄이는 것을 권한다).
+
+**예전 버전 `schema.sql`을 이미 돌렸다면** 이 파일을 다시 Run 하면 된다(합격 열·뷰가 추가된다, 기존 데이터 유지).
 
 ## 2. web에 키 넣기
 
@@ -45,8 +54,9 @@ Docker로 띄울 때는 저장소 루트 `.env`(git에 올리지 않는다)에 �
 | 테이블 | 한 행 | 주요 열 |
 | --- | --- | --- |
 | `members` | 회원 1명 | `member_code`(SS-00001, 자동), `email`, `name`, `org`, `created_at` |
-| `training_sessions` | 7종을 끝까지 학습한 1회 | `member_code`, `started_at`, `completed_at`, `total_attempts`, `first_try_correct` |
-| `training_results` | 그 회차의 수신호 1종 | `order_no`, `signal`, `attempts`, `match_score`(정답 시 일치율) |
+| `training_sessions` | 7종을 끝까지 학습한 1회 | `member_code`, `started_at`, `completed_at`, `total_attempts`, `first_try_correct`, **`passed_count`**(합격 수), **`all_passed`** |
+| `training_results` | 그 회차의 수신호 1종 | `order_no`, `signal`, `attempts`, `match_score`(목표 수신호 확률 × 100), `given_up`, **`passed`(합격)**, `first_try` |
+| `member_signal_status` (뷰) | 회원 × 수신호 | 합격·불합격 회차 수, 최근 결과 `last_passed`, 최고 일치율 |
 
 비밀번호는 Supabase Auth(`auth.users`)가 보관한다 — 우리 테이블에는 없다.
 
