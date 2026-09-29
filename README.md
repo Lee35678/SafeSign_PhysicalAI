@@ -216,6 +216,9 @@ PICAR_URL=http://192.168.50.10:8000 uvicorn backend.app:app --host 0.0.0.0 --por
 
 `PICAR_URL`을 빼면 기본값(`localhost:8003`)으로 가서 picar가 움직이지 않는다.
 
+회원 기록을 Supabase에 저장하려면 같은 셸에 `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`를 넣고 띄운다(없으면 로컬 모드 —
+[services/web/supabase/README.md](services/web/supabase/README.md)). vision 모델 번들은 2026-09-30 갱신본(일치율 클래스별 환산 포함)을 복사해 둔다.
+
 **PC — 브라우저**
 
 ```bash
