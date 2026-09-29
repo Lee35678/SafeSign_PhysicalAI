@@ -309,6 +309,44 @@ def test_hand_lowered_restarts_the_hold(fast_hold):
 
 
 @needs_phase
+def test_max_attempts_gives_up_and_advances_without_double_demo(fast_hold, monkeypatch):
+    """재시도 상한 초과(2026-09-29 실물 재시험에서 발견 — 상한이 없어 오답이 계속되면 검정이 끝나지
+    않았다). 상한을 넘기면 같은 수신호를 다시 보여주지 않고(이중 시범 방지) 바로 다음으로 넘어간다."""
+    monkeypatch.setattr(sm, "MAX_ATTEMPTS_PER_SIGNAL", 2)
+    _reset("judging")
+    vision = _Vision(WRONG_서행)
+    devices = _Devices()
+    with patch.object(sm.httpx, "post", devices):
+        sm._poll_once(vision)
+        time.sleep(fast_hold + 0.1)
+        sm._poll_once(vision)                          # 1번째 오답 확정 — 아직 상한 전
+        assert sm._session["last_result"]["given_up"] is False
+        assert sm._session["attempts"]["정지"] == 1
+        assert sm._session["curriculum_index"] == 0
+
+        sm._session["phase"] = "judging"                # 재시범을 본 뒤 확인 버튼을 눌렀다고 가정
+        sm._session["wrong_cls"] = None
+        vision.judgment = WRONG_서행
+        sm._poll_once(vision)
+        time.sleep(fast_hold + 0.1)
+        sm._poll_once(vision)                           # 2번째 오답 확정 — 상한 도달
+        assert _wait_for(lambda: any(b.get("target_signal") == "서행" and b.get("command") == "demo"
+                                     for _, b in devices.urls("command")))
+
+    assert sm._session["last_result"]["outcome"] == "wrong"
+    assert sm._session["last_result"]["given_up"] is True
+    assert sm._session["attempts"]["정지"] == 2
+    assert sm._session["curriculum_index"] == 1
+    assert sm._session["completed"][-1] == {
+        "signal": "정지", "attempts": 2, "match_score": 60, "given_up": True,
+    }
+    demo_commands = [(b["command"], b["target_signal"]) for _, b in devices.urls("command")]
+    # "정지" 재시범은 1번째 오답(상한 전) 때 한 번만 나가야 한다 — 2번째(상한 도달)에서 또 나가면 이중 시범이다.
+    assert demo_commands.count(("demo", "정지")) == 1, "상한 초과 시 같은 수신호를 다시 보여주면 안 된다"
+    assert demo_commands.count(("demo", "서행")) == 1, "다음 수신호 시범은 한 번만 보내야 한다(이중 전송 방지)"
+
+
+@needs_phase
 def test_next_signal_demo_follows_correct_pose():
     """정답 → (정답 자세) → 다음 수신호 시범. 두 `/command`가 이 순서로 가야 한다."""
     _reset("judging")

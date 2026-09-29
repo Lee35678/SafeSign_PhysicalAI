@@ -282,3 +282,43 @@ def test_state_exposes_confirm_source(button):
     fake.seq = 4
     _poll()
     assert sm.get_state()["last_confirm_source"] == "microbit_button"
+
+
+def test_button_a_on_camera_fail_retries_to_demo(button):
+    """SC-04에서도 micro:bit 버튼 A를 재시도로 받는다(2026-09-29 ⑥ 재시험 — 버튼을 눌러도 반응이 없었다).
+    SC-04에 들어온 뒤 첫 조회는 기준만 적고, 그 뒤 누르면 시범 단계로 돌아간다."""
+    fake, posts = button
+    sm._session["phase"] = "judging"
+    sm._session["state"] = "camera_fail"
+    sm._session["button_seq_base"] = None
+
+    class _NoHand(_Vision):
+        def get(self, url):
+            self.gets += 1
+            return _Resp(200, {"predicted_class": "negative", "confidence": 0.0, "match_score": 0,
+                               "is_reject": True, "latency_ms": 40, "reason": "no_hand"})
+
+    _poll(2, _NoHand())
+    assert sm._session["state"] == "camera_fail", "기준값만 적는 첫 조회에서 재시도하면 안 된다"
+    assert sm._session["button_seq_base"] == 3
+    fake.seq = 4
+    _poll(1, _NoHand())
+    assert sm._session["state"] == "training"
+    assert sm._session["phase"] == "demo"
+
+
+def test_button_pressed_during_judging_does_not_retry_on_camera_fail_entry(button):
+    """판정 중에 눌러 둔 seq가 SC-04 진입 직후 재시도로 새지 않는다 — 진입 때 기준을 새로 잡는다."""
+    fake, posts = button
+    sm._session["phase"] = "judging"
+
+    class _NoHand(_Vision):
+        def get(self, url):
+            return _Resp(200, {"predicted_class": "negative", "confidence": 0.0, "match_score": 0,
+                               "is_reject": True, "latency_ms": 40, "reason": "no_hand"})
+
+    fake.seq = 9                                    # 판정 중에 여러 번 눌렀다
+    _poll(sm.CAMERA_FAIL_STREAK_THRESHOLD, _NoHand())
+    assert sm._session["state"] == "camera_fail"
+    _poll(3, _NoHand())                             # 새로 누르지 않았다
+    assert sm._session["state"] == "camera_fail"

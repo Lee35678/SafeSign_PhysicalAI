@@ -1,4 +1,4 @@
-# web 구현 보고서 (v1.9 — 초안)
+# web 구현 보고서 (v1.11 — 초안)
 
 **팀명**: 심기일전 · **담당**: 조은수 (웹 R · 성능측정 R) (프론트엔드 2026-09-29~ 송승호 대행)
 **최초 작성**: 2026-09-27 (초안 정리: 송승호 — 조은수 검토·보완 필요) · **대상**: `services/web`
@@ -51,8 +51,8 @@ web은 학습 흐름 전체를 지휘하는 **오케스트레이터**다. vision
 | SC-02 교육 시작 확인 | (프론트엔드 전용) | 수신호 7종 목록(AI Hand 자세·picar 동작) 미리보기 → "교육 시작" → `POST /api/start` |
 | SC-03 시범/인식 | `training` + `phase` | 시범(`demo`): 예시 사진 크게 + 확인 버튼(Space·micro:bit A) / 판정(`judging`): 카메라 영역 + 사진 작게 + 실시간 일치율 바. 공통: 수신호 이름·설명, 진행(n/7), 시도 횟수 |
 | ㄴ SC-03a 정답 | `training` + `last_result.outcome=correct` | "정답!" + 일치율, 2초 후 자동으로 다음 수신호 |
-| ㄴ SC-03b 오답 | `training` + `last_result.outcome=wrong` | 오답 오버레이 — 문구, 일치율, 권장 재도전 횟수, 현재 시도 횟수 → 재시범. `below_tau`/`out_of_distribution`은 오버레이가 아니라 **판정 화면 안 문구**(사유별, 3초)만 — 물리 피드백·시도 횟수 없음(D10) |
-| SC-04 카메라 인식 실패 | `camera_fail` | 손 미검출 15회 연속(약 3초) 시 진입, **손이 다시 보이면 SC-03 자동 복귀** |
+| ㄴ SC-03b 오답 | `training` + `last_result.outcome=wrong` | 오답 오버레이 — 문구, 일치율, 권장 재도전 횟수, 현재 시도 횟수 → 재시범. `below_tau`/`out_of_distribution`은 오버레이가 아니라 **판정 화면 안 문구**(사유별, 3초)만 — 물리 피드백·시도 횟수 없음(D10). **판정 한 번은 `JUDGING_TIMEOUT_S`(10초, 데모 스크립트 `_listen()`과 같음) 안에 끝난다** — 넘기면 `timeout`(문구 "시간이 초과됐습니다")으로 시도 1회를 세고 재시범(below_tau/OOD만 계속 나와도 판정이 끝나도록). **오답·timeout이 `MAX_ATTEMPTS_PER_SIGNAL`(3 = 최초 1회 + 재시도 2회)에 닿으면** 같은 수신호를 다시 보여주지 않고 "재시도 횟수를 초과해 다음 수신호로 넘어갑니다" 뒤 다음 수신호로 진행(`last_result.given_up`). 화면 배지는 "시도 n / 3" (2026-09-29 ⑥ 재시험에서 발견 — 상한이 없어 검정이 끝나지 않던 문제) |
+| SC-04 카메라 인식 실패 | `camera_fail` | 손 미검출 15회 연속(약 3초) 시 진입, **손이 다시 보이면 SC-03 자동 복귀**. **재시도 = 화면 버튼·Space·micro:bit A** → `POST /api/camera_retry`(버튼 A는 `_poll_retry_button`) → **시범 단계로 복귀 + 현재 수신호 AI Hand 재시범**, 학습자가 확인을 누르면 판정 재개. 시도 횟수에 넣지 않는다 (2026-09-29 ⑥ 재시험에서 발견 — 버튼이 조회만 하는 무동작이었고, 판정 단계로 바로 돌리는 1차 수정은 버튼을 누르느라 손이 카메라 밖이라 3초 뒤 다시 SC-04로 튕겼다) |
 | SC-05 학습 완료 | `summary` | 수신호별 시도 횟수·최종 일치율 표 + **결과 저장 (CSV)** 버튼(⑨, 브라우저에서 바로 저장 — 서버 호출 없음, §8 ⑨) |
 | SC-06 수료증 | `certificate` | `<canvas>` 렌더링 → PNG 저장 / 인쇄(PDF 저장). 7종 모두 완료해야 발급 |
 | SC-07 재접속 | (프론트엔드 판단) | 새로고침 시 `state ≠ landing`이면 "처음부터 다시" 안내 (이어하기 없음 — §5 D1) |
@@ -149,10 +149,11 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 
 | 메서드 | 경로 | 용도 |
 | --- | --- | --- |
-| GET | `/api/state` | 화면 렌더링용 전체 상태 — `state`, **`phase`**(`demo`/`judging`), `target_signal`, `signal_info`, `curriculum`, `progress`, `last_result`, `live_judgment`, `attempts`, `last_dispatch`, **`last_demo`**, `devices`, `completed`, `certificate_issued_at` |
+| GET | `/api/state` | 화면 렌더링용 전체 상태 — `state`, **`phase`**(`demo`/`judging`), `target_signal`, `signal_info`, `curriculum`, `progress`, `last_result`, `live_judgment`, `attempts`, **`max_attempts`**(2026-09-29 — 실물에 새 코드가 올라갔는지 확인용으로도 씀), `last_dispatch`, **`last_demo`**, `devices`, `completed`, `certificate_issued_at` |
 | POST | `/api/start` | 세션 초기화 후 SC-03 시작 (장치 상태는 유지). 첫 수신호 시범 `/command`(demo)를 백그라운드로 보내고 `phase: "demo"` |
 | POST | `/api/confirm` | 확인 버튼(스페이스바) — `phase == "demo"`일 때만 vision `/reset` 뒤 `judging`, 그 밖에는 `{"status": "ignored"}` (2026-09-28). micro:bit 버튼 A도 같은 처리(`_confirm`)를 쓴다 — 어느 입력인지는 `/api/state`의 `last_confirm_source` |
 | POST | `/api/certificate` | 7종 완료 시 수료증 발급 시각·집계 확정, 미완료면 `not_completed` |
+| POST | `/api/camera_retry` | (2026-09-29 신규) SC-04 재시도(화면 버튼·Space) — `camera_fail`이면 `training` + `phase: "demo"`로 되돌리고 현재 수신호 시범 `/command`(demo)를 백그라운드로 보낸다. 그 밖에는 `{"status": "ignored"}`. micro:bit 버튼 A도 같은 처리(`_camera_retry`) |
 | GET | `/health` | web 자체 상태 |
 
 ### 4.2 web이 호출하는 API
@@ -195,9 +196,11 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 vision·actuation·picar 서버 없이 `httpx` 호출만 patch해서 검증한다. 테스트 중 시행 로그는 `tests/conftest.py`가 임시 폴더로 돌린다 —
 **반드시 `pytest`로 실행**한다(`python tests/…py`로 직접 돌리면 실제 `logs/`에 가짜 행이 쓰인다).
 
-**2026-09-29 실행: 49개 전부 통과** (`python -m pytest -q`, 2.0초) — 버튼 A `test_microbit_button_confirm.py` 14개(D12, conftest가 버튼 폴링을 기본으로 끄고
-이 파일만 켬) 추가. 아래는 2026-09-28 `dev` 병합 때 35개 — `test_judging_timing_spec.py` 26개(①-a 13 · ③ 9 · ②-a 4, 선작성한
-인수 테스트의 xfail 22개가 모두 통과로 바뀜)와 아래 `test_state_machine.py` 9개. 저장소 전체는 144개 통과(버튼 A 추가 후 158개).
+**2026-09-29 실행: 61개 전부 통과** (`python -m pytest -q`, 2.5초, 5회 반복) — ⑥ 재시험에서 발견한 SC-04 재시도·시도 횟수 상한·판정 제한시간
+회귀 테스트 11개 추가(`test_state_machine.py` 9, `test_microbit_button_confirm.py` 2 + `test_judging_timing_spec.py`의 상한 테스트 1). 이 중 10개는
+수정 전 코드(HEAD)에서 실패하는 것을 확인했다. 그 전은 버튼 A `test_microbit_button_confirm.py` 14개(D12, conftest가 버튼
+폴링을 기본으로 끄고 이 파일만 켬) 포함 49개. 아래는 2026-09-28 `dev` 병합 때 35개 — `test_judging_timing_spec.py` 26개(①-a 13 · ③ 9 · ②-a 4,
+선작성한 인수 테스트의 xfail 22개가 모두 통과로 바뀜)와 아래 `test_state_machine.py` 9개. 저장소 전체는 170개 통과.
 인수 테스트 목록과 구현 계약은 [판정 타이밍 스펙](proposals/web_판정_타이밍_스펙.md) §8.
 
 `test_state_machine.py` (2026-09-27 작성, ①-a 이후에도 깨지지 않게 9/28 수정):
@@ -256,8 +259,11 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 09-21 | 폴링 최악 정지시간 13초 | 2.0초 타임아웃 × 재시도 × 순차 호출 | D4 (C안 → C′안) | ✅ |
 | 09-22 | 이전 수신호 판정 누적 이월 가능 | 정답 시 vision `/reset` 누락 | D6 | ✅ |
 | 09-25 | C안 적용 후 `/command`가 전부 timeout | `/command`는 손 동작 완료 후 회신(0.8초) > 0.6초 | C′안(1.5초)으로 교체 | ✅ |
-| 09-25 | 학습자가 AI Hand를 보기 전에 오답 처리 | §6.2 문제 1·2 | D9 스펙 확정 → §8 ① — 백엔드 구현(2026-09-28 `c8f1fd3`), 화면 ①-b 구현(2026-09-29 `edb5da9`, `dev` 병합 전) | 🟡 실물 재시험 대기 |
-| 09-25 | 손을 잠깐 내리면 SC-04 | §6.2 문제 3 | D9로 완화(시범 단계에서는 카운트 정지) → §8 ① — 백엔드 구현(2026-09-28) | 🟡 실물 재시험 대기 |
+| 09-25 | 학습자가 AI Hand를 보기 전에 오답 처리 | §6.2 문제 1·2 | D9 스펙 확정 → §8 ① — 백엔드 구현(2026-09-28 `c8f1fd3`), 화면 ①-b 구현(2026-09-29 `edb5da9`) | ✅ 2026-09-29 ⑥ 전 구간 실물 재시험 통과 |
+| 09-25 | 손을 잠깐 내리면 SC-04 | §6.2 문제 3 | D9로 완화(시범 단계에서는 카운트 정지) → §8 ① — 백엔드 구현(2026-09-28) | ✅ 2026-09-29 ⑥ 전 구간 실물 재시험 통과 |
+| 09-29 | ⑥ 재시험 중 발견 — 카메라가 손을 계속 못 잡으면 SC-04에서 못 빠져나옴 | "재시도" 버튼이 조회만 하는 무동작. **1차 수정(판정 단계로 강제 복귀)도 실물에서 실패** — 버튼을 누르느라 손이 카메라 밖이라 3초 뒤 다시 SC-04. 조회 도중 재시도가 들어오면 그 no_hand 결과로 다시 SC-04가 되는 경합도 있었음 | **재작성**: 재시도 → 시범 단계 + AI Hand 재시범(미검출을 세지 않음), 입력은 화면 버튼·Space·micro:bit A, 판정 단계가 아니면 미검출·복귀 처리를 건너뜀(§2 SC-04, §4.1). 회귀 테스트 6건 | 🟡 단위 테스트 완료, 실물 재검증 대기 |
+| 09-29 | ⑥ 재시험 중 발견 — 시도 횟수 상한 없음, 한 수신호에서 무제한 재시도 | `attempts` 카운트만 하고 상한 검사가 없었음. **1차 수정(상한 3)만으로는 부족** — 틀린 손모양이 below_tau/OOD로 잡히면 안내만 하고 판정이 끝나지 않아(D10) 상한이 적용될 기회가 없었음 | `MAX_ATTEMPTS_PER_SIGNAL`(3) + **판정 제한시간 `JUDGING_TIMEOUT_S`(10초) → `timeout`도 시도 1회**. 상한 도달 시 이중 시범 없이 다음 수신호로(§2 SC-03b, `last_result.given_up`). 회귀 테스트 5건 | 🟡 단위 테스트 완료, 실물 재검증 대기 |
+| 09-29 | 1차 수정이 실물에 반영되지 않았을 가능성 | 수정이 개발 PC에만 있고 커밋·푸시 전이라 RPi5 `git pull`로 받을 수 없었음. `main.js`에 캐시 방지 표식도 없었음 | `index.html`에서 `main.js?v=…`, `/api/state`의 `max_attempts`로 새 코드가 올라갔는지 확인 | ✅ |
 | 09-25 | HTTP 200이면 무조건 성공 처리 | 응답 본문 `status`(actuation `timeout`, picar `partial`)를 안 봄 | 본문 `status` 확인 추가 → §8 ③ (2026-09-28 `c8f1fd3`, D11) | ✅ |
 | 09-25 | 정지 계열 picar LED가 다음 명령까지 켜진 채 남음 | 끄는 시점 미정의 | **picar 쪽에서 해결**(2026-09-28) — LED를 켠 명령 뒤 2초(`PICAR_LED_HOLD_S`)에 자동 소등. web 변경 없음 | ✅ |
 | 09-27 | `확인_완료` picar 설명이 옛 문구("번갈아 2회 점멸 후 소등") | 동시 점멸 확정(`591cd5f`) 후 `CURRICULUM_INFO` 미갱신 — SC-02·SC-03에 그대로 표시 | 문구 정정(2026-09-28) → §8 ⑤ | ✅ |
@@ -344,6 +350,8 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 버전 | 날짜 | 내용 |
 | --- | --- | --- |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
+| v1.11 | 2026-09-29 | **SC-04 탈출·시도 상한 재작성** — 1차 수정이 실물에서 해결되지 않음(수정이 커밋 전이라 RPi에 없었고, 설계도 부족했다). SC-04 재시도 → 시범 단계 + 재시범(화면 버튼·Space·micro:bit A), 조회 도중 재시도 경합 차단. 판정 제한시간 `JUDGING_TIMEOUT_S` 10초 → `timeout`도 시도로 셈(below_tau/OOD만 나와도 상한 적용). `/api/state`에 `max_attempts`, 배지 "시도 n / 3", `main.js?v=` 캐시 방지. 회귀 테스트 11건, web 61·전체 170 통과(§2·§4.1·§6.1·§7). 실물 재검증 대기 |
+| v1.10 | 2026-09-29 | **⑥ web 전 구간 실물 재시험 통과**(RPi5+RPi4B, 쿨러 미장착) — §2 SC-03a·b·SC-04·SC-05·SC-06 전부 확인, "다시 학습하기" 재진입까지 완료. 재시험 중 신규 결함 2건 발견·당일 수정: (1) SC-04 "재시도" 버튼 무동작 → `POST /api/camera_retry` 신설(§2, §4.1), (2) 시도 횟수 무제한 → `MAX_ATTEMPTS_PER_SIGNAL`(3) 도입(§2 SC-03b). 회귀 테스트 3개 추가, web 53·저장소 전체 162개 통과(§6.1). §7 이슈 이력에 4건 반영. **실물 재검증은 대기** |
 | v1.9 | 2026-09-29 | 산출물 갱신(pm 점검, 송승호) — 머리말 대행 표기·기준 코드 `41ef97c`(①-b `edb5da9`는 `dev` 병합 전), §1 구성도 `GET /button`, §2 SC-03b(D10)·SC-05 결과 저장, §3.1 시범 단계 `_poll_button()`, §5 D9 ①-b 구현, §6.1b mock E2E 31/31, §6.2·§7 남은 것 실물 재시험만, §8 분담·⓪ 종결·실제 병합 순서·⑪ 49/158·②-b·⑥·⑦·⑧ 재배정 대기, §9 SC-05·SC-04 결정권자 재확인 필요 |
 | v1.8 | 2026-09-29 | ①-b 프론트엔드 완료(송승호, 조은수 사정으로 대행) — 머리말, §2 SC-03 시범/판정 단계 설명, §8 ①-b. `feature/data`(⑨·⑩) `dev` 병합 반영 |
 | v1.7 | 2026-09-29 | micro:bit 버튼 A web 연동(송승호) — §4.1 `/api/confirm`·`last_confirm_source`, §4.2 `GET /button`, §5 D12, §6.1 49개, §8 ⑫ |

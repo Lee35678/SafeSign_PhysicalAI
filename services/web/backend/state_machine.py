@@ -97,6 +97,14 @@ BUTTON_CONFIRM_ENABLED = os.getenv("MICROBIT_BUTTON_CONFIRM", "1").strip().lower
 BUTTON_TIMEOUT_S = float(os.getenv("BUTTON_TIMEOUT_S", "0.3"))
 # 같은 오답 클래스가 이만큼 이어져야 오답 확정 (스펙 §2 #4). 호출 시점에 읽는다 — 테스트가 바꿔 끼운다.
 WRONG_CONFIRM_S = float(os.getenv("WRONG_CONFIRM_S", "1.0"))
+# 한 수신호에서 허용하는 최대 시도 횟수 (2026-09-29 실물 재시험에서 발견 — 상한이 없어 오답이 계속되면
+# 검정에서 빠져나오지 못했다). 3 = 최초 시도 1회 + 재시도 2회. 초과하면 이 수신호는 넘기고 다음으로 진행한다
+# (below_tau/OOD와 달리 손모양 자체는 명확히 인식됐으므로 "오분류"로 집계 — completed에 given_up 표시).
+MAX_ATTEMPTS_PER_SIGNAL = int(os.getenv("MAX_ATTEMPTS_PER_SIGNAL", "3"))
+# 판정 한 번의 제한시간 — 넘기면 `timeout`으로 시도 1회를 센다. below_tau/OOD는 안내만 하고 시도로 세지 않아(D10)
+# 틀린 손모양이 확신도 낮게 잡히면 판정이 끝나지 않았고, 그러면 위 상한도 적용되지 않았다(2026-09-29 ⑥ 재시험).
+# 기준 구현 aihand_vision_picar_demo.py `_listen()`의 --listen-timeout 기본값(10초)과 같다. 호출 시점에 읽는다.
+JUDGING_TIMEOUT_S = float(os.getenv("JUDGING_TIMEOUT_S", "10.0"))
 # 시행 로그 CSV 폴더 (스펙 §7.1). 쓰는 시점에 읽는다. 파일 이름은 web 기동 시각 — 기동마다 새 파일.
 TRIAL_LOG_DIR = Path(os.getenv("TRIAL_LOG_DIR", str(Path(__file__).resolve().parents[1] / "logs")))
 _TRIAL_LOG_NAME = f"web_trials_{datetime.now():%Y%m%d_%H%M%S}.csv"
@@ -176,6 +184,7 @@ SILENT_REASONS = {"awaiting_consecutive_frames", "model_not_loaded", "inference_
 # SC-03b 안내 문구 (03_인터페이스계약서 §4, 2026-09-22 추가: below_tau/out_of_distribution 구분)
 OUTCOME_MESSAGES = {
     "wrong": "다시 시도하세요",
+    "timeout": "시간이 초과됐습니다 — 다시 시도하세요",
     "below_tau": "조금 더 정확히 해주세요",
     "out_of_distribution": "다른 수신호를 하고 계세요",
 }
@@ -331,8 +340,12 @@ def _aihand_payload(command: str, target_signal: str) -> dict:
     return {"command": command, "target_signal": target_signal, "servo_angles": _PLACEHOLDER_SERVO_ANGLES}
 
 
-def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict) -> dict:
-    """판정 뒤 물리 피드백. 순서 /picar → /result → /command → /progress (스펙 §7.3)."""
+def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict, *, resend_demo: bool = True) -> dict:
+    """판정 뒤 물리 피드백. 순서 /picar → /result → /command → /progress (스펙 §7.3).
+
+    `resend_demo`: 오답일 때만 의미가 있다. True(기본)면 이 /command가 곧 다음 시도의 재시범이다(같은 수신호).
+    False면 재시도 상한을 넘겨 다음 수신호로 넘어가는 경우라 여기서는 재시범을 보내지 않는다 — 다음 수신호의
+    시범은 호출부가 `_send_demo`로 따로 보낸다(정답 뒤 다음 시범과 같은 경로, 이중 전송 방지)."""
     is_correct = outcome == "correct"
     match_score = judgment.get("match_score", 0)
     results = {}
@@ -346,10 +359,11 @@ def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict) -> dict
     results["result"] = _post_with_retry(f"{ACTUATION_URL}/result", {
         "is_correct": is_correct, "match_score": match_score,
     }, ACTUATION_FEEDBACK_TIMEOUT_S)
-    # 정답: 정답 자세 / 오답: 재시범 — 오답의 이 /command가 곧 다음 시도의 시범이다.
-    results["aihand"] = _post_with_retry(
-        f"{ACTUATION_URL}/command", _aihand_payload("correct_pose" if is_correct else "demo", target_signal),
-        ACTUATION_COMMAND_TIMEOUT_S, retry_read_timeout=False)
+    if is_correct or resend_demo:
+        # 정답: 정답 자세 / 오답(재시도 여지 있음): 재시범 — 오답의 이 /command가 곧 다음 시도의 시범이다.
+        results["aihand"] = _post_with_retry(
+            f"{ACTUATION_URL}/command", _aihand_payload("correct_pose" if is_correct else "demo", target_signal),
+            ACTUATION_COMMAND_TIMEOUT_S, retry_read_timeout=False)
     results["progress"] = _post_with_retry(f"{ACTUATION_URL}/progress", {
         "current": _session["curriculum_index"] + 1, "total": len(CURRICULUM),
     }, ACTUATION_FEEDBACK_TIMEOUT_S)
@@ -446,6 +460,12 @@ def _poll_once(vision_client: httpx.Client) -> None:
     if not judging:
         _poll_button()
         return
+    # SC-04 — micro:bit 버튼 A를 재시도 입력으로 받는다. 손이 다시 보이면 아래 판정 경로가 자동 복귀시킨다.
+    if state == "camera_fail":
+        _poll_retry_button()
+        with _lock:
+            if _session["state"] != "camera_fail":
+                return                       # 방금 재시도로 시범 단계가 됐다
     if target_signal is None:
         return
 
@@ -472,24 +492,37 @@ def _poll_once(vision_client: httpx.Client) -> None:
 
     if is_reject and reason in CAMERA_FAIL_REASONS:
         with _lock:
+            # vision을 조회하는 사이 재시도·확인으로 시범 단계가 됐으면 세지 않는다 — 시범 단계를 SC-04로 되돌리면 갇힌다
+            if _session["_gen"] != gen or _session["phase"] != "judging":
+                return
             _session["wrong_cls"] = None   # 손을 내렸다 다시 들면 오답 유지 시간을 새로 센다
             _session["camera_fail_streak"] += 1
-            if _session["camera_fail_streak"] >= CAMERA_FAIL_STREAK_THRESHOLD:
+            if _session["camera_fail_streak"] >= CAMERA_FAIL_STREAK_THRESHOLD and _session["state"] != "camera_fail":
                 _session["state"] = "camera_fail"
+                _session["button_seq_base"] = None   # 판정 중에 누른 버튼 A가 재시도로 새지 않게 여기서 기준을 새로 잡는다
         return
 
     # 손이 다시 보이면 미검출 스트릭을 초기화하고, SC-04였다면 SC-03으로 자동 복귀한다.
     with _lock:
+        if _session["_gen"] != gen or _session["phase"] != "judging":
+            return
         _session["camera_fail_streak"] = 0
         if _session["state"] == "camera_fail":
             _session["state"] = "training"
+            _session["trial"]["t_judge_start"] = time.monotonic()   # SC-04에 있던 시간은 제한시간에서 뺀다
         elif _session["state"] != "training":
             return
+        judge_started = _session["trial"].get("t_judge_start")
 
-    if is_reject and reason in SILENT_REASONS:
+    # 제한시간을 넘겼으면 이번 판정은 timeout으로 끝낸다 — 단, 바로 이 프레임이 정답이면 정답이 우선
+    correct_now = not is_reject and predicted == target_signal
+    timed_out = judge_started is not None and time.monotonic() - judge_started >= JUDGING_TIMEOUT_S
+
+    if timed_out and not correct_now:
+        outcome = "timeout"
+    elif is_reject and reason in SILENT_REASONS:
         return  # 과도기 상태(모델 로딩/N프레임 누적 중 등) — 오버레이 없이 대기
-
-    if is_reject and reason in HOLD_REASONS:
+    elif is_reject and reason in HOLD_REASONS:
         # 화면 안내만 — 물리 피드백·시도 횟수·시행 로그 없음, 판정 단계 유지 (스펙 §5, 이동혁 결정)
         match_score = judgment.get("match_score", 0)
         with _lock:
@@ -505,11 +538,9 @@ def _poll_once(vision_client: httpx.Client) -> None:
                 "recommended_retry": _recommended_retry_count(match_score),
             }
         return
-
-    if is_reject or not predicted or predicted == NEGATIVE_LABEL:
+    elif is_reject or not predicted or predicted == NEGATIVE_LABEL:
         return
-
-    if predicted == target_signal:
+    elif predicted == target_signal:
         outcome = "correct"                  # 정답은 즉시 확정
     else:
         now = time.monotonic()
@@ -529,8 +560,9 @@ def _poll_once(vision_client: httpx.Client) -> None:
         _session["attempts"][target_signal] = _session["attempts"].get(target_signal, 0) + 1
         attempt_no = _session["attempts"][target_signal]
         trial = dict(_session["trial"])
+        given_up = outcome != "correct" and attempt_no >= MAX_ATTEMPTS_PER_SIGNAL   # 오답·timeout 모두 시도로 센다
 
-    dispatch_results = _dispatch_feedback(target_signal, outcome, judgment)
+    dispatch_results = _dispatch_feedback(target_signal, outcome, judgment, resend_demo=not given_up)
 
     match_score = judgment.get("match_score", 0)
     next_signal = None
@@ -547,15 +579,17 @@ def _poll_once(vision_client: httpx.Client) -> None:
             "attempt": attempt_no,
             "message": OUTCOME_MESSAGES.get(outcome),
             "recommended_retry": _recommended_retry_count(match_score),
+            "given_up": given_up,
         }
         _session["_last_dispatched"] = None
         # 정답이면 다음 수신호 시범, 오답이면 방금 보낸 재시범을 볼 차례 — 확인 버튼을 기다린다
         _session["phase"] = "demo"
         _session["trial"] = {}
         _session["button_seq_base"] = None   # 판정 중에 누른 버튼 A가 확인으로 새지 않게 기준을 다시 잡는다
-        if outcome == "correct":
+        if outcome == "correct" or given_up:
             _session["completed"].append({
                 "signal": target_signal, "attempts": attempt_no, "match_score": match_score,
+                **({"given_up": True} if given_up else {}),
             })
             _session["curriculum_index"] += 1
             if _session["curriculum_index"] >= len(CURRICULUM):
@@ -638,6 +672,7 @@ def get_state():
             "last_result": _session["last_result"],
             "live_judgment": _session["live_judgment"],
             "attempts": _session["attempts"].get(target_signal, 0) if target_signal else 0,
+            "max_attempts": MAX_ATTEMPTS_PER_SIGNAL,   # 화면 "시도 n / 3" 표시 — 실물에 새 코드가 올라갔는지도 이 키로 확인
             "last_dispatch": _session["last_dispatch"],
             "last_demo": _session["last_demo"],
             "last_confirm_source": _session["last_confirm_source"],
@@ -679,12 +714,24 @@ def _confirm(source: str) -> dict:
                 return {"status": "ignored", "state": _session["state"], "phase": _session["phase"]}
             _session["phase"] = "judging"
             _session["trial"]["t_confirm"] = time.monotonic()
+            _session["trial"]["t_judge_start"] = _session["trial"]["t_confirm"]   # JUDGING_TIMEOUT_S 기준점
             _session["_last_dispatched"] = None
             _session["wrong_cls"] = None
             _session["camera_fail_streak"] = 0
             _session["button_seq_base"] = None
             _session["last_confirm_source"] = source
         return {"status": "ok", "phase": "judging", "source": source, "vision_reset": _public(reset)}
+
+
+def _read_button_seq() -> "int | None":
+    """actuation `GET /button`의 누른 횟수 `seq`. 버튼은 보조 입력이라 조회 실패는 None으로 조용히 넘긴다."""
+    try:
+        response = httpx.get(f"{ACTUATION_URL}/button", timeout=BUTTON_TIMEOUT_S)
+        if response.status_code >= 400:
+            return None
+        return int(response.json()["seq"])
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return None
 
 
 def _poll_button() -> None:
@@ -709,12 +756,8 @@ def _poll_button() -> None:
         if _session["trial"].get("t_demo_done") is None:
             return
         gen, base = _session["_gen"], _session["button_seq_base"]
-    try:
-        response = httpx.get(f"{ACTUATION_URL}/button", timeout=BUTTON_TIMEOUT_S)
-        if response.status_code >= 400:
-            return
-        seq = int(response.json()["seq"])
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+    seq = _read_button_seq()
+    if seq is None:
         return
     with _lock:
         # 조회하는 사이 재시작·단계 전환·기준 재설정이 있었으면 이번 값은 버린다
@@ -733,6 +776,62 @@ def _poll_button() -> None:
 def confirm():
     """확인 버튼(스페이스바) — 시범을 본 학습자가 판정을 시작한다 (스펙 §4.1). 처리는 `_confirm`."""
     return _confirm("web")
+
+
+def _camera_retry(source: str) -> dict:
+    """SC-04(camera_fail) 재시도 — 화면 "재시도" 버튼·Space(`POST /api/camera_retry`)와 micro:bit 버튼 A가 같은 경로를 쓴다.
+
+    판정 단계가 아니라 **시범 단계**로 되돌리고 현재 수신호를 AI Hand가 다시 보여 준다. 판정 단계로 바로 돌리면
+    학습자가 버튼을 누르느라 손이 카메라 밖에 있어 약 3초 뒤 다시 SC-04로 튕겨 나갔다(2026-09-29 ⑥ 재시험).
+    시범 단계에서는 손 미검출을 세지 않으므로, 학습자가 준비된 뒤 확인을 누르면 판정이 새로 시작된다.
+    재시도는 시도 횟수에 넣지 않는다."""
+    with _lock:
+        if _session["state"] != "camera_fail":
+            return {"status": "ignored", "state": _session["state"], "phase": _session["phase"]}
+        target_signal = _current_target_signal()
+        gen = _session["_gen"]
+        _session["state"] = "training"
+        _session["phase"] = "demo"
+        _session["camera_fail_streak"] = 0
+        _session["wrong_cls"] = None
+        _session["_last_dispatched"] = None
+        _session["trial"] = {}
+        _session["button_seq_base"] = None
+    logger.info("SC-04 재시도 (%s) — 시범 단계로 복귀", source)
+    if target_signal is not None:
+        # /command는 손 동작 뒤 회신(약 0.8초)이라 요청·폴링을 붙잡지 않게 스레드로 보낸다 (start()와 같은 방식).
+        # 버튼 A는 `t_demo_done` 게이트가 있어 시범이 끝나기 전 입력이 확인으로 새지 않는다.
+        threading.Thread(target=_send_demo, args=(target_signal, gen), daemon=True).start()
+    return {"status": "ok", "state": "training", "phase": "demo", "source": source}
+
+
+def _poll_retry_button() -> None:
+    """SC-04에서 micro:bit 버튼 A를 재시도 입력으로 받는다. 기준값 처리는 `_poll_button`과 같다 —
+    SC-04에 들어온 뒤 처음 읽은 seq를 기준으로 적고, 그보다 커지면 재시도한다."""
+    if not BUTTON_CONFIRM_ENABLED:
+        return
+    with _lock:
+        if _session["state"] != "camera_fail":
+            return
+        gen, base = _session["_gen"], _session["button_seq_base"]
+    seq = _read_button_seq()
+    if seq is None:
+        return
+    with _lock:
+        if _session["_gen"] != gen or _session["state"] != "camera_fail" or _session["button_seq_base"] != base:
+            return
+        if base is None or seq < base:
+            _session["button_seq_base"] = seq
+            return
+        if seq == base:
+            return
+    _camera_retry("microbit_button")
+
+
+@router.post("/camera_retry")
+def camera_retry():
+    """SC-04 "재시도" 버튼·Space. 처리는 `_camera_retry`."""
+    return _camera_retry("web")
 
 
 @router.post("/certificate")

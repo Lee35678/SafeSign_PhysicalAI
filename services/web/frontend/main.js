@@ -132,7 +132,8 @@ async function refreshTraining() {
     : "";
   document.getElementById("signal-progress").textContent =
     `${state.progress.current} / ${state.progress.total}`;
-  document.getElementById("attempt-count").textContent = state.attempts ?? 0;
+  document.getElementById("attempt-count").textContent =
+    state.max_attempts ? `${state.attempts ?? 0} / ${state.max_attempts}` : `${state.attempts ?? 0}회`;
 
   const liveScore = state.live_judgment ? state.live_judgment.match_score : 0;
   setMatchScore(liveScore);
@@ -234,6 +235,11 @@ document.getElementById("confirm-btn").addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.code === "Space" && document.getElementById("screen-camera-fail").classList.contains("active")) {
+    event.preventDefault();
+    if (!event.repeat) cameraRetry();
+    return;
+  }
   if (event.code !== "Space" || !confirmAvailable()) return;
   event.preventDefault();          // 페이지 스크롤 방지
   if (event.repeat) return;        // 누르고 있을 때의 반복 입력은 무시
@@ -283,8 +289,15 @@ function showOverlay(result) {
   } else {
     // 오답(SC-03b). below_tau / out_of_distribution은 오버레이 대신 showHoldHint()로 문구만 띄운다
     // (스펙 §5 결정 — 판정이 계속되므로 화면을 덮지 않는다. 두 사유의 문구 구분은 03 §4 그대로).
+    // 재시도 상한 초과(given_up)면 같은 수신호를 다시 보여주지 않고 다음으로 넘어간다(state_machine.py).
     overlay.className = "overlay wrong";
-    overlay.innerHTML = `
+    overlay.innerHTML = result.given_up
+      ? `
+      <h2>${result.message ?? "다시 시도하세요"}</h2>
+      <p>일치율 ${result.match_score}%</p>
+      <p>재시도 횟수를 초과해 다음 수신호로 넘어갑니다</p>
+    `
+      : `
       <h2>${result.message ?? "다시 시도하세요"}</h2>
       <p>일치율 ${result.match_score}%</p>
       <p>권장 재도전 횟수 ${result.recommended_retry}회 · 현재 시도 ${result.attempt}회</p>
@@ -299,10 +312,23 @@ function showOverlay(result) {
   }
 }
 
-document.getElementById("camera-retry-btn").addEventListener("click", () => {
-  // 손이 다시 보이면 상태머신이 자동으로 SC-03에 복귀한다(state_machine.py _poll_once) — 이 버튼은
-  // 즉시 한 번 더 확인해 대기감을 줄이기 위한 용도.
-  refreshTraining();
+// SC-04 재시도 — 시범 단계(AI Hand 재시범 + 확인 버튼)로 돌아간다(state_machine.py _camera_retry).
+// 판정 단계로 바로 돌리면 버튼을 누르느라 손이 카메라 밖이라 다시 SC-04로 튕겼다(2026-09-29 ⑥ 재시험).
+let retryInFlight = false;
+async function cameraRetry() {
+  if (retryInFlight) return;
+  retryInFlight = true;
+  try {
+    await apiPost("/api/camera_retry");
+    await refreshTraining();
+  } finally {
+    retryInFlight = false;
+  }
+}
+
+document.getElementById("camera-retry-btn").addEventListener("click", (event) => {
+  event.currentTarget.blur();
+  cameraRetry();
 });
 
 // ---- SC-05 ----
@@ -320,8 +346,10 @@ function renderSummary(completed) {
   completed.forEach((item) => {
     const tr = document.createElement("tr");
     const accuracy = successRate(item);
+    // given_up: 재시도 상한(state_machine.py MAX_ATTEMPTS_PER_SIGNAL) 초과로 넘어간 수신호 — match_score는
+    // 마지막 오답의 값이라 "정답 시 일치율"이 아니므로 표에서 구분해 보여준다.
     tr.innerHTML = `
-      <td>${item.signal}</td>
+      <td>${item.signal}${item.given_up ? " ⚠ 미완주" : ""}</td>
       <td>${item.attempts}회</td>
       <td>${item.match_score}% (${accuracy}% 성공률)</td>
     `;
@@ -370,7 +398,8 @@ document.getElementById("export-btn").addEventListener("click", () => {
   const stamp = localTimestamp(new Date());
   const rows = [["저장일자", "저장시각", "수신호", "시도 횟수", "정답 시 일치율(%)", "성공률(%)"]];
   lastCompleted.forEach((item) => {
-    rows.push([stamp.date, stamp.time, item.signal, item.attempts, item.match_score, successRate(item)]);
+    const signal = item.given_up ? `${item.signal} (미완주)` : item.signal;
+    rows.push([stamp.date, stamp.time, signal, item.attempts, item.match_score, successRate(item)]);
   });
   downloadCsv(`safesign_result_${stamp.file}.csv`, toCsv(rows));
   status.textContent = `결과 ${lastCompleted.length}건을 저장했습니다.`;
