@@ -7,6 +7,23 @@ let pollTimer = null;
 let overlayGen = 0;
 let lastOverlayKey = null;
 let lastCompleted = [];   // SC-05 집계 - "결과 저장"(⑨)이 다시 쓴다
+let lastTrainingState = null;  // 오버레이가 사라질 때 확인 버튼을 다시 그리는 데 쓴다 (①-b)
+let confirmInFlight = false;   // 확인 요청 중복 방지 — 버튼 클릭과 스페이스바가 겹쳐도 한 번만 보낸다
+let holdGen = 0;
+
+// 수신호 → 예시 사진 (스펙 §4.3). 파일명은 picar 명령명(state_machine.py PICAR_COMMANDS의 command)과 같다.
+const SIGN_IMAGES = {
+  "정지": "images/stop.jpg",
+  "서행": "images/slow.jpg",
+  "좌회전_유도": "images/turn_left.jpg",
+  "우회전_유도": "images/turn_right.jpg",
+  "확인_완료": "images/complete.jpg",
+  "후진": "images/reverse.jpg",
+  "주의": "images/caution.jpg",
+};
+
+// 판정은 계속되고 화면 안내만 하는 사유 (스펙 §5 결정 — 물리 피드백·시도 횟수 없음)
+const HOLD_OUTCOMES = ["below_tau", "out_of_distribution"];
 
 function show(screenId) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
@@ -80,37 +97,16 @@ function renderCurriculumList(curriculum) {
 document.getElementById("curriculum-start-btn").addEventListener("click", async () => {
   await apiPost("/api/start");
   lastOverlayKey = null;
-  shownSignImage = null;
-  applyPhase("demo");   // /api/start는 첫 수신호 시범과 함께 phase "demo"로 시작한다
+  lastTrainingState = null;
+  hideOverlay();
   show("screen-training");
   startPolling();
 });
 
 // ---- SC-03 (+03a/03b) / SC-04 / SC-05 ----
 
-// 판정 타이밍 스펙 §4.3 — 예시 사진은 picar 명령명(영문)으로 저장한다(URL 한글 인코딩 회피).
-// state_machine.py PICAR_COMMANDS의 command와 같은 이름이다.
-const SIGN_IMAGES = {
-  정지: "stop",
-  서행: "slow",
-  좌회전_유도: "turn_left",
-  우회전_유도: "turn_right",
-  확인_완료: "complete",
-  후진: "reverse",
-  주의: "caution",
-};
-
-let currentPhase = "demo";   // SC-03 하위 단계 — /api/state의 phase ("demo" | "judging")
-let confirmPending = false;
-let requestSeq = 0;          // 폴링 응답이 순서를 벗어나 도착하면(확인 직전에 보낸 요청 등) 버린다
-let renderedSeq = 0;
-let shownSignImage = null;
-
 async function refreshTraining() {
-  const seq = ++requestSeq;
   const state = await apiGet("/api/state");
-  if (seq <= renderedSeq) return;
-  renderedSeq = seq;
   renderDeviceStatus(state.devices);
 
   if (state.state === "camera_fail") {
@@ -136,12 +132,10 @@ async function refreshTraining() {
     : "";
   document.getElementById("signal-progress").textContent =
     `${state.progress.current} / ${state.progress.total}`;
-  document.getElementById("attempt-count").textContent = state.attempts ?? 0;
-  renderSignImage(state.target_signal);
-  renderPhase(state);
+  document.getElementById("attempt-count").textContent =
+    state.max_attempts ? `${state.attempts ?? 0} / ${state.max_attempts}` : `${state.attempts ?? 0}회`;
 
-  // 시범 단계에서는 백엔드가 판정을 멈춰 live_judgment가 직전 판정값으로 남아 있다 — 0으로 둔다.
-  const liveScore = currentPhase === "judging" && state.live_judgment ? state.live_judgment.match_score : 0;
+  const liveScore = state.live_judgment ? state.live_judgment.match_score : 0;
   setMatchScore(liveScore);
 
   const result = state.last_result;
@@ -149,9 +143,123 @@ async function refreshTraining() {
     const key = `${result.signal}:${result.outcome}:${result.attempt}`;
     if (key !== lastOverlayKey) {
       lastOverlayKey = key;
-      showOverlay(result);
+      if (HOLD_OUTCOMES.includes(result.outcome)) {
+        showHoldHint(result);
+      } else {
+        showOverlay(result);
+      }
     }
   }
+
+  lastTrainingState = state;
+  renderPhase(state);
+}
+
+// ---- SC-03 시범/판정 단계 (web 할 일 ①-b, 스펙 §4.2) ----
+
+function overlayVisible() {
+  return !document.getElementById("training-overlay").classList.contains("hidden");
+}
+
+// 확인 버튼이 "보이는" 조건 — 스페이스바도 이때만 받는다. 정답/오답 오버레이가 덮고 있는 동안은 받지 않는다
+// (오버레이가 사라진 뒤 사진 + 확인 버튼 화면으로 이어진다, 스펙 §4.2).
+function confirmAvailable() {
+  const state = lastTrainingState;
+  return Boolean(state) && state.state === "training" && state.phase === "demo"
+    && document.getElementById("screen-training").classList.contains("active") && !overlayVisible();
+}
+
+function renderPhase(state) {
+  const demo = state.phase === "demo";
+  const stage = document.getElementById("training-stage");
+  stage.classList.toggle("phase-demo", demo);
+  stage.classList.toggle("phase-judging", !demo);
+  setSignPhoto(state.target_signal);
+
+  document.getElementById("confirm-panel").classList.toggle("hidden", !confirmAvailable());
+  document.getElementById("judging-hint").classList.toggle("hidden", demo);
+  // 시범 동안 vision 판정은 멈춰 있어 live_judgment는 지난 값이다 — 일치율은 판정 중에만 보인다
+  document.getElementById("match-score-row").classList.toggle("hidden", demo);
+  if (demo) document.getElementById("hold-hint").classList.add("hidden");
+
+  const btn = document.getElementById("confirm-btn");
+  btn.disabled = confirmInFlight;
+  btn.textContent = confirmInFlight ? "확인 중…" : "확인";
+
+  // micro:bit 버튼 A는 BLE가 끊긴 동안 입력이 사라진다(03 §7) — 끊겼으면 안내에서 빼고 Space를 쓰게 한다
+  const actuation = (state.devices || {}).actuation;
+  const bleDown = Boolean(actuation) && (actuation.status !== "ok" || actuation.microbit_connected === false);
+  document.getElementById("confirm-keys").textContent = bleDown
+    ? "Space 키로도 확인할 수 있어요 (micro:bit 연결 끊김 — A 버튼은 지금 동작하지 않아요)"
+    : "Space 키 또는 micro:bit A 버튼으로도 확인할 수 있어요";
+}
+
+function setSignPhoto(signal) {
+  const img = document.getElementById("sign-photo-img");
+  const src = SIGN_IMAGES[signal] || "";
+  if (img.dataset.src === src) return;
+  img.dataset.src = src;
+  img.alt = signal ? `${signal} 정답 자세` : "";
+  setPhotoMissing(!src);
+  if (src) img.src = src;
+  else img.removeAttribute("src");
+}
+
+function setPhotoMissing(missing) {
+  document.getElementById("sign-photo-img").classList.toggle("hidden", missing);
+  document.getElementById("sign-photo-missing").classList.toggle("hidden", !missing);
+}
+
+document.getElementById("sign-photo-img").addEventListener("error", () => setPhotoMissing(true));
+document.getElementById("sign-photo-img").addEventListener("load", () => setPhotoMissing(false));
+
+async function confirmReady() {
+  if (confirmInFlight || !confirmAvailable()) return;
+  confirmInFlight = true;
+  renderPhase(lastTrainingState);
+  try {
+    // 판정 중이거나 이미 확인됐으면(micro:bit A가 먼저 눌린 경우 등) 서버가 {"status": "ignored"}를 돌려준다
+    await apiPost("/api/confirm");
+  } catch (err) {
+    console.warn("확인 요청 실패", err);
+  } finally {
+    confirmInFlight = false;
+  }
+  refreshTraining();
+}
+
+document.getElementById("confirm-btn").addEventListener("click", (event) => {
+  // 포커스가 남으면 다음 Space가 버튼 클릭으로도 들어간다 — 아래 keydown 처리와 겹치지 않게 푼다
+  event.currentTarget.blur();
+  confirmReady();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.code === "Space" && document.getElementById("screen-camera-fail").classList.contains("active")) {
+    event.preventDefault();
+    if (!event.repeat) cameraRetry();
+    return;
+  }
+  if (event.code !== "Space" || !confirmAvailable()) return;
+  event.preventDefault();          // 페이지 스크롤 방지
+  if (event.repeat) return;        // 누르고 있을 때의 반복 입력은 무시
+  confirmReady();
+});
+
+function showHoldHint(result) {
+  const hint = document.getElementById("hold-hint");
+  const myGen = ++holdGen;
+  hint.textContent = `${result.message ?? "조금 더 정확히 해주세요"} (일치율 ${result.match_score}%)`;
+  hint.classList.remove("hidden");
+  setTimeout(() => {
+    if (myGen === holdGen) hint.classList.add("hidden");
+  }, 3000);
+}
+
+function hideOverlay() {
+  overlayGen++;
+  document.getElementById("training-overlay").classList.add("hidden");
+  document.getElementById("hold-hint").classList.add("hidden");
 }
 
 function setMatchScore(score) {
@@ -173,129 +281,63 @@ function showOverlay(result) {
       <p>picar 동작 중…</p>
     `;
     setTimeout(() => {
-      if (myGen === overlayGen) overlay.classList.add("hidden");
+      if (myGen === overlayGen) {
+        overlay.classList.add("hidden");
+        if (lastTrainingState) renderPhase(lastTrainingState);   // 다음 수신호 시범 화면으로
+      }
     }, 2000);
   } else {
-    // wrong / below_tau / out_of_distribution 모두 SC-03b, 메시지만 다르다
-    // (03_인터페이스계약서 §4 — 자세를 다듬으라는 뜻과 다른 수신호를 하고 있다는 뜻을 구분).
+    // 오답(SC-03b). below_tau / out_of_distribution은 오버레이 대신 showHoldHint()로 문구만 띄운다
+    // (스펙 §5 결정 — 판정이 계속되므로 화면을 덮지 않는다. 두 사유의 문구 구분은 03 §4 그대로).
+    // 재시도 상한 초과(given_up)면 같은 수신호를 다시 보여주지 않고 다음으로 넘어간다(state_machine.py).
     overlay.className = "overlay wrong";
-    overlay.innerHTML = `
+    overlay.innerHTML = result.given_up
+      ? `
+      <h2>${result.message ?? "다시 시도하세요"}</h2>
+      <p>일치율 ${result.match_score}%</p>
+      <p>재시도 횟수를 초과해 다음 수신호로 넘어갑니다</p>
+    `
+      : `
       <h2>${result.message ?? "다시 시도하세요"}</h2>
       <p>일치율 ${result.match_score}%</p>
       <p>권장 재도전 횟수 ${result.recommended_retry}회 · 현재 시도 ${result.attempt}회</p>
+      <p>AI Hand가 다시 보여줍니다</p>
     `;
     setTimeout(() => {
-      if (myGen === overlayGen) overlay.classList.add("hidden");
+      if (myGen === overlayGen) {
+        overlay.classList.add("hidden");
+        if (lastTrainingState) renderPhase(lastTrainingState);   // 재시범 사진 + 확인 버튼으로
+      }
     }, 2500);
   }
 }
 
-// ---- SC-03 시범 단계: 예시 사진 + 확인 버튼 (판정 타이밍 스펙 §4.2) ----
-
-function renderSignImage(signal) {
-  if (signal === shownSignImage) return;
-  shownSignImage = signal;
-  const figure = document.getElementById("sign-example");
-  const img = document.getElementById("sign-image");
-  const name = SIGN_IMAGES[signal];
-  document.getElementById("sign-image-missing").textContent = name
-    ? `예시 사진 준비 중 (images/${name}.jpg)`
-    : "예시 사진 준비 중";
-  if (!name) {
-    figure.classList.add("missing");
-    img.removeAttribute("src");
-    return;
-  }
-  // 사진이 아직 저장소에 없으면 error 이벤트로 자리표시 문구를 보여준다
-  figure.classList.remove("missing");
-  img.alt = `${signal} 예시 사진`;
-  img.src = `images/${name}.jpg`;
-}
-
-document.getElementById("sign-image").addEventListener("error", () => {
-  document.getElementById("sign-example").classList.add("missing");
-});
-
-document.getElementById("sign-image").addEventListener("load", () => {
-  document.getElementById("sign-example").classList.remove("missing");
-});
-
-function applyPhase(phase) {
-  currentPhase = phase === "judging" ? "judging" : "demo";
-  const screen = document.getElementById("screen-training");
-  screen.classList.toggle("phase-demo", currentPhase === "demo");
-  screen.classList.toggle("phase-judging", currentPhase === "judging");
-  document.getElementById("phase-badge").textContent = currentPhase === "demo" ? "시범" : "판정 중";
-}
-
-function renderPhase(state) {
-  applyPhase(state.phase);
-  // 오답 뒤 시범 단계면 AI Hand가 다시 보여주는 중이다 (스펙 §3 — 오답 피드백 + 재시범 + 사진 + 확인)
-  const result = state.last_result;
-  const retrying = result && result.signal === state.target_signal && result.outcome === "wrong";
-  // micro:bit 버튼 A도 확인 입력이다(스펙 §9) — BLE가 끊기면 입력이 사라지므로 연결돼 있을 때만 안내한다
-  const actuation = (state.devices || {}).actuation || {};
-  const keys = actuation.microbit_connected ? "Space 또는 micro:bit A" : "Space";
-  document.getElementById("demo-guide").textContent = retrying
-    ? `AI Hand가 다시 보여줍니다. 사진과 비교해 보고, 준비되면 확인을 누르세요 (${keys})`
-    : `AI Hand와 사진을 보고, 준비되면 확인을 누르세요 (${keys})`;
-}
-
-function isConfirmVisible() {
-  // 오버레이(정답/오답 연출)가 떠 있는 동안은 버튼이 가려져 있다 — 사라진 뒤에만 받는다 (스펙 §4.2)
-  return (
-    document.getElementById("screen-training").classList.contains("active") &&
-    currentPhase === "demo" &&
-    document.getElementById("training-overlay").classList.contains("hidden")
-  );
-}
-
-async function confirmJudging() {
-  if (!isConfirmVisible() || confirmPending) return;
-  confirmPending = true;
-  const btn = document.getElementById("confirm-btn");
-  btn.disabled = true;
+// SC-04 재시도 — 시범 단계(AI Hand 재시범 + 확인 버튼)로 돌아간다(state_machine.py _camera_retry).
+// 판정 단계로 바로 돌리면 버튼을 누르느라 손이 카메라 밖이라 다시 SC-04로 튕겼다(2026-09-29 ⑥ 재시험).
+let retryInFlight = false;
+async function cameraRetry() {
+  if (retryInFlight) return;
+  retryInFlight = true;
   try {
-    const result = await apiPost("/api/confirm");
-    if (result.status === "ok") {
-      renderedSeq = requestSeq;   // 확인 전에 보낸 폴링 응답("demo")이 늦게 와서 화면을 되돌리지 않게
-      applyPhase("judging");
-      setMatchScore(0);
-    }
-  } catch (err) {
-    // 네트워크 오류 — 다음 폴링이 실제 phase로 화면을 맞춘다
+    await apiPost("/api/camera_retry");
+    await refreshTraining();
   } finally {
-    confirmPending = false;
-    btn.disabled = false;
+    retryInFlight = false;
   }
 }
 
-document.getElementById("confirm-btn").addEventListener("click", (event) => {
-  // 마우스로 누른 뒤 포커스가 남으면 다음 스페이스바가 버튼 기본 동작과 겹친다
+document.getElementById("camera-retry-btn").addEventListener("click", (event) => {
   event.currentTarget.blur();
-  confirmJudging();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.code !== "Space" || !isConfirmVisible()) return;
-  event.preventDefault();   // 페이지 스크롤 방지
-  if (event.repeat) return; // 누르고 있을 때의 반복 입력 무시
-  confirmJudging();
-});
-
-document.getElementById("camera-retry-btn").addEventListener("click", () => {
-  // 손이 다시 보이면 상태머신이 자동으로 SC-03에 복귀한다(state_machine.py _poll_once) — 이 버튼은
-  // 즉시 한 번 더 확인해 대기감을 줄이기 위한 용도.
-  refreshTraining();
+  cameraRetry();
 });
 
 // ---- SC-05 ----
 
 // 학습자 지표 = "첫 시도 정답" (2026-09-29 조은수 결정, 14 §9). 예전 "성공률"(100/시도 횟수)은 시도 횟수를 다른
 // 모양으로 쓴 값인데 "50% 성공률"처럼 보여 KPI 정답률(시스템 판정 정확도)과 헷갈렸다. 교육자에게 필요한 것은
-// "어느 수신호를 한 번에 못 맞혔나"라서 O/X로 보인다. 화면·수료증·CSV가 모두 이 두 함수를 쓴다.
+// "어느 수신호를 한 번에 못 맞혔나"라서 O/X로 보인다. 미완주(given_up)는 정답이 아니므로 X. 화면·수료증·CSV가 모두 이 두 함수를 쓴다.
 function firstTry(item) {
-  return item.attempts === 1;
+  return !item.given_up && item.attempts === 1;
 }
 
 function firstTryCount(completed) {
@@ -308,8 +350,10 @@ function renderSummary(completed) {
   tbody.innerHTML = "";
   completed.forEach((item) => {
     const tr = document.createElement("tr");
+    // given_up: 재시도 상한(state_machine.py MAX_ATTEMPTS_PER_SIGNAL) 초과로 넘어간 수신호 — match_score는
+    // 마지막 오답의 값이라 "정답 시 일치율"이 아니므로 표에서 구분해 보여준다.
     tr.innerHTML = `
-      <td>${item.signal}</td>
+      <td>${item.signal}${item.given_up ? " ⚠ 미완주" : ""}</td>
       <td>${item.attempts}회</td>
       <td>${item.match_score}%</td>
       <td>${firstTry(item) ? "O" : "X"}</td>
@@ -361,7 +405,8 @@ document.getElementById("export-btn").addEventListener("click", () => {
   const stamp = localTimestamp(new Date());
   const rows = [["저장일자", "저장시각", "수신호", "시도 횟수", "정답 시 일치율(%)", "첫 시도 정답"]];
   lastCompleted.forEach((item) => {
-    rows.push([stamp.date, stamp.time, item.signal, item.attempts, item.match_score, firstTry(item) ? "O" : "X"]);
+    const signal = item.given_up ? `${item.signal} (미완주)` : item.signal;
+    rows.push([stamp.date, stamp.time, signal, item.attempts, item.match_score, firstTry(item) ? "O" : "X"]);
   });
   downloadCsv(`safesign_result_${stamp.file}.csv`, toCsv(rows));
   status.textContent = `결과 ${lastCompleted.length}건을 저장했습니다.`;

@@ -116,3 +116,15 @@ def test_main_writes_report(tmp_path, capsys):
 
 def test_main_rejects_missing_file(tmp_path):
     assert agg.main([str(tmp_path / "nope.csv")]) == 2
+
+
+def test_web_timeout_excluded_by_default_or_counted_as_reject(tmp_path):
+    """web `timeout`(판정 제한시간 초과) — 기본은 §5.7대로 제외·건수 보고, 옵션이면 미판정(16 §6.4 선택지)."""
+    path = _write(tmp_path / "web_trials_3.csv", WEB_FIELDS, [_row("정지", "correct"), _row("주의", "timeout", predicted="")])
+    rows = agg.load([path])["web"]
+    kept, excluded = agg.split_rows(rows, include_mocked=False)
+    assert len(kept) == 1 and excluded == {"timeout": 1}
+    kept, excluded = agg.split_rows(rows, include_mocked=False, timeout_as_reject=True)
+    assert len(kept) == 2 and not excluded
+    k = agg.classify_rows(kept)
+    assert (k["correct"], k["rejected"]) == (1, 1)

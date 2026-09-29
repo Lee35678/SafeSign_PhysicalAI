@@ -188,6 +188,155 @@ def test_camera_fail_threshold_and_auto_recovery():
         assert sm._session["state"] == "training"
 
 
+_NO_HAND = {
+    "predicted_class": "negative", "confidence": 0.0, "match_score": 0,
+    "is_reject": True, "latency_ms": 5, "reason": "no_hand",
+}
+
+
+def _enter_camera_fail(client) -> None:
+    for _ in range(sm.CAMERA_FAIL_STREAK_THRESHOLD):
+        sm._poll_once(client)
+    assert sm._session["state"] == "camera_fail"
+
+
+def _wait_demo_sent(fake_post, signal: str, timeout: float = 2.0) -> bool:
+    import time
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if any(c.args[0].endswith("/command") and c.kwargs.get("json", {}).get("command") == "demo"
+               and c.kwargs.get("json", {}).get("target_signal") == signal for c in fake_post.call_args_list):
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_camera_retry_returns_to_demo_and_resends_demo():
+    """2026-09-29 ⑥ 재시험 — 카메라가 계속 손을 못 잡으면 SC-04에서 못 빠져나왔다. 재시도는 판정이 아니라
+    **시범 단계**로 되돌리고 현재 수신호를 다시 보여 준다(판정으로 바로 돌리면 손이 카메라 밖이라 다시 튕긴다)."""
+    _reset_session("training")
+    fake_post = MagicMock(return_value=_FakeResponse(200, {"status": "ok"}))
+    with patch("backend.state_machine.httpx.post", fake_post):
+        client = _FakeVisionClient(_NO_HAND)
+        _enter_camera_fail(client)
+        result = sm.camera_retry()
+        assert result["status"] == "ok"
+        assert sm._session["state"] == "training"
+        assert sm._session["phase"] == "demo"
+        assert sm._session["camera_fail_streak"] == 0
+        assert _wait_demo_sent(fake_post, "정지"), "재시도 뒤 AI Hand 재시범이 없다"
+    assert sm._session["attempts"].get("정지", 0) == 0, "재시도는 시도 횟수에 넣지 않는다"
+
+
+def test_camera_retry_does_not_bounce_back_while_hand_is_still_away():
+    """재시도 뒤 손이 아직 카메라 밖이어도(버튼을 누르느라) 시범 단계에서는 미검출을 세지 않아 SC-04로 안 돌아간다."""
+    _reset_session("training")
+    with patch("backend.state_machine.httpx.post", return_value=_FakeResponse(200, {"status": "ok"})):
+        client = _FakeVisionClient(_NO_HAND)
+        _enter_camera_fail(client)
+        sm.camera_retry()
+        for _ in range(sm.CAMERA_FAIL_STREAK_THRESHOLD * 2):
+            sm._poll_once(client)
+    assert sm._session["state"] == "training"
+    assert sm._session["phase"] == "demo"
+
+
+def test_no_hand_poll_racing_a_retry_does_not_reenter_camera_fail():
+    """vision을 조회하는 사이 재시도로 시범 단계가 되면, 그 조회 결과(no_hand)로 다시 SC-04를 만들지 않는다."""
+    _reset_session("training")
+    with patch("backend.state_machine.httpx.post", return_value=_FakeResponse(200, {"status": "ok"})):
+        client = _FakeVisionClient(_NO_HAND)
+        _enter_camera_fail(client)
+
+        class _RetryDuringGet(_FakeVisionClient):
+            def get(self, url):
+                sm.camera_retry()                  # 조회 도중 재시도가 들어온다
+                return super().get(url)
+
+        sm._poll_once(_RetryDuringGet(_NO_HAND))
+    assert sm._session["state"] == "training"
+    assert sm._session["phase"] == "demo"
+
+
+def test_camera_retry_is_ignored_outside_camera_fail():
+    _reset_session("training")
+    result = sm.camera_retry()
+    assert result["status"] == "ignored"
+    assert sm._session["state"] == "training"
+    assert sm._session["phase"] == "judging"
+
+
+# ---- 판정 제한시간: below_tau/OOD만 계속 나와도 판정이 끝나야 시도 횟수 상한이 적용된다 ----
+
+_BELOW_TAU = {
+    "predicted_class": None, "confidence": 0.4, "match_score": 20,
+    "is_reject": True, "latency_ms": 5, "reason": "below_tau",
+}
+
+
+def _start_judging_ago(seconds: float) -> None:
+    import time
+    sm._session["trial"]["t_judge_start"] = time.monotonic() - seconds
+
+
+def test_judging_timeout_counts_as_attempt_and_redemos():
+    """2026-09-29 ⑥ 재시험 — 틀린 손모양이 below_tau/OOD로만 잡히면 판정이 끝나지 않아 상한이 무의미했다.
+    제한시간(기준 구현 `_listen()`과 같은 10초)을 넘기면 timeout으로 시도 1회를 세고 재시범한다."""
+    _reset_session("training")
+    fake_post = MagicMock(return_value=_FakeResponse(200, {"status": "ok"}))
+    with patch("backend.state_machine.httpx.post", fake_post):
+        client = _FakeVisionClient(_BELOW_TAU)
+        _start_judging_ago(sm.JUDGING_TIMEOUT_S - 1)
+        sm._poll_once(client)
+        assert sm._session["last_result"]["outcome"] == "below_tau", "제한시간 전에는 안내만"
+        _start_judging_ago(sm.JUDGING_TIMEOUT_S + 0.1)
+        sm._poll_once(client)
+    assert sm._session["last_result"]["outcome"] == "timeout"
+    assert sm._session["attempts"]["정지"] == 1
+    assert sm._session["phase"] == "demo"
+    assert sm._session["curriculum_index"] == 0
+    demos = [c for c in fake_post.call_args_list
+             if c.args[0].endswith("/command") and c.kwargs["json"]["command"] == "demo"]
+    assert len(demos) == 1, "timeout 뒤 재시범이 없다"
+
+
+def test_correct_frame_wins_over_timeout():
+    _reset_session("training")
+    with patch("backend.state_machine.httpx.post", return_value=_FakeResponse(200, {"status": "ok"})):
+        _start_judging_ago(sm.JUDGING_TIMEOUT_S + 5)
+        sm._poll_once(_FakeVisionClient({
+            "predicted_class": "정지", "confidence": 0.95, "match_score": 92,
+            "is_reject": False, "latency_ms": 5,
+        }))
+    assert sm._session["last_result"]["outcome"] == "correct"
+
+
+def test_timeouts_reach_attempt_cap_and_advance():
+    """timeout도 시도로 세므로 3번째에서 재시범 없이 다음 수신호로 넘어간다 — 실물에서 '무제한'으로 보이던 경로."""
+    _reset_session("training")
+    fake_post = MagicMock(return_value=_FakeResponse(200, {"status": "ok"}))
+    with patch("backend.state_machine.httpx.post", fake_post):
+        client = _FakeVisionClient(_BELOW_TAU)
+        for n in range(1, sm.MAX_ATTEMPTS_PER_SIGNAL + 1):
+            sm._session["phase"] = "judging"          # 재시범을 보고 확인을 눌렀다고 가정
+            _start_judging_ago(sm.JUDGING_TIMEOUT_S + 0.1)
+            sm._poll_once(client)
+            assert sm._session["last_result"]["attempt"] == n
+    assert sm._session["last_result"]["given_up"] is True
+    assert sm._session["curriculum_index"] == 1
+    assert sm._session["completed"][-1]["given_up"] is True
+    assert _wait_demo_sent(fake_post, "서행"), "상한 도달 뒤 다음 수신호 시범이 없다"
+    demo_stop = [c for c in fake_post.call_args_list if c.args[0].endswith("/command")
+                 and c.kwargs["json"].get("command") == "demo" and c.kwargs["json"].get("target_signal") == "정지"]
+    assert len(demo_stop) == sm.MAX_ATTEMPTS_PER_SIGNAL - 1, "상한 도달 때는 같은 수신호를 다시 보여주지 않는다"
+
+
+def test_state_exposes_max_attempts():
+    """화면 '시도 n / 3' 표시용 — 실물에 새 코드가 올라갔는지 `curl /api/state`로 확인하는 데도 쓴다."""
+    _reset_session("training")
+    assert sm.get_state()["max_attempts"] == sm.MAX_ATTEMPTS_PER_SIGNAL
+
+
 # ---- SC-06: 수료증 발급 조건 ----
 
 def test_certificate_requires_all_signals_completed():

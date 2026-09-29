@@ -75,91 +75,6 @@ button:hover {
   font-size: 0.85rem;
 }
 
-/* SC-03 하위 단계 (판정 타이밍 스펙 §4.2): demo = 사진 크게 + 확인 버튼, judging = 카메라 + 사진 작게 */
-.phase-demo .phase-badge {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.phase-judging .phase-badge {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.sign-example {
-  margin: 1rem auto;
-  width: 100%;
-  max-width: 420px;
-  aspect-ratio: 4 / 3;
-  background: #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sign-example img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: white;
-}
-
-.sign-image-missing {
-  display: none;
-  color: #6b7280;
-  padding: 1rem;
-}
-
-.sign-example.missing img {
-  display: none;
-}
-
-.sign-example.missing .sign-image-missing {
-  display: block;
-}
-
-.phase-judging .sign-example {
-  max-width: 140px;
-  margin: 0.5rem auto 0;
-}
-
-.phase-judging .sign-image-missing {
-  font-size: 0.75rem;
-  padding: 0.25rem;
-}
-
-.demo-panel,
-.judging-panel {
-  display: none;
-}
-
-.phase-demo .demo-panel,
-.phase-judging .judging-panel {
-  display: block;
-}
-
-.demo-guide {
-  font-size: 1.1rem;
-  margin: 0.5rem 0 1rem;
-}
-
-.judging-guide {
-  margin: 0.5rem 0 0;
-  color: #1e40af;
-}
-
-button.confirm-btn {
-  font-size: 1.25rem;
-  padding: 1rem 3rem;
-}
-
-button.confirm-btn:disabled {
-  background: #9ca3af;
-  cursor: wait;
-}
-
 .camera-preview {
   margin: 1rem auto;
   width: 100%;
@@ -176,6 +91,100 @@ button.confirm-btn:disabled {
   color: #d1d5db;
   text-align: center;
   padding: 1rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* SC-03 시범/판정 단계 (web 할 일 ①-b, 스펙 §4.2)
+   phase-demo: 예시 사진 크게, 카메라 숨김 / phase-judging: 카메라 + 사진을 옆에 작게 */
+.training-stage {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 1rem auto;
+  max-width: 640px;
+}
+
+.sign-photo {
+  margin: 0;
+  flex: none;
+}
+
+.sign-photo img,
+.sign-photo-missing {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #e5e7eb;
+}
+
+.sign-photo-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.sign-photo figcaption {
+  margin-top: 0.25rem;
+}
+
+/* 세로가 낮은 노트북 화면에서도 확인 버튼이 스크롤 없이 보이게 사진 높이를 화면 절반(3:4 비율)으로 제한 */
+.phase-demo .sign-photo {
+  width: min(360px, 80vw, calc(50vh * 3 / 4));
+}
+
+.phase-demo .camera-preview {
+  display: none;
+}
+
+.phase-judging .sign-photo {
+  width: 120px;
+}
+
+.phase-judging .camera-preview {
+  margin: 0;
+  flex: 1;
+}
+
+.confirm-panel {
+  margin-top: 0.5rem;
+}
+
+.confirm-hint {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+button.confirm-btn {
+  font-size: 1.25rem;
+  padding: 0.9rem 3.5rem;
+}
+
+button.confirm-btn:disabled {
+  background: #93c5fd;
+  cursor: default;
+}
+
+.judging-hint {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.hold-hint {
+  margin: 0.75rem auto 0;
+  max-width: 480px;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
 }
 
 .match-score-row {

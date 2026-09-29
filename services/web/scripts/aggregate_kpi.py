@@ -16,6 +16,8 @@
   - 안건 4: 치명 오분류 = 정지를 **신호 7종 중 다른 신호**로 판정한 건수(미판정은 별도 집계)
 - ⚠️ web 로그에는 below_tau·OOD·과도 자세가 기록되지 않는다(스펙 §7.1, 화면 안내만) — **온라인 미판정률은
   구조적으로 낮게 나오므로 참고치**다(안건 5). 판정 성능 5개의 확정값은 오프라인 경로를 쓴다.
+- web 로그의 `timeout`(판정 제한시간 `JUDGING_TIMEOUT_S` 초과, 2026-09-29~)은 기본적으로 데모와 같이 분모에서 빼고
+  건수만 적는다(§5.7). `--timeout-as-reject`면 미판정으로 센다 — 16 §6.4 "온라인 미판정률 집계 방법"의 선택지(결정 대기).
 - P95는 최근접 순위(nearest-rank) — 오름차순 정렬 뒤 ceil(0.95·n)번째 값(06 §2-3 "95번째로 작은 값").
 - `--out DIR`: 06 붙여넣기용 `kpi_report.md`를 쓰고, matplotlib이 있으면 혼동행렬·지연 히스토그램 PNG도 만든다.
 """
@@ -30,8 +32,8 @@ from pathlib import Path
 
 SIGNS = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
 CRITICAL = "정지"
-REJECT_OUTCOMES = {"below_tau", "out_of_distribution"}
-EXCLUDED_OUTCOMES = {"timeout", "skip"}              # 데모 CSV 전용 (§5.7)
+REJECT_OUTCOMES = {"below_tau", "out_of_distribution", "timeout"}   # timeout은 --timeout-as-reject일 때만 여기까지 온다
+EXCLUDED_OUTCOMES = {"timeout", "skip"}              # 분모에서 빼고 건수만 (§5.7). web timeout은 옵션으로 미판정 처리
 TARGETS = {"accuracy": 92.0, "misclass": 3.0, "reject": 5.0, "macro_f1": 0.90,
            "decision_p95_ms": 1000, "feedback_p95_ms": 2000}
 SMALL_N = 30
@@ -80,13 +82,15 @@ def load(paths: list[Path]) -> dict[str, list[dict]]:
     return groups
 
 
-def split_rows(rows: list[dict], include_mocked: bool) -> tuple[list[dict], collections.Counter]:
-    """(판정 대상 행, 제외 사유별 건수)."""
+def split_rows(rows: list[dict], include_mocked: bool, timeout_as_reject: bool = False) -> tuple[list[dict], collections.Counter]:
+    """(판정 대상 행, 제외 사유별 건수). `timeout_as_reject`면 web `timeout` 행을 미판정으로 남긴다."""
     kept, excluded = [], collections.Counter()
     for r in rows:
         outcome = r.get("outcome", "")
         if not include_mocked and _truthy(r.get("mocked", "")):
             excluded["mocked=true"] += 1
+        elif outcome == "timeout" and timeout_as_reject and "mocked" in r and r.get("signal") in SIGNS:
+            kept.append({**r, "outcome": "timeout"})
         elif outcome in EXCLUDED_OUTCOMES:
             excluded[outcome] += 1
         elif outcome not in {"correct", "wrong"} | REJECT_OUTCOMES:
@@ -312,6 +316,8 @@ def main(argv: "list[str] | None" = None) -> int:
     parser.add_argument("--out", type=Path, help="kpi_report.md·PNG를 쓸 폴더")
     parser.add_argument("--latency-include-wrong", action="store_true", help="판정 지연 모수에 오답 포함(안건 2 B/C)")
     parser.add_argument("--include-mocked", action="store_true", help="mocked=true 행도 집계(개발 확인용, KPI 아님)")
+    parser.add_argument("--timeout-as-reject", action="store_true",
+                        help="web timeout 행을 미판정으로 계산(16 §6.4 결정 대기 — 기본은 분모에서 제외)")
     args = parser.parse_args(argv)
 
     missing = [p for p in args.csv if not p.exists()]
@@ -326,7 +332,7 @@ def main(argv: "list[str] | None" = None) -> int:
     for kind, rows in groups.items():
         if not rows:
             continue
-        kept, excluded = split_rows(rows, args.include_mocked)
+        kept, excluded = split_rows(rows, args.include_mocked, args.timeout_as_reject and kind == "web")
         text, _, lat = report(kind, kept, excluded, [r["_file"] for r in rows], args.latency_include_wrong)
         if args.include_mocked:
             text += "\n\n> ⚠️ `--include-mocked` — mock 행이 섞여 있어 KPI로 쓸 수 없다."
