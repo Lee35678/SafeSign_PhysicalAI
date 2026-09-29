@@ -6,6 +6,7 @@ const POLL_MS = 400;
 let pollTimer = null;
 let overlayGen = 0;
 let lastOverlayKey = null;
+let lastCompleted = [];   // SC-05 집계 - "결과 저장"(⑨)이 다시 쓴다
 
 function show(screenId) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
@@ -232,9 +233,12 @@ function renderPhase(state) {
   // 오답 뒤 시범 단계면 AI Hand가 다시 보여주는 중이다 (스펙 §3 — 오답 피드백 + 재시범 + 사진 + 확인)
   const result = state.last_result;
   const retrying = result && result.signal === state.target_signal && result.outcome === "wrong";
+  // micro:bit 버튼 A도 확인 입력이다(스펙 §9) — BLE가 끊기면 입력이 사라지므로 연결돼 있을 때만 안내한다
+  const actuation = (state.devices || {}).actuation || {};
+  const keys = actuation.microbit_connected ? "Space 또는 micro:bit A" : "Space";
   document.getElementById("demo-guide").textContent = retrying
-    ? "AI Hand가 다시 보여줍니다. 사진과 비교해 보고, 준비되면 확인을 누르세요 (Space)"
-    : "AI Hand와 사진을 보고, 준비되면 확인을 누르세요 (Space)";
+    ? `AI Hand가 다시 보여줍니다. 사진과 비교해 보고, 준비되면 확인을 누르세요 (${keys})`
+    : `AI Hand와 사진을 보고, 준비되면 확인을 누르세요 (${keys})`;
 }
 
 function isConfirmVisible() {
@@ -287,12 +291,19 @@ document.getElementById("camera-retry-btn").addEventListener("click", () => {
 
 // ---- SC-05 ----
 
+// 09_화면목록 §미확정: "성공률" 정의는 KPI 정답률과 혼동될 수 있어 확인 대기 중.
+// 정의가 바뀌면 이 함수만 고치면 화면·수료증·CSV가 함께 따라간다.
+function successRate(item) {
+  return Math.round(100 / item.attempts);
+}
+
 function renderSummary(completed) {
+  lastCompleted = completed;
   const tbody = document.getElementById("summary-tbody");
   tbody.innerHTML = "";
   completed.forEach((item) => {
     const tr = document.createElement("tr");
-    const accuracy = Math.round(100 / item.attempts);
+    const accuracy = successRate(item);
     tr.innerHTML = `
       <td>${item.signal}</td>
       <td>${item.attempts}회</td>
@@ -301,6 +312,53 @@ function renderSummary(completed) {
     tbody.appendChild(tr);
   });
 }
+
+// ---- SC-05 결과 저장 (web 할 일 ⑨, 09_화면목록 SC-05 "교육자용 결과 파일 저장") ----
+// 프론트엔드만으로 처리한다 - 집계는 이미 /api/state의 completed로 받아와 있어 서버 호출이 없다.
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  // 쉼표·따옴표·줄바꿈이 들어가면 셀이 밀린다. 수신호 이름엔 없지만 규칙대로 감싼다.
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsv(rows) {
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function localTimestamp(date) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const d = `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}`;
+  const t = `${p2(date.getHours())}:${p2(date.getMinutes())}:${p2(date.getSeconds())}`;
+  return { date: d, time: t, file: `${d.replace(/-/g, "")}_${t.replace(/:/g, "")}` };
+}
+
+function downloadCsv(filename, csvText) {
+  // 엑셀은 BOM이 없으면 UTF-8 한글을 깨뜨린다 (스펙 §7.1이 시행 로그에 BOM을 요구하는 것과 같은 이유).
+  const blob = new Blob(["\uFEFF" + csvText], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  // 즉시 해제하면 브라우저가 내려받기를 시작하기 전에 주소가 사라질 수 있다.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById("export-btn").addEventListener("click", () => {
+  const status = document.getElementById("export-status");
+  if (!lastCompleted.length) {
+    status.textContent = "저장할 결과가 없습니다.";
+    return;
+  }
+  const stamp = localTimestamp(new Date());
+  const rows = [["저장일자", "저장시각", "수신호", "시도 횟수", "정답 시 일치율(%)", "성공률(%)"]];
+  lastCompleted.forEach((item) => {
+    rows.push([stamp.date, stamp.time, item.signal, item.attempts, item.match_score, successRate(item)]);
+  });
+  downloadCsv(`safesign_result_${stamp.file}.csv`, toCsv(rows));
+  status.textContent = `결과 ${lastCompleted.length}건을 저장했습니다.`;
+});
 
 document.getElementById("certificate-btn").addEventListener("click", async () => {
   const result = await apiPost("/api/certificate");
@@ -336,7 +394,7 @@ function drawCertificate(completed, issuedAt) {
   let y = 230;
   ctx.font = "15px system-ui, sans-serif";
   completed.forEach((item, i) => {
-    const accuracy = Math.round(100 / item.attempts);
+    const accuracy = successRate(item);
     ctx.fillText(
       `${i + 1}. ${item.signal}  —  시도 ${item.attempts}회 / 최종 일치율 ${item.match_score}% (${accuracy}% 성공률)`,
       60,

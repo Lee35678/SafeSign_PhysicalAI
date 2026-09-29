@@ -21,11 +21,16 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   비교, 정답/오답/below_tau/out_of_distribution을 판정해 actuation `/command`·`/result`·`/progress`와
   picar `/picar`를 호출하고, 정답 시 vision `POST /reset`으로 N프레임 누적을 초기화한다.
   - `GET /api/state` — state/**phase**/target_signal/progress/last_result/live_judgment/attempts/completed/
-    last_dispatch/last_demo/devices/certificate_issued_at 조회
+    last_dispatch/last_demo/last_confirm_source/devices/certificate_issued_at 조회
   - `POST /api/start` — 커리큘럼 처음부터 시작 (SC-01/02 -> SC-03, 세션 이어하기 없음). 첫 수신호 AI Hand 시범을
     보내고 `phase: "demo"`로 시작한다
   - `POST /api/confirm` — 확인 버튼(스페이스바). `phase == "demo"`일 때만 받아 vision `/reset` 뒤 `"judging"`으로.
     판정 중 연타는 `{"status": "ignored"}` (2026-09-28, [판정 타이밍 스펙](../../document/proposals/web_판정_타이밍_스펙.md) §4.1)
+  - **micro:bit 버튼 A 확인** (2026-09-29, 스펙 §9): 시범 단계에서만 actuation `GET /button`을 폴링(0.2초, 타임아웃
+    `BUTTON_TIMEOUT_S` 0.3초)해 누른 횟수 `seq`가 기준값보다 커지면 `/api/confirm`과 같은 확인을 한다. 기준값은 시범
+    `/command`가 끝난 뒤 처음 읽은 값이라 **AI Hand 동작 중·판정 중에 누른 것은 세지 않는다**. 조회 실패는 조용히 넘긴다
+    (보조 입력 — 스페이스바를 항상 함께 둔다). 어느 입력으로 확인했는지는 `/api/state`의 `last_confirm_source`
+    (`web` | `microbit_button`). 끄려면 `MICROBIT_BUTTON_CONFIRM=0`. micro:bit 없이 시험: actuation `POST /button/simulate`
   - `POST /api/certificate` — 7종 완료 후 수료증 발급 (SC-05 -> SC-06)
   - **판정 타이밍**: `phase == "judging"`일 때만 판정한다. 정답은 즉시, 오답은 같은 클래스가 1초(`WRONG_CONFIRM_S`)
     이어질 때만 확정하고 재시범과 함께 `"demo"`로 돌아간다. `below_tau`·OOD는 화면 안내 문구만(물리 피드백 없음)

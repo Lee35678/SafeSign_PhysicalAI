@@ -257,8 +257,19 @@ button.confirm-btn:disabled {
   background: white;
 }
 
+.summary-actions,
 .certificate-actions {
   margin-top: 1rem;
+}
+
+/* 결과 저장(부가 기능) - 수료증 발급이 주 동작이라 한 단계 낮춘다 */
+button.btn-secondary {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+button.btn-secondary:hover {
+  background: #d1d5db;
 }
 
 /* 장치 상태 표시줄 */

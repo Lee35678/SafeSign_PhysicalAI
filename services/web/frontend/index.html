@@ -92,7 +92,12 @@
         </thead>
         <tbody id="summary-tbody"></tbody>
       </table>
-      <button id="certificate-btn">수료증 발급받기</button>
+      <div class="summary-actions">
+        <!-- 결과 저장을 먼저 둔다 - 수료증을 누르면 SC-06으로 넘어가 이 화면으로 돌아올 수 없다 -->
+        <button id="export-btn" class="btn-secondary">결과 저장 (CSV)</button>
+        <button id="certificate-btn">수료증 발급받기</button>
+        <p id="export-status" class="muted small"></p>
+      </div>
     </section>
 
     <!-- SC-06: 수료증 발급 -->
