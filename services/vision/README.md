@@ -6,7 +6,9 @@ RACI: 파이프라인·판정로직 **R**, 하드웨어·로봇동작 **A**
 Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
   → 정규화(좌우손·원점·스케일·회전) → 63차원 특징벡터
   → SVM(RBF) 분류(8클래스) + τ 미달 미판정 + N프레임 연속 확인 → predicted_class, confidence
-  → 템플릿 cosine similarity → match_score(0~100)
+  → 7종별 확률(class_probabilities) — web이 목표 수신호 값 × 100을 학습자 화면 '일치율'로 쓴다 (2026-09-30)
+  → (참고) 템플릿 cosine similarity → match_score(0~100, 클래스별 환산)
+  수식 전체: document/05_모델카드.md §10
 ```
 
 근거 문서: `document/05_모델카드.md`(모델 카드) · `document/02_설계문서.md` §1-1·§4 ·

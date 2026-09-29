@@ -188,6 +188,11 @@ def predict(landmark_frame: dict) -> dict:
         "match_score": score,
         "is_reject": is_reject,
         "latency_ms": _elapsed_ms(started, landmark_frame),
+        # 7종별 확률 (2026-09-30) — 판정에 쓰는 바로 그 값. web은 **목표 수신호의 확률 × 100**을 학습자
+        # 화면의 일치율로 쓴다: 목표를 제대로 하면 높고(τ 이상이어야 정답), 다른 손동작이면 낮다.
+        # 위의 match_score(템플릿 코사인)는 7종을 가르는 값이 아니라(주의↔우회전 대표 손끼리 0.958) 참고용으로 남긴다.
+        # 소속 게이트에 막힌 손(OOD)에는 넣지 않는다 — "다른 수신호" 안내와 높은 확률이 함께 보이지 않게.
+        "class_probabilities": {str(c): round(float(p), 4) for c, p in zip(classes, proba)},
     }
     if is_reject:
         result["reason"] = REASON_BELOW_TAU

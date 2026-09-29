@@ -434,6 +434,17 @@ def main() -> int:
         sims += list((Xi @ v) / (np.linalg.norm(Xi, axis=1) * np.linalg.norm(v) + 1e-12))
     calib = {"sim_min": float(np.percentile(sims, 5)), "sim_max": float(np.percentile(sims, 95))}
     print(f"      match_score 보정 p5={calib['sim_min']:.4f} p95={calib['sim_max']:.4f}")
+    # 클래스별 보정 (2026-09-30) — 접힌 손가락이 많은 손모양(확인_완료·주의·후진)은 사람마다 굽힘이 달라 원래
+    # 중심에서 더 퍼져 있다. 전체 공통 구간으로 재면 정상 동작도 50~70점대가 나와서, 클래스마다 제 분포로 잰다.
+    calib["per_class"] = {}
+    for c in classes:
+        v = centroids[c]
+        Xi = X[y == c]
+        s = (Xi @ v) / (np.linalg.norm(Xi, axis=1) * np.linalg.norm(v) + 1e-12)
+        # 1~95 퍼센타일 — 5~95면 퍼짐이 좁은 클래스(서행·정지·좌회전)가 오히려 깎인다(scripts/add_match_calibration.py)
+        calib["per_class"][str(c)] = {"sim_min": float(np.percentile(s, 1)), "sim_max": float(np.percentile(s, 95))}
+    print("      클래스별 p5~p95: " + ", ".join(
+        f"{c} {v['sim_min']:.3f}~{v['sim_max']:.3f}" for c, v in calib["per_class"].items()))
 
     # ---- 1단계 소속 게이트 임계값 (클래스별) --------------------------------
     gate = None
