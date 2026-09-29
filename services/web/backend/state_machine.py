@@ -103,10 +103,10 @@ _TRIAL_LOG_NAME = f"web_trials_{datetime.now():%Y%m%d_%H%M%S}.csv"
 DEVICE_HEALTH_INTERVAL_S = float(os.getenv("DEVICE_HEALTH_INTERVAL_S", "5.0"))
 DEVICE_HEALTH_TIMEOUT_S = 1.5
 
-# 손 미검출(no_hand/normalize_failed)이 연속 몇 회 지속되면 SC-04로 전환할지 — 09_화면목록.md가
-# "임계값 필요"라고만 표시하고 수치는 정의하지 않아, POLL_INTERVAL_S 0.2초 기준 약 3초에 해당하는
-# 잠정치를 둔다. 실측 후 조정 대상(TBD).
-CAMERA_FAIL_STREAK_THRESHOLD = 15
+# 판정 단계에서 손 미검출(no_hand/normalize_failed)이 연속 몇 회면 SC-04로 전환할지. 25회 = POLL_INTERVAL_S 0.2초 기준
+# 약 5초(2026-09-29 조은수 결정, 14 §9). 9/25 실물 데모에서 판정 시작 → 정답까지 1.2~8.0초(중앙값 2.3초)라 예전 15회(3초)는
+# 정상적으로 손을 올리는 학습자도 SC-04로 넘길 수 있었다. 재시험(⑥)에서 코드 수정 없이 바꿀 수 있게 환경변수로 받는다.
+CAMERA_FAIL_STREAK_THRESHOLD = int(os.getenv("CAMERA_FAIL_STREAK_THRESHOLD", "25"))
 
 # SC-01~SC-07 상태값. 09_화면목록.md 표와 동기화 유지.
 # 구 SC-02(분야 선택)·SC-08(관리자 등록)은 아키텍처 변경으로 제거됨.

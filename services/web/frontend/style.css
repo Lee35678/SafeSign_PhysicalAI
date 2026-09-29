@@ -232,6 +232,12 @@ button.confirm-btn:disabled {
 }
 
 /* SC-05 */
+.summary-first-try {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0;
+}
+
 .summary-table {
   border-collapse: collapse;
   margin: 1rem auto;

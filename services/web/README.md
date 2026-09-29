@@ -47,7 +47,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
     0.6초)은 `/command`가 전부 timeout 나서 철회됐다. micro:bit가 명령을 하나씩 처리하므로 actuation
     호출은 순차로 보낸다.
   - vision/actuation/picar의 `GET /health`를 5초 간격으로 확인해 `devices`로 노출한다.
-  - 손 미검출(no_hand/normalize_failed)이 `CAMERA_FAIL_STREAK_THRESHOLD`(잠정 15회)회 연속되면 SC-04로
+  - 손 미검출(no_hand/normalize_failed)이 `CAMERA_FAIL_STREAK_THRESHOLD`(25회 ≈ 5초, 환경변수)회 연속되면 SC-04로
     전환하고, 손이 다시 보이면 자동으로 SC-03에 복귀한다.
 - `frontend/` — SC-01~SC-07 화면 전체를 `index.html`의 `.screen` 섹션 + `main.js`의 폴링/전환 로직으로
   구현. 프레임워크 없이 바닐라 JS 유지(팀 논의 전까지). 수료증(SC-06)은 `<canvas>`로 그려 PNG 다운로드/
@@ -87,8 +87,9 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 - [x] ~~`picar_command`의 `motor.speed` 값~~ → 2026-09-23 바닥 주행 테스트로 확정: 서행 20,
   좌/우회전·후진 40, 정지/확인_완료/주의 0 (13_picar_하드웨어_검증리포트.md §4.5). picar 서비스가
   50 초과를 잘라내지만(`speed_capped_from`) 안전망일 뿐
-- [x] ~~SC-04(camera_fail) 진입 조건~~ → `CAMERA_FAIL_STREAK_THRESHOLD`(연속 15회, ~3초) 잠정치로
-  2026-09-22 구현. 실측 후 조정 필요
+- [x] ~~SC-04(camera_fail) 진입 조건~~ → `CAMERA_FAIL_STREAK_THRESHOLD` — 2026-09-29 25회(약 5초)로 결정(이전 15회·3초 잠정치).
+  9/25 실물 데모에서 판정 시작 → 정답까지 1.2~8.0초라 3초는 짧았다. 재시험에서 필요하면 환경변수로 조정
+- [x] ~~SC-05·06 "성공률"(100/시도 횟수)~~ → 2026-09-29 **"첫 시도 정답"(O/X, 전체 k/7)**으로 교체 — KPI 정답률과 혼동 방지
 - [ ] 커리큘럼 순서(`CURRICULUM`)가 PRD §3.2 표 순서 그대로인데, 실제 교육 설계상 순서인지 확인 필요
 - [ ] SC-03b "권장 재도전 횟수" 산식 — 어느 문서에도 정의돼 있지 않아 `_recommended_retry_count`에
   match_score 구간별 잠정치(1~3회)로 구현. 실측/교육 설계 확정 필요

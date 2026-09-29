@@ -291,10 +291,15 @@ document.getElementById("camera-retry-btn").addEventListener("click", () => {
 
 // ---- SC-05 ----
 
-// 09_화면목록 §미확정: "성공률" 정의는 KPI 정답률과 혼동될 수 있어 확인 대기 중.
-// 정의가 바뀌면 이 함수만 고치면 화면·수료증·CSV가 함께 따라간다.
-function successRate(item) {
-  return Math.round(100 / item.attempts);
+// 학습자 지표 = "첫 시도 정답" (2026-09-29 조은수 결정, 14 §9). 예전 "성공률"(100/시도 횟수)은 시도 횟수를 다른
+// 모양으로 쓴 값인데 "50% 성공률"처럼 보여 KPI 정답률(시스템 판정 정확도)과 헷갈렸다. 교육자에게 필요한 것은
+// "어느 수신호를 한 번에 못 맞혔나"라서 O/X로 보인다. 화면·수료증·CSV가 모두 이 두 함수를 쓴다.
+function firstTry(item) {
+  return item.attempts === 1;
+}
+
+function firstTryCount(completed) {
+  return completed.filter(firstTry).length;
 }
 
 function renderSummary(completed) {
@@ -303,14 +308,16 @@ function renderSummary(completed) {
   tbody.innerHTML = "";
   completed.forEach((item) => {
     const tr = document.createElement("tr");
-    const accuracy = successRate(item);
     tr.innerHTML = `
       <td>${item.signal}</td>
       <td>${item.attempts}회</td>
-      <td>${item.match_score}% (${accuracy}% 성공률)</td>
+      <td>${item.match_score}%</td>
+      <td>${firstTry(item) ? "O" : "X"}</td>
     `;
     tbody.appendChild(tr);
   });
+  document.getElementById("summary-first-try").textContent =
+    `첫 시도 정답 ${firstTryCount(completed)} / ${completed.length}`;
 }
 
 // ---- SC-05 결과 저장 (web 할 일 ⑨, 09_화면목록 SC-05 "교육자용 결과 파일 저장") ----
@@ -352,9 +359,9 @@ document.getElementById("export-btn").addEventListener("click", () => {
     return;
   }
   const stamp = localTimestamp(new Date());
-  const rows = [["저장일자", "저장시각", "수신호", "시도 횟수", "정답 시 일치율(%)", "성공률(%)"]];
+  const rows = [["저장일자", "저장시각", "수신호", "시도 횟수", "정답 시 일치율(%)", "첫 시도 정답"]];
   lastCompleted.forEach((item) => {
-    rows.push([stamp.date, stamp.time, item.signal, item.attempts, item.match_score, successRate(item)]);
+    rows.push([stamp.date, stamp.time, item.signal, item.attempts, item.match_score, firstTry(item) ? "O" : "X"]);
   });
   downloadCsv(`safesign_result_${stamp.file}.csv`, toCsv(rows));
   status.textContent = `결과 ${lastCompleted.length}건을 저장했습니다.`;
@@ -394,14 +401,14 @@ function drawCertificate(completed, issuedAt) {
   let y = 230;
   ctx.font = "15px system-ui, sans-serif";
   completed.forEach((item, i) => {
-    const accuracy = successRate(item);
     ctx.fillText(
-      `${i + 1}. ${item.signal}  —  시도 ${item.attempts}회 / 최종 일치율 ${item.match_score}% (${accuracy}% 성공률)`,
+      `${i + 1}. ${item.signal}  —  시도 ${item.attempts}회 / 최종 일치율 ${item.match_score}%${firstTry(item) ? "  (첫 시도 정답)" : ""}`,
       60,
       y
     );
     y += 30;
   });
+  ctx.fillText(`첫 시도 정답 ${firstTryCount(completed)} / ${completed.length}`, 60, y + 10);
 
   ctx.font = "14px system-ui, sans-serif";
   ctx.fillStyle = "#666";
