@@ -6,8 +6,8 @@
   <title>SafeSign - 산업 안전 수신호 교육</title>
   <!-- style.css = Gemini AI Edition 구조 + 산업 안전 팔레트(2026-09-30) · app.css = 회원·라이브 영상 등 추가 요소 + 디자인 방향
        (Industrial Intelligence · Mission Control · Technical Editorial). 글꼴은 fonts/(SUIT·Inter, OFL) — 교육장 오프라인에서도 쓰인다 -->
-  <link rel="stylesheet" href="style.css?v=20260930-i2" />
-  <link rel="stylesheet" href="app.css?v=20260930-i2" />
+  <link rel="stylesheet" href="style.css?v=20260930-c1" />
+  <link rel="stylesheet" href="app.css?v=20260930-c1" />
   <link rel="icon" href="data:," /><!-- 브라우저의 /favicon.ico 404 요청 방지 -->
 </head>
 <body>
@@ -69,7 +69,7 @@
       </svg>
 
       <div class="landing-copy">
-        <p class="ss-kicker"><b>SC-01</b> Physical AI · Safety Signal Training</p>
+        <p class="ss-kicker"><b>Physical AI</b> 산업 안전 수신호 교육 키트</p>
         <h1>
           <span class="landing-brand">SafeSign</span>
           <span class="landing-title">AI Hand와 함께 배우는<br />산업 안전 수신호</span>
@@ -81,8 +81,8 @@
       <!-- 제품 소개 (2026-09-30 — 예전 7종 손모양 격자 대신) -->
       <aside class="landing-about" aria-label="SafeSign 제품 소개">
         <div class="about-head">
-          <span class="ss-kicker"><b>01</b> Product</span>
-          <span class="about-live"><i></i>System</span>
+          <span class="ss-kicker">제품 소개</span>
+          <span id="about-sys" class="about-live"><i></i><span>장치 확인 중</span></span>
         </div>
 
         <!-- 손 인식 애니메이션 (장식): MediaPipe가 찾는 손 관절 21점 -->
@@ -118,6 +118,13 @@
           <li><b>03</b><span><strong>picar 피드백</strong>정답이면 picar가 그 신호대로 움직입니다</span></li>
         </ol>
 
+        <div class="about-signals">
+          <p>교육 수신호</p>
+          <ul>
+            <li>정지</li><li>서행</li><li>좌회전 유도</li><li>우회전 유도</li><li>확인 완료</li><li>후진</li><li>주의</li>
+          </ul>
+        </div>
+
         <dl class="about-stats">
           <div><dt>수신호</dt><dd>7<small>종</small></dd></div>
           <div><dt>판정 규칙</dt><dd>3<small>프레임 연속</small></dd></div>
@@ -130,7 +137,6 @@
     <section id="screen-auth" class="screen">
       <div class="auth-layout">
         <div class="auth-copy screen-head">
-          <p class="ss-kicker"><b>ID</b> Member Access</p>
           <h1 id="auth-title">로그인</h1>
           <p id="auth-lead">학습 기록은 회원마다 저장됩니다. 처음이면 회원가입을 하세요 — 회원코드를 드립니다.</p>
           <p id="auth-store-note" class="auth-note"></p>
@@ -248,7 +254,7 @@
     <!-- SC-02: 교육 시작 확인 -->
     <section id="screen-curriculum" class="screen">
       <div class="screen-head">
-        <p class="ss-kicker"><b>SC-02</b> Curriculum · 7 Signals</p>
+        <p class="ss-kicker"><b>교육 과정</b> 크레인 작업표준신호 5종 + 자체 지정 2종</p>
         <h1>배울 수신호 7종</h1>
         <p>순서대로 시범 → 따라 하기 → 판정을 반복합니다. 정답이면 picar가 그 신호대로 움직여요.</p>
       </div>
@@ -291,7 +297,7 @@
           <span class="vf-corner tl" aria-hidden="true"></span><span class="vf-corner tr" aria-hidden="true"></span>
           <span class="vf-corner bl" aria-hidden="true"></span><span class="vf-corner br" aria-hidden="true"></span>
           <!-- 판정 중 실시간 판정값 (vision → web live_judgment) -->
-          <dl id="camera-hud" class="camera-hud" aria-live="off">
+          <dl id="camera-hud" class="camera-hud" aria-label="실시간 판정값">
             <div><dt>HAND</dt><dd id="hud-hand">-</dd></div>
             <div><dt>인식</dt><dd id="hud-pred">-</dd></div>
             <div><dt>신뢰도</dt><dd id="hud-conf">-</dd></div>
@@ -321,9 +327,9 @@
         <p id="judging-hint" class="judging-hint hidden">손을 카메라에 보여주세요 — 판정 중</p>
 
         <div id="match-score-row" class="match-score-row hidden">
-          <label for="match-score-value">일치율</label>
+          <label for="match-score-value">일치율 <small id="match-score-state" class="match-state"></small></label>
           <span id="match-score-value">0%</span>
-          <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div></div>
+          <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div><span class="match-tick" aria-hidden="true"><b>판정 기준 75%</b></span></div>
         </div>
 
         <!-- below_tau / out_of_distribution — 판정은 계속되므로 화면을 덮지 않고 문구만 띄운다 (스펙 §5 결정) -->
@@ -363,7 +369,7 @@
 
     <!-- SC-06: 수료증 -->
     <section id="screen-certificate" class="screen">
-      <canvas id="certificate-canvas" width="800" height="560" aria-label="수료증"></canvas>
+      <canvas id="certificate-canvas" width="2246" height="1588" aria-label="수료증"></canvas>
       <h1>수료증이 발급되었습니다</h1>
       <div class="certificate-actions">
         <button id="certificate-download-btn" type="button">이미지로 저장</button>
@@ -375,6 +381,6 @@
 
   </div>
 
-  <script src="main.js?v=20260930-i2"></script>
+  <script src="main.js?v=20260930-c1"></script>
 </body>
 </html>
