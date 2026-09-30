@@ -24,6 +24,7 @@ atexit.register(shutil.rmtree, _tmp_log_dir, ignore_errors=True)
 
 _tmp_member_dir = tempfile.mkdtemp(prefix="safesign_web_members_")
 os.environ["MEMBER_DATA_DIR"] = _tmp_member_dir
+os.environ["SAFESIGN_NO_DOTENV"] = "1"          # 루트 .env(실제 Supabase 키)를 읽지 않게
 os.environ.pop("SUPABASE_URL", None)
 os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
 atexit.register(shutil.rmtree, _tmp_member_dir, ignore_errors=True)

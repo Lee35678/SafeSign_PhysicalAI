@@ -9,8 +9,11 @@ venv/
 node_modules/
 dist/
 
-# 환경변수
+# 환경변수 · 비밀 키 (Supabase service_role, portal 쿠키 서명 키) — 어느 폴더에 있어도 올리지 않는다
 .env
+.env.*
+!.env.example
+*.env
 
 # 데이터 (원본 촬영본은 용량이 크므로 git 대신 별도 공유 스토리지 사용 권장)
 services/data/datasets/raw/*
