@@ -350,6 +350,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 버전 | 날짜 | 내용 |
 | --- | --- | --- |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
+| v1.13 | 2026-09-30 | **(이동혁) §11 추가** — Gemini 디자인 새 화면(옛 `index.html`·`main.js`·`style.css`·예시 사진 삭제), 로그인·회원가입·회원코드, 회원별 결과 저장(Supabase, SC-05 CSV 대체), 라이브 영상 중계, 일치율 재정의(목표 수신호 확률). 본문 §1~§9는 그대로 — 조은수 몫 ⑦ 보완 때 반영 필요 |
 | v1.12 | 2026-09-29 | **⑥ 재시험 결함 2건 실물 재검증 통과**(`cb8a25b`) — SC-04 재시도(시범 단계 복귀·재시범)와 시도 횟수 상한(3회·판정 제한시간 10초) 모두 RPi5+RPi4B에서 확인. §7 두 행 ✅. **web 전 구간 실물 검증 완료** |
 | v1.11 | 2026-09-29 | **SC-04 탈출·시도 상한 재작성** — 1차 수정이 실물에서 해결되지 않음(수정이 커밋 전이라 RPi에 없었고, 설계도 부족했다). SC-04 재시도 → 시범 단계 + 재시범(화면 버튼·Space·micro:bit A), 조회 도중 재시도 경합 차단. 판정 제한시간 `JUDGING_TIMEOUT_S` 10초 → `timeout`도 시도로 셈(below_tau/OOD만 나와도 상한 적용). `/api/state`에 `max_attempts`, 배지 "시도 n / 3", `main.js?v=` 캐시 방지. 회귀 테스트 11건, web 61·전체 170 통과(§2·§4.1·§6.1·§7). 실물 재검증 대기 |
 | v1.10 | 2026-09-29 | **⑥ web 전 구간 실물 재시험 통과**(RPi5+RPi4B, 쿨러 미장착) — §2 SC-03a·b·SC-04·SC-05·SC-06 전부 확인, "다시 학습하기" 재진입까지 완료. 재시험 중 신규 결함 2건 발견·당일 수정: (1) SC-04 "재시도" 버튼 무동작 → `POST /api/camera_retry` 신설(§2, §4.1), (2) 시도 횟수 무제한 → `MAX_ATTEMPTS_PER_SIGNAL`(3) 도입(§2 SC-03b). 회귀 테스트 3개 추가, web 53·저장소 전체 162개 통과(§6.1). §7 이슈 이력에 4건 반영. **실물 재검증은 대기** |
@@ -363,3 +364,26 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | v1.3 | 2026-09-28 | §7·§8 ④ LED 잔류를 picar 쪽 자동 소등으로 해결 처리(web 변경 없음), §3.4 확인_완료 LED 설명을 “2초 후 자동 소등”으로 |
 | v1.2 | 2026-09-27 | §8 남은 작업을 개발로그 전체 TODO `web`과 같은 ①~⑨로 재정리 — 본문 `status` 확인(③)·LED 잔류(④)·옛 문구 정리(⑤, 동시 점멸 확정 반영)·재시험(⑥)을 번호 작업으로 올림. §7 이슈 행에 §8 번호 연결, 옛 문구 이슈 1행 추가 |
 | v1.1 | 2026-09-27 | 2단계 정리 — §1 `PICAR_URL` 기본값(`localhost:8003`)·실물 지정 필수 명시, §3.4 머리에 역할(구현 기준, 설계는 02 §4·속도는 13 §4.5)과 확인_완료 동시 점멸 확정 명시, §8에 #6 옛 주석 정리 추가. 코드 판단은 변경 없음 |
+
+---
+
+## 11. 2026-09-29 ~ 30 추가 — 새 화면 · 회원 · 라이브 영상 · 일치율 (이동혁)
+
+> 본문 §1~§9는 그 전 구현 기준이다. 아래 내용은 ⑦(이 보고서 보완) 때 본문에 녹인다.
+
+| 항목 | 내용 | 코드 |
+| --- | --- | --- |
+| 새 화면 | Gemini AI Edition 디자인. `style.css` = 디자인 원본 구조(`stitch_safesign_design_system_final/`), `app.css` = 원본에 없는 요소만. 옛 `index.html`·`main.js`·`style.css`·`images/` 삭제(사진은 git 기록에 있음) | `frontend/` |
+| 디자인 방향 (09-30) | 산업 안전 팔레트(Industrial Black·Safety Orange·Steel Gray·Signal White·Safe Green·Alert Red)로 `style.css` 색 교체, Mission Control·Technical Editorial 요소(관제 시계, 도면 격자·크레인 선화, 편집 라벨, 비대칭 7:5 랜딩, 손 관절 21점 인식 애니메이션, 판정 중 카메라 계기판), SUIT·Inter 동봉. 마우스 추적 빛 제거, 테두리 회전 효과는 유지 | `frontend/app.css`·`fonts/` |
+| 로그인·회원가입 | SC-01 → 로그인/가입(이름·소속·이메일·비밀번호) → 가입 완료 시 **회원코드 SS-00001**(DB 시퀀스) → SC-02. 게스트 학습 가능. 교육 중에는 로그아웃 숨김 | `backend/members.py`, `/api/auth/*` |
+| 결과 저장 | 7종 완료 순간 **교육을 시작한 회원** 이름으로 Supabase에 자동 저장(SC-05에 저장 상태). 오프라인이면 대기열 → 30초마다 재전송. 키가 없으면 로컬 모드. SC-05 CSV 내려받기(⑨)를 대신한다 | `members.save_session_results`, `supabase/schema.sql` |
+| 라이브 영상 | 예시 사진 폐지(회의) → vision `GET /stream`(MJPEG)을 web `GET /api/camera/stream`으로 중계. 시범·판정 두 단계 모두 영상, 정답 손모양은 **손가락 패턴** | `backend/camera.py`, vision `perception/preview.py` |
+| 일치율 | **목표 수신호의 분류기 확률 × 100** — 실시간 막대·오답 화면·SC-05·권장 재도전 횟수에 적용. 예전 값(예측 클래스 템플릿 유사도)은 오답인데 85~99%가 나왔다 | `state_machine._target_score`, 05 §10-8 |
+| 시행 로그 | `subject` = 회원코드(`LOG_SUBJECT`가 우선), 새 열 `target_score`(화면 일치율). `match_score` 열은 vision 원값 그대로 | `state_machine._trial_row` |
+| 합격/불합격 (09-30) | 수신호별 합격(상한 3회 안에 정답)/불합격(상한 초과)을 DB에 저장(`passed` 생성 열, 회차 `passed_count`·`all_passed`, 뷰 `member_signal_status`), SC-05 결과 열 | `supabase/schema.sql`, 18 §3·§4 |
+| 아이디·비밀번호 찾기 (09-30) | 이름+회원코드 → 가린 이메일 / 메일 6자리 코드 → 새 비밀번호 | `/api/auth/find-id`·`/password/*` |
+| 보안 (09-30) | 로그인 5회 실패 잠금, 비밀번호 8자+영문·숫자, 코드·찾기 횟수 제한, CSP 등 보안 헤더, 키 역할 점검, 5분 무입력 자동 로그아웃 | 18 §6 |
+| 테스트 | web 92개(회원 25 · 영상 중계 2 · 일치율 4 …) · Chrome 헤드리스 전 구간(가입 → 7종 → 합격표 → 수료증 → 아이디 찾기 → 비밀번호 재설정 → 새 비밀번호 로그인, CSP 위반 0) | `tests/` |
+
+**남은 것**: Supabase 프로젝트 생성·키 설정(`supabase/README.md`), RPi5에서 영상 켠 채 `result_fps` 확인, `judgment_result` 선택 필드
+`class_probabilities` 팀 확인, 화면 캡처(⑧) 갱신.

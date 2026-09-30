@@ -61,8 +61,13 @@ services:
       - ACTUATION_URL=http://actuation:8000
       - PICAR_URL=http://picar:8000
       - PICAR_TIMEOUT_MS=${PICAR_TIMEOUT_MS:-500}
+      # 회원·학습 결과 저장 (services/web/supabase/README.md). 비어 있으면 로컬 모드 — 키는 루트 .env에만 둔다
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - MEMBER_DATA_DIR=/data/web
     volumes:
       - signdb:/data/db
+      - webdata:/data/web
     depends_on:
       - vision
       - actuation
@@ -81,3 +86,4 @@ services:
 
 volumes:
   signdb:
+  webdata:

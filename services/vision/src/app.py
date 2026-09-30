@@ -14,9 +14,10 @@ import threading
 import time
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from cognition import classify, model_store, smoothing, templates
-from perception import capture
+from perception import capture, preview
 
 logging.basicConfig(level=logging.INFO)
 
@@ -80,6 +81,9 @@ def health():
         "model": model_store.describe(),
         # 카메라가 실제로 돌고 있는지 — state(running/mock/error) · capture_fps · result_fps · error
         "camera": capture.get_status(),
+        # 라이브 미리보기(GET /stream) — 지금 보고 있는 화면 수, JPEG 인코더 유무
+        "preview": {"viewers": preview.viewers(), "encoder": preview.encoder_available(),
+                    "fps": preview.STREAM_FPS, "width": preview.STREAM_WIDTH},
         "tau": classify.effective_tau(),
         "n_frames": smoothing.N_FRAMES,
         "templates": templates.available_signs(),
@@ -97,6 +101,26 @@ def latest():
 def predict(landmark_frame: dict):
     """단일 landmark_frame으로 분류기만 테스트하는 개발용 엔드포인트 (카메라 미사용)."""
     return classify.predict(landmark_frame)
+
+
+@app.get("/stream")
+def stream():
+    """Camera Module 3 라이브 영상 (MJPEG). web 화면이 `/api/camera/stream`으로 중계해 보여 준다.
+
+    <img src=".../stream">에 바로 넣을 수 있다. 보는 화면이 있을 때만 인코딩한다(perception/preview.py)."""
+    if not preview.encoder_available():
+        return JSONResponse({"status": "error", "reason": "no_jpeg_encoder"}, status_code=503)
+    return StreamingResponse(preview.mjpeg(), media_type=f"multipart/x-mixed-replace; boundary={preview.BOUNDARY}",
+                             headers={"Cache-Control": "no-store"})
+
+
+@app.get("/snapshot.jpg")
+def snapshot():
+    """최신 프레임 한 장 (점검용)."""
+    jpeg = preview.get_jpeg()
+    if jpeg is None:
+        return JSONResponse({"status": "error", "reason": "no_frame"}, status_code=503)
+    return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/reset")

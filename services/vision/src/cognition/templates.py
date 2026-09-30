@@ -77,17 +77,23 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
-def similarity_to_score(similarity: float, calibration: Optional[dict] = None) -> int:
+def similarity_to_score(similarity: float, calibration: Optional[dict] = None,
+                        sign_name: Optional[str] = None) -> int:
     """코사인 유사도 -> 0~100 점수.
 
-    05_모델카드 §2는 "percentile 매핑"을 요구한다. 실측 데이터가 있어야 분포를 알 수 있으므로,
-    학습 노트북이 검증셋에서 뽑은 (sim_min, sim_max) = (같은 클래스 유사도의 5·95 퍼센타일)을
-    번들에 실어 보내고, 여기서는 그 구간을 0~100으로 선형 매핑한다.
-    보정값이 없으면(모델 없음/구버전 번들) 유사도를 그대로 0~100으로 매핑한다.
+    05_모델카드 §2는 "percentile 매핑"을 요구한다. 학습 스크립트가 학습 데이터에서 뽑은
+    (sim_min, sim_max) = (같은 클래스 유사도의 5·95 퍼센타일)을 번들에 실어 보내고, 여기서는 그 구간을
+    0~100으로 선형 매핑한다. 보정값이 없으면(모델 없음/구버전 번들) 유사도를 그대로 0~100으로 매핑한다.
+
+    **클래스별 구간이 있으면(`per_class`) 그것을 쓴다** (2026-09-30). 예전에는 7종 공통 구간 하나라,
+    접힌 손가락이 많은 손모양(확인_완료·주의·후진 — 사람마다 굽힘이 달라 원래 더 퍼져 있다)은 정상 동작도
+    50~70점대가 나왔다. 판정(정답/오답)과는 무관한 표시·권장 재도전 횟수용 점수다.
     """
     if calibration:
-        lo = float(calibration.get("sim_min", 0.0))
-        hi = float(calibration.get("sim_max", 1.0))
+        per_class = (calibration.get("per_class") or {}).get(sign_name) if sign_name else None
+        cal = per_class or calibration
+        lo = float(cal.get("sim_min", 0.0))
+        hi = float(cal.get("sim_max", 1.0))
         if hi - lo > 1e-9:
             similarity = (similarity - lo) / (hi - lo)
     return int(round(float(np.clip(similarity, 0.0, 1.0)) * 100))
@@ -117,7 +123,7 @@ def match_score(feature: np.ndarray, sign_name: str, calibration: Optional[dict]
     template = get_template(sign_name)
     if template is None or template.shape != feature.shape:
         return 0
-    return similarity_to_score(cosine_similarity(feature, template), calibration)
+    return similarity_to_score(cosine_similarity(feature, template), calibration, sign_name)
 
 
 def available_signs() -> list[str]:

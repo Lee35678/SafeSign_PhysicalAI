@@ -6,7 +6,9 @@ RACI: 파이프라인·판정로직 **R**, 하드웨어·로봇동작 **A**
 Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
   → 정규화(좌우손·원점·스케일·회전) → 63차원 특징벡터
   → SVM(RBF) 분류(8클래스) + τ 미달 미판정 + N프레임 연속 확인 → predicted_class, confidence
-  → 템플릿 cosine similarity → match_score(0~100)
+  → 7종별 확률(class_probabilities) — web이 목표 수신호 값 × 100을 학습자 화면 '일치율'로 쓴다 (2026-09-30)
+  → (참고) 템플릿 cosine similarity → match_score(0~100, 클래스별 환산)
+  수식 전체: document/05_모델카드.md §10
 ```
 
 근거 문서: `document/05_모델카드.md`(모델 카드) · `document/02_설계문서.md` §1-1·§4 ·
@@ -67,6 +69,12 @@ tests/                           카메라 없이 도는 단위 테스트 (정�
 | `GET /latest` | 최신 판정 결과(judgment_result). **웹 상태머신이 폴링하는 실제 런타임 경로** |
 | `POST /predict` | landmark_frame 하나를 직접 넣어 분류기만 테스트(카메라 미사용, 개발용) |
 | `POST /reset` | 다음 수신호로 넘어갈 때 N프레임 누적 초기화 |
+| `GET /stream` | **Camera Module 3 라이브 영상 (MJPEG)** — web이 `/api/camera/stream`으로 중계해 학습 화면에 띄운다 (2026-09-29, 예시 사진 대신) |
+| `GET /snapshot.jpg` | 최신 프레임 한 장 (점검용) |
+
+라이브 영상은 판정을 느리게 하지 않게 만들었다(`perception/preview.py`): 캡처 루프는 최신 프레임 참조만 넘기고, JPEG 인코딩은
+**보는 화면이 있을 때만** 스트림 쪽에서 한다. 가로 640 이하·초당 15장(`STREAM_WIDTH`·`STREAM_FPS`·`STREAM_QUALITY`).
+`/health`의 `preview.viewers`로 지금 보는 화면 수를 볼 수 있다. 카메라가 없으면 "NO CAMERA" 안내 화면이 나온다.
 
 카메라가 이 서비스에 직결되어 있어서, 런타임에는 외부가 프레임을 보내는 게 아니라 **이 서비스가 스스로
 카메라 루프를 돌며 최신 판정을 만들어 둔다**. 그래서 웹은 `/latest`만 읽으면 된다.
@@ -253,5 +261,6 @@ python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 �
 - [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — **RPi5 실물 확인 대기**
 - [ ] RPi5 실물에서 `result_fps` · 판정 지연 P95 측정 (mediapipe aarch64 휠 설치 여부 포함)
 - [x] ~~`hand_landmarker.task` 모델 번들 다운로드 → `models/`~~ (git 에 포함)
-- [ ] 실측 후 τ·N프레임 재검증, 05_모델카드 §7-3 실측 표 채우기
+- [x] ~~05_모델카드 §7-3 실측 표 채우기~~ → ✅ 2026-09-30 최종 KPI(팀원 3명 210시도, RPi5 CSI) 5개 달성. τ는 0.75 유지(최종 KPI에서 τ가 막은 시도 0건)
+- [ ] 기울인 손 게이트 과차단(최종 KPI 미판정 10건 중 7건 우기울임) — 개발용 데이터로 조정 후 **새 평가 데이터로** 재측정
 - [ ] `/latest` 폴링 → WebSocket 전환 검토 (지연 KPI 여유 없을 때)

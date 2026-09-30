@@ -77,6 +77,8 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter
 
+from backend import members
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -199,6 +201,7 @@ TRIAL_FIELDS = (
     "picar_ok", "picar_ms", "microbit_ok", "microbit_ms", "feedback_ms",
     "aihand_ok", "aihand_ms", "feedback_done_ms", "aihand_status", "microbit_status",
     "picar_status", "picar_led_ok", "mocked", "subject",
+    "target_score",     # 2026-09-30 — 학습자 화면의 일치율(목표 수신호 확률 × 100). match_score 열은 vision 원값 그대로
 )
 
 _lock = threading.Lock()
@@ -231,6 +234,10 @@ def _fresh_session() -> dict:
         "devices": {},             # vision/actuation/picar 최근 /health 스냅샷
         "live_judgment": None,     # 매 폴링 갱신되는 실시간 match_score (SC-03 진행 표시용)
         "certificate_issued_at": None,
+        # 회원 (2026-09-29, backend/members.py) — /api/start 때 로그인해 있던 학습자로 고정한다.
+        # 도중에 로그아웃·다른 사람 로그인이 있어도 이 회차 기록은 시작한 사람에게 저장된다.
+        "member": None,
+        "started_at": None,        # ISO 8601 — 회원 결과 저장용
     }
 
 
@@ -240,6 +247,25 @@ _session = _fresh_session()
 def _current_target_signal() -> "str | None":
     idx = _session["curriculum_index"]
     return CURRICULUM[idx] if idx < len(CURRICULUM) else None
+
+
+def _target_score(judgment: dict, target_signal: "str | None") -> int:
+    """학습자 화면의 일치율 = 분류기가 본 **목표 수신호의 확률 × 100** (2026-09-30 이동혁).
+
+    판정(confidence·τ)에 쓰는 바로 그 값이라, 목표를 제대로 하면 높고(τ 0.75 → 75점 이상이어야 정답),
+    다른 손동작이면 낮다. 예전 값(vision `match_score` = 예측 클래스 템플릿과의 코사인)은 7종을 가르는 값이
+    아니어서(주의↔우회전 대표 손끼리 0.958), 오답인데 85%·정답인데 55%가 나왔다.
+    vision이 `class_probabilities`를 주지 않으면(구버전·손 미검출·소속 게이트 차단) vision `match_score`를 쓴다."""
+    probs = judgment.get("class_probabilities")
+    if isinstance(probs, dict) and target_signal in probs:
+        try:
+            return int(round(max(0.0, min(1.0, float(probs[target_signal]))) * 100))
+        except (TypeError, ValueError):
+            pass
+    try:
+        return int(judgment.get("match_score", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _recommended_retry_count(match_score: int) -> int:
@@ -347,7 +373,7 @@ def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict, *, rese
     False면 재시도 상한을 넘겨 다음 수신호로 넘어가는 경우라 여기서는 재시범을 보내지 않는다 — 다음 수신호의
     시범은 호출부가 `_send_demo`로 따로 보낸다(정답 뒤 다음 시범과 같은 경로, 이중 전송 방지)."""
     is_correct = outcome == "correct"
-    match_score = judgment.get("match_score", 0)
+    match_score = _target_score(judgment, target_signal)
     results = {}
 
     if is_correct:
@@ -410,7 +436,9 @@ def _trial_row(*, when: datetime, t_dec: float, target_signal: str, attempt: int
         # 시범 응답 전에 확인을 눌렀으면 "본 시간"은 정의되지 않는다 — 음수 대신 빈 값
         observe_ms=_ms(t_done, t_confirm) if observed else "",
         listen_ms=_ms(t_confirm, t_dec),
-        subject=os.getenv("LOG_SUBJECT", ""),
+        # 대상자: LOG_SUBJECT(외부인 KPI 시행용 ID)가 우선, 없으면 로그인한 회원코드 (supabase/README.md §5)
+        subject=os.getenv("LOG_SUBJECT") or (_session.get("member") or {}).get("member_code") or "",
+        target_score=_target_score(judgment, target_signal),
     )
     for key, col in (("picar", "picar"), ("result", "microbit"), ("aihand", "aihand")):
         r = dispatch.get(key)
@@ -485,7 +513,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
         _session["live_judgment"] = {
             "predicted_class": predicted,
             "confidence": judgment.get("confidence", 0),
-            "match_score": judgment.get("match_score", 0),
+            "match_score": _target_score(judgment, target_signal),     # 목표 수신호 기준 (화면 일치율)
             "is_reject": is_reject,
             "reason": reason,
         }
@@ -524,7 +552,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
         return  # 과도기 상태(모델 로딩/N프레임 누적 중 등) — 오버레이 없이 대기
     elif is_reject and reason in HOLD_REASONS:
         # 화면 안내만 — 물리 피드백·시도 횟수·시행 로그 없음, 판정 단계 유지 (스펙 §5, 이동혁 결정)
-        match_score = judgment.get("match_score", 0)
+        match_score = _target_score(judgment, target_signal)
         with _lock:
             key = (_session["curriculum_index"], "reject", reason)
             if _session["_last_dispatched"] == key:
@@ -564,8 +592,9 @@ def _poll_once(vision_client: httpx.Client) -> None:
 
     dispatch_results = _dispatch_feedback(target_signal, outcome, judgment, resend_demo=not given_up)
 
-    match_score = judgment.get("match_score", 0)
+    match_score = _target_score(judgment, target_signal)
     next_signal = None
+    finished = False
     with _lock:
         if _session.get("_gen") != gen:
             return                            # 전송하는 사이 재시작됨 — 새 세션을 건드리지 않는다
@@ -594,6 +623,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
             _session["curriculum_index"] += 1
             if _session["curriculum_index"] >= len(CURRICULUM):
                 _session["state"] = "summary"
+                finished = True
             else:
                 next_signal = _current_target_signal()
         else:
@@ -602,6 +632,9 @@ def _poll_once(vision_client: httpx.Client) -> None:
     _write_trial_row(_trial_row(when=when, t_dec=t_dec, target_signal=target_signal, attempt=attempt_no,
                                 outcome=outcome, judgment=judgment, trial=trial, dispatch=dispatch_results))
 
+    if finished:
+        _save_member_results(gen)
+
     if next_signal is not None:
         try:
             vision_client.post(f"{VISION_URL}/reset")
@@ -609,6 +642,27 @@ def _poll_once(vision_client: httpx.Client) -> None:
             pass
         # 정답 자세(/command correct_pose)가 끝난 뒤에 보낸다 — /command는 손 동작 후 회신하므로 순서가 보장된다
         _send_demo(next_signal, gen)
+
+
+def _save_member_results(gen: int) -> None:
+    """7종을 끝낸 회차를 회원 기록에 저장한다 (SC-05 "결과 저장" — 예전 CSV 내려받기를 대신한다).
+
+    Supabase 호출은 최대 수 초가 걸릴 수 있어 폴링 스레드를 막지 않게 따로 보낸다. 오프라인이면 members가
+    대기열에 넣고 나중에 다시 보낸다. 저장 상태는 /api/state `result_save`로 화면에 나간다."""
+    with _lock:
+        if _session.get("_gen") != gen:
+            return
+        member = _session.get("member")
+        payload = {
+            "started_at": _session.get("started_at"),
+            "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "results": [
+                {"order_no": i + 1, "signal": c["signal"], "attempts": c["attempts"],
+                 "match_score": c["match_score"], "given_up": bool(c.get("given_up"))}
+                for i, c in enumerate(_session["completed"])
+            ],
+        }
+    threading.Thread(target=members.save_session_results, args=(payload, member), daemon=True).start()
 
 
 def _poll_loop() -> None:
@@ -679,6 +733,9 @@ def get_state():
             "devices": _session["devices"],
             "completed": _session["completed"],
             "certificate_issued_at": _session["certificate_issued_at"],
+            # 회원 (2026-09-29) — 이 회차의 학습자와 회원 기록 저장 상태(saved·queued·saved_local·failed)
+            "member": members._public(_session.get("member")),
+            "result_save": members.store_status(),
         }
 
 
@@ -691,7 +748,10 @@ def start():
         _session.update(_fresh_session())
         _session["state"] = "training"
         _session["devices"] = devices
+        _session["member"] = members.current_member()     # 이 회차의 학습자로 고정 (게스트·미로그인이면 게스트/None)
+        _session["started_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
         gen = _session["_gen"]
+    members.reset_last_save()
     # 첫 수신호 시범 — /command는 손 동작 뒤 회신(최대 1.5초 × 2)이라 응답을 늦추지 않게 스레드로 보낸다 (스펙 §4.1)
     threading.Thread(target=_send_demo, args=(CURRICULUM[0], gen), daemon=True).start()
     return {"state": "training", "phase": "demo", "target_signal": CURRICULUM[0]}

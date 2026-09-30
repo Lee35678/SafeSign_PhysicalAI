@@ -39,6 +39,8 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from perception import preview
+
 logger = logging.getLogger(__name__)
 
 MOCK_CAMERA = os.getenv("MOCK_CAMERA", "true").lower() == "true"
@@ -193,7 +195,13 @@ def _run_mock_loop(reason: str, stop: Optional[threading.Event] = None) -> None:
     logger.warning("카메라 없이 동작합니다(손 미검출 프레임만 발행) — %s", reason)
     timestamp_ms = 0
     interval = 1 / 30
+    # 미리보기에는 영상 대신 안내 화면을 띄운다 (Hershey 글꼴은 영문만 그린다)
+    placeholder_text = "NO CAMERA - " + ("MOCK_CAMERA=true" if reason.startswith("MOCK") else "camera open failed")
+    last_placeholder = 0.0
     while stop is None or not stop.is_set():
+        if preview.viewers() and time.monotonic() - last_placeholder >= 1.0:
+            preview.publish_frame(preview.placeholder_frame(placeholder_text))
+            last_placeholder = time.monotonic()
         _publish(
             {
                 "timestamp": timestamp_ms,
@@ -259,6 +267,8 @@ def run_capture_loop(stop: Optional[threading.Event] = None, *,
 
                 if CAMERA_MIRROR:
                     frame_bgr = frame_bgr[:, ::-1]
+                # web 라이브 미리보기(GET /stream) — 참조만 넘긴다, 인코딩은 보는 쪽에서 (preview.py)
+                preview.publish_frame(frame_bgr)
                 # MediaPipe 는 RGB 를 받는다. camera_source 는 CSI·USB 모두 BGR 을 준다.
                 rgb = np.ascontiguousarray(frame_bgr[:, :, ::-1])
 
