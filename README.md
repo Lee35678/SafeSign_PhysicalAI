@@ -212,10 +212,13 @@ bash scripts/run_rpi5.sh       # 가상환경을 알아서 켜고 CSI 카메라�
 ```bash
 cd ~/git/SafeSign_PhysicalAI/services/web     # ⚠️ 이 폴더에서 실행해야 화면 파일(frontend/)을 찾는다
 source .venv/bin/activate
-PICAR_URL=http://192.168.50.10:8000 uvicorn backend.app:app --host 0.0.0.0 --port 8000
+VISION_URL=http://localhost:8001 ACTUATION_URL=http://localhost:8002 PICAR_URL=http://192.168.50.10:8000 \
+  uvicorn backend.app:app --host 0.0.0.0 --port 8000
 ```
 
 `PICAR_URL`을 빼면 기본값(`localhost:8003`)으로 가서 picar가 움직이지 않는다.
+`VISION_URL`·`ACTUATION_URL`도 빼지 않는다 — 루트 `.env`가 `.env.example` 복사본이면 docker-compose용 `http://vision:8000`·`http://actuation:8000`이
+채워져 장치 상태가 unreachable, 실시간 화면·AI Hand가 안 된다(아래 `.env` 참고).
 
 회원 기록을 Supabase에 저장하려면 저장소 루트에 `.env`(git 제외 — 노트북에서 `scp .env`로 복사)를 두면 web이 시작할 때 읽는다
 (`SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`, 셸에서 준 값이 우선. 없으면 로컬 모드 — [services/web/supabase/README.md](services/web/supabase/README.md)). vision 모델 번들은 2026-09-30 갱신본(일치율 클래스별 환산 포함)을 복사해 둔다.
