@@ -793,3 +793,202 @@ button.btn-secondary, button.btn-secondary:hover:not(:disabled), button.link-btn
   .hand-scan { height: clamp(120px, 22vh, 200px); }
   .about-text { font-size: 0.98rem; line-height: 1.55; }
 }
+
+/* ══════════ HMI 정리 (2026-09-30) ══════════
+   기준: ISA-101 고성능 HMI(산업 제어실 화면 지침) — 평상시는 무채색 패널, 색은 상태(정상·경고·위험)와 핵심 조작에만.
+   그라데이션·유리(블러)·발광·알약 모양을 걷어내고, 모서리 4px · 1px 선 · 단색 버튼으로 계기판처럼 만든다.
+   토큰(단색·불투명)은 style.css 생성기에서 바꿨고, 여기서는 모양만 정리한다. 테두리 회전 효과는 움직임을 그대로 두고 색만 안전색으로. */
+:root {
+  --hmi-r: 4px;
+  --hmi-panel: #151D26;
+  --hmi-panel-2: #1A232D;
+  --hmi-well: #0C1117;
+  --hmi-line: rgba(244, 246, 248, 0.10);
+  --hmi-line-2: rgba(244, 246, 248, 0.20);
+  --hmi-orange-track: rgba(242, 140, 40, 0.16);
+  --hmi-on-green: #06140B;
+}
+
+/* 유리 효과 없음 — 뒤 배경이 비치면 계기판 글자가 흔들려 보인다 */
+* { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.topbar { background: #0E141B; }
+
+/* 패널: 불투명 · 1px 선 · 그림자 없음 */
+.sign-card, .notice-card, .auth-card, .sign-guide, .match-score-row, .save-status,
+.summary-table, .hold-hint, .judging-hint, .demo-steps li, .overlay-stats {
+  background: var(--hmi-panel);
+  border: 1px solid var(--hmi-line);
+  border-radius: var(--hmi-r);
+  box-shadow: none;
+}
+.landing-about { background: #121A22; box-shadow: none; }
+.sign-card:hover { transform: none; box-shadow: none; border-color: rgba(242, 140, 40, 0.55); }
+.demo-steps li:last-child { box-shadow: none; border-color: rgba(242, 140, 40, 0.45); }
+
+/* 알약 → 각진 칩 (표시등 점만 둥글게 — 실제 표시등처럼) */
+.device, .chip, .member-chip, .auth-tabs, button.auth-tab, .result-chip, .camera-tag, .judging-hint, .hold-hint,
+.sys-clock, .progress-steps i, kbd, .key-hint { border-radius: 3px; }
+.notice-icon, .overlay-icon, .demo-steps li::before, .welcome-icon, .warn-mark, .hold-icon { border-radius: var(--hmi-r); box-shadow: none; }
+
+/* 버튼: 단색, 광택 층 없음, 누르면 한 단계 어둡게 */
+button { border-color: transparent; box-shadow: none; border-radius: var(--hmi-r); }
+button:not(.confirm-btn)::before { display: none; }
+button:hover:not(:disabled) { box-shadow: none; transform: none; }
+button:active:not(:disabled) { background: #D9761A; transform: none; }
+button.btn-secondary { background: transparent; color: var(--ss-ink); border: 1px solid var(--hmi-line-2); }
+button.btn-secondary:hover:not(:disabled) { background: rgba(244, 246, 248, 0.06); border-color: rgba(244, 246, 248, 0.34); }
+button.btn-secondary:active:not(:disabled) { background: rgba(244, 246, 248, 0.10); }
+button:focus-visible { outline: 2px solid var(--ss-white); outline-offset: 3px; }
+button.auth-tab[aria-selected="true"] { background: var(--hmi-panel-2); border: 1px solid var(--hmi-line-2); box-shadow: none; }
+button .key-hint { background: rgba(17, 24, 32, 0.16); color: var(--ss-action-ink); border-color: rgba(17, 24, 32, 0.25); }
+
+/* 글자: 그라데이션 글씨 없음 */
+#match-score-value, .brand-mark, #signal-progress, .demo-steps b { background: none; -webkit-text-fill-color: currentColor; }
+#match-score-value { color: var(--ss-ink); font-weight: 700; letter-spacing: -0.03em; }
+
+/* 편집 라벨: 번호 대신 실제 분류명 · 강조 막대 없음 */
+.landing-lead::before { display: none; }
+.ss-kicker b::after { width: 1.4rem; }
+.about-live.warn { color: var(--ss-orange); }
+.about-live.warn i { background: var(--ss-orange); }
+
+/* 진행 표시: 끝난 것 = 흰색, 지금 = 주황, 남은 것 = 선 */
+.progress-steps i { background: var(--hmi-line-2); box-shadow: none; }
+.progress-steps i.done { background: rgba(244, 246, 248, 0.62); box-shadow: none; }
+.progress-steps i.current { background: var(--ss-orange); box-shadow: none; }
+
+/* 손가락 패턴: 편 손가락 = 단색 주황, 접은 손가락 = 윤곽선 */
+.finger i { background: transparent; border: 1.5px solid var(--hmi-line-2); box-shadow: none; }
+.finger.up i { background: var(--ss-orange); border-color: var(--ss-orange); box-shadow: none; }
+
+/* ---------- 일치율 계기 (dataviz 규칙: 한 색 채움 + 같은 색의 옅은 트랙, 기준선 눈금, 상태는 글자로도) ---------- */
+.match-score-bar {
+  position: relative; overflow: visible;
+  height: 0.85rem; margin-bottom: 1.4rem;
+  background: var(--hmi-orange-track); border: 0; border-radius: 2px;
+}
+.match-score-fill { background: var(--ss-orange); border-radius: 2px 0 0 2px; box-shadow: none; }
+.match-score-fill.pass { background: var(--ss-green); }
+.match-score-fill::after { display: none; }                     /* 흐르는 반짝임 — 계기에는 쓰지 않는다 */
+.match-tick {
+  position: absolute; left: 75%; top: -0.35rem; bottom: -0.35rem; width: 2px;
+  background: var(--ss-white);
+}
+.match-tick b {
+  position: absolute; top: calc(100% + 0.3rem); left: 50%; transform: translateX(-50%);
+  font: 600 0.72rem/1 var(--ss-font); letter-spacing: 0.02em; color: var(--ss-ink-dim); white-space: nowrap;
+}
+.match-state { margin-left: 0.5rem; font-size: 0.8rem; font-weight: 700; color: var(--ss-green); }
+.match-state:not(:empty)::before { content: "✓ "; }
+.score-bar { background: var(--hmi-orange-track); border-radius: 2px; }
+.score-bar i { background: var(--ss-orange); border-radius: 2px 0 0 2px; box-shadow: none; }
+
+/* ---------- 카메라 계기판: 강조 막대 대신 제목 줄 ---------- */
+.phase-judging .camera-hud { border-left: 1px solid var(--hmi-line-2); background: rgba(12, 17, 23, 0.9); }
+.phase-judging .camera-hud::before {
+  content: "실시간 판정"; grid-column: 1 / -1;
+  padding-bottom: 0.35rem; margin-bottom: 0.2rem; border-bottom: 1px solid var(--hmi-line);
+  font: 700 0.72rem/1.4 var(--ss-font); letter-spacing: 0.08em; color: var(--ss-ink-dim);
+}
+.camera-tag { background: rgba(12, 17, 23, 0.85); }
+
+/* ---------- 알림 화면(SC-04·SC-07·가입 완료): 왼쪽 정렬, 상태는 아이콘 테두리 색으로 ---------- */
+.notice-card { align-items: flex-start; text-align: left; padding: 2.75rem 3rem 2.5rem; gap: 1rem; }
+.notice-card::before { display: none; }
+.notice-card h1 { font-size: 2.4rem; }
+.notice-icon { width: 3.5rem; height: 3.5rem; background: transparent; border: 2px solid var(--ss-orange); }
+.notice-icon svg { width: 2rem; height: 2rem; }
+.welcome-icon { border-color: var(--ss-green); background: transparent; }
+/* 카메라 인식 실패 = 주의 상태 — 안전 표지의 사선 띠 */
+#screen-camera-fail .notice-card { overflow: hidden; padding-top: 3.4rem; }
+#screen-camera-fail .notice-card::before {
+  display: block; content: ""; position: absolute; left: 0; right: 0; top: 0; height: 10px;
+  background: repeating-linear-gradient(-45deg, var(--ss-orange) 0 12px, var(--ss-black) 12px 24px);
+}
+
+/* ---------- 정답 / 오답 화면: 안돈(생산 라인 신호등)처럼 단색 판 ---------- */
+.overlay { animation: ss-in 0.16s ease-out; }
+.overlay.correct { background: var(--ss-green); box-shadow: none; color: var(--hmi-on-green); }
+.overlay.correct h2, .overlay.correct .overlay-score, .overlay.correct .overlay-score b,
+.overlay.correct .overlay-next, .overlay.correct .overlay-picar strong { color: var(--hmi-on-green); }
+.overlay.correct .overlay-icon { border: 3px solid var(--hmi-on-green); background: transparent; }
+.overlay.correct .overlay-icon svg { stroke: var(--hmi-on-green); }
+.overlay.correct .overlay-icon::before, .overlay.correct .overlay-icon::after { display: none; }   /* 퍼지는 고리 — 게임 연출이라 뺀다 */
+.overlay.correct .overlay-picar { background: rgba(6, 20, 11, 0.12); border: 1px solid rgba(6, 20, 11, 0.28); border-radius: var(--hmi-r); }
+.overlay.correct .overlay-picar .chip { background: var(--hmi-on-green); color: var(--ss-green); border: 0; }
+.overlay.correct .overlay-timer { background: rgba(6, 20, 11, 0.18); border-radius: 0; }
+.overlay.correct .overlay-timer span { background: var(--hmi-on-green); border-radius: 0; }
+.overlay.wrong { background: #111820; box-shadow: none; }
+.overlay.wrong::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px; background: var(--ss-red); }
+.overlay.wrong .overlay-icon { border: 3px solid var(--ss-red); background: transparent; }
+.overlay.wrong .overlay-icon svg { stroke: var(--ss-red); }
+.overlay.wrong .overlay-timer { background: var(--hmi-line); border-radius: 0; }
+.overlay.wrong .overlay-timer span { background: var(--ss-red); border-radius: 0; }
+@keyframes ss-wrong-pulse { 0%, 100% { border-color: rgba(239, 68, 68, 0.55); } 50% { border-color: #EF4444; } }
+
+/* ---------- 앰비언트: 안전색 빛은 남기되 한 단계 낮춘다 (제어실 조명처럼 은은하게) ---------- */
+.ambient i { opacity: 0.38; }
+.ambient .aurora { opacity: 0.28; }
+.ambient .dust { opacity: 0.45; }
+.ambient .dust2 { opacity: 0.3; }
+
+/* 줄무늬: 랜딩 아래 = 안전 표지 사선 띠가 컨베이어처럼 흐른다 / 교육 헤더 = 얇은 선 하나 */
+#screen-landing::after {
+  height: 6px !important;
+  background-image: repeating-linear-gradient(-45deg, var(--ss-orange) 0 10px, var(--ss-black) 10px 20px) !important;
+  background-size: 28.28px 100% !important;
+  animation: ss-conveyor 1.6s linear infinite !important;
+  opacity: 0.9;
+}
+@keyframes ss-conveyor { to { background-position: 28.28px 0; } }
+.training-header::after {
+  background-image: none !important; background-color: rgba(244, 246, 248, 0.20) !important; height: 1px !important;
+  animation: none !important;
+}
+
+/* ---------- 회전 테두리: 움직임은 그대로, 색만 안전색 (강철 회색 바탕 위로 주황·흰 빛이 돈다) ---------- */
+.phase-judging .camera-preview::after {
+  background: conic-gradient(from var(--ss-spin), #3A4652 0 38%, #F28C28 58%, #F4F6F8 66%, #F28C28 74%, #3A4652 92%);
+}
+@keyframes ss-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(242, 140, 40, 0.10), inset 0 0 40px rgba(0, 0, 0, 0.6); }
+  50%      { box-shadow: 0 0 22px rgba(242, 140, 40, 0.22), inset 0 0 40px rgba(0, 0, 0, 0.6); }
+}
+.phase-demo .camera-preview::after {
+  background: conic-gradient(from var(--ss-spin), rgba(104, 117, 130, 0.25), rgba(244, 246, 248, 0.55), rgba(104, 117, 130, 0.25) 40%);
+}
+button.confirm-btn::after {
+  background: conic-gradient(from var(--ss-spin), transparent 0 55%, rgba(17, 24, 32, 0.9) 70%, #F4F6F8 78%, transparent 90%);
+}
+@keyframes ss-btn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 140, 40, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(242, 140, 40, 0.18); }
+}
+.auth-card::before, .sign-guide::before {
+  background: conic-gradient(from var(--ss-spin),
+    rgba(104, 117, 130, 0.35), rgba(242, 140, 40, 0.75) 25%, rgba(104, 117, 130, 0.35) 45%, rgba(104, 117, 130, 0.35));
+}
+
+/* 한글 라벨은 고정폭 글꼴·넓은 자간을 쓰지 않는다 (영문 약어만 고정폭) */
+.ss-kicker, .about-live, .match-state { font-family: var(--ss-font); letter-spacing: 0.04em; text-transform: none; }
+.ss-kicker b { font-family: var(--ss-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.hand-scan { height: clamp(150px, 30vh, 330px); }
+
+/* 제품 소개: 교육 수신호 7종 (크레인 작업표준신호 5 + 자체 지정 2) */
+.about-signals { display: grid; gap: 0.6rem; }
+.about-signals p { margin: 0; font: 600 0.8rem/1 var(--ss-font); letter-spacing: 0.04em; color: var(--ss-muted); }
+.about-signals ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.about-signals li {
+  padding: 0.35rem 0.7rem; border: 1px solid var(--hmi-line-2); border-radius: 3px;
+  font-size: 0.92rem; font-weight: 600; color: var(--ss-ink);
+}
+@media (max-height: 820px) { .about-signals { display: none; } }
+.ss-kicker b { font-family: var(--ss-font); letter-spacing: 0.08em; }
+
+/* SC-06 수료증 — 종이 한 장처럼: 발광 없이 얇은 그림자, 모서리 2px */
+#certificate-canvas { border-radius: 2px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); background: #F4F6F8; }
+#certificate-canvas {
+  aspect-ratio: 1123 / 794; height: auto;
+  width: min(calc((100vh - var(--ss-topbar-h) - 4rem) * 1.414), calc(100vw - 26rem), 66rem);
+}
+@media (max-width: 960px) { #certificate-canvas { width: 100%; } }
