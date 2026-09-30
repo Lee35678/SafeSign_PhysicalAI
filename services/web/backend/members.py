@@ -55,6 +55,33 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+def _load_dotenv() -> None:
+    """저장소 루트의 `.env`(git 제외)를 읽어 **비어 있는** 환경변수만 채운다 — 셸·Docker·호스팅에서 준 값이 항상 우선.
+
+    web(RPi5)과 portal(회사 사이트)이 같은 Supabase 키를 이 파일 하나로 쓴다. 테스트는 절대 읽지 않는다
+    (conftest의 SAFESIGN_NO_DOTENV=1, 그리고 pytest 실행 중이면 건너뜀) — 테스트가 실제 회원 DB에 쓰면 안 되므로.
+    """
+    import sys
+    if os.getenv("SAFESIGN_NO_DOTENV") == "1" or "pytest" in sys.modules:
+        return
+    path = Path(os.getenv("SAFESIGN_DOTENV", str(Path(__file__).resolve().parents[3] / ".env")))
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and not os.environ.get(key):
+            os.environ[key] = value
+
+
+_load_dotenv()
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_TIMEOUT_S = float(os.getenv("SUPABASE_TIMEOUT_S", "5.0"))
@@ -280,6 +307,21 @@ class LocalStore:
             self._save(db)
         LocalStore._codes.pop(email, None)
 
+    # ── 조회 (회사 사이트 services/portal — 읽기만 한다) ──
+    def get_member(self, user_id: str) -> Optional[dict]:
+        with self._lock:
+            users = self._load()["users"].values()
+        return next((m for m in users if m["user_id"] == user_id), None)
+
+    def ping(self) -> bool:
+        return True
+
+    def list_sessions(self, user_id: str) -> list[dict]:
+        """이 회원이 끝까지 학습한 회차들, 최근 순. 수신호 결과는 results(order_no 순)."""
+        with _file_lock:
+            rows = [r for r in _read_jsonl("results_local.jsonl") if r.get("user_id") == user_id]
+        return sorted(rows, key=lambda r: r.get("completed_at") or "", reverse=True)
+
 
 # ══ Supabase 저장소 ══════════════════════════════════════════════════════════════
 class SupabaseOffline(Exception):
@@ -447,6 +489,39 @@ class SupabaseStore:
         except SupabaseRejected as exc:
             logger.error("비밀번호 변경 거부: %s", exc)
             raise MemberError("reset_failed", "비밀번호를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.")
+
+    # ── 조회 (회사 사이트 services/portal — 읽기만 한다, 스키마는 그대로) ──
+    def get_member(self, user_id: str) -> Optional[dict]:
+        try:
+            return self._member_row(user_id)
+        except SupabaseOffline:
+            raise MemberError("offline", "회원 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        except SupabaseRejected as exc:
+            logger.error("회원 조회 실패: %s", exc)
+            raise MemberError("lookup_failed", "회원 정보를 불러오지 못했습니다.")
+
+    def ping(self) -> bool:
+        """DB가 응답하는가 — 회원 행 1개의 코드만 읽는다(내용은 밖으로 내보내지 않는다). 무료 프로젝트 일시 정지 방지용 확인에도 쓴다."""
+        try:
+            self._request("GET", "/rest/v1/members?select=member_code&limit=1")
+            return True
+        except (SupabaseOffline, SupabaseRejected):
+            return False
+
+    def list_sessions(self, user_id: str) -> list[dict]:
+        """training_sessions + training_results(외래키로 함께 조회). 결과 열은 `*` — 열이 늘어도(예: last_outcome) 그대로 받는다."""
+        path = (f"/rest/v1/training_sessions?user_id=eq.{user_id}"
+                "&select=*,training_results(*)&order=completed_at.desc")
+        try:
+            rows = self._request("GET", path) or []
+        except SupabaseOffline:
+            raise MemberError("offline", "회원 DB에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        except SupabaseRejected as exc:
+            logger.error("학습 기록 조회 실패: %s", exc)
+            raise MemberError("lookup_failed", "학습 기록을 불러오지 못했습니다.")
+        for row in rows:
+            row["results"] = sorted(row.pop("training_results", None) or [], key=lambda r: r.get("order_no") or 0)
+        return rows
 
 
 # ══ 파일 도우미 · 대기열 ═════════════════════════════════════════════════════════

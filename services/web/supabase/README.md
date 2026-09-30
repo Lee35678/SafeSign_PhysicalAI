@@ -28,14 +28,18 @@ web 백엔드(`backend/members.py`)가 회원 정보와 학습 결과를 Supabas
 
 ## 2. web에 키 넣기
 
-RPi5에서 web을 띄우는 셸(또는 `scripts/rpi/common.sh`를 쓰는 경우 그 환경)에:
+**저장소 루트 `.env`** 에 두 줄을 넣는다(2026-09-30 — web·portal이 시작할 때 읽는다, `members._load_dotenv`):
 
 ```bash
-export SUPABASE_URL=https://<프로젝트ID>.supabase.co
-export SUPABASE_SERVICE_ROLE_KEY=<service_role 키>
+SUPABASE_URL=https://<프로젝트ID>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service_role 키>
 ```
 
-Docker로 띄울 때는 저장소 루트 `.env`(git에 올리지 않는다)에 같은 두 줄을 넣으면 `docker-compose.yml`이 넘긴다.
+- `.gitignore`가 `.env`·`*.env`·`.env.*`를 막는다(`.env.example`만 올라간다). RPi5에는 git으로 가지 않으니 파일을 복사한다:
+  `scp .env <사용자>@<RPi5>:~/git/SafeSign_PhysicalAI/.env`. **채팅·메신저에 키를 붙여 넣지 않는다.**
+- 셸에서 `export`한 값이 있으면 그 값이 우선이다. 테스트(`pytest`)는 이 파일을 읽지 않는다(실제 회원 DB 보호).
+- Docker(`docker-compose.yml`)도 같은 루트 `.env`를 넘긴다.
+- 2026-09-30 팀 프로젝트 연결 완료 — 최신 `schema.sql` 적용 상태를 읽기로 확인(18 §0).
 
 확인: `curl http://localhost:8000/api/auth/me` → `"store": {"backend": "supabase", ...}`. `"local"`이면 키가 안 들어간 것이다.
 

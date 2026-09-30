@@ -70,7 +70,9 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
   열리는데 `VISION_URL`은 RPi5 기준 주소라, web을 거쳐야 주소·포트가 맞는다.
 - `frontend/` — `index.html`(화면 마크업) + `style.css`(Gemini 테마 구조 그대로, **색만 산업 안전 팔레트** — 2026-09-30) + `app.css`(회원·라이브 영상·손가락 패턴 등
   원본에 없는 요소 + 디자인 방향 절) + `main.js`(폴링·전환) + `fonts/`(SUIT·Inter, OFL — 오프라인용 동봉).
-  - 디자인 (2026-09-30): Industrial Intelligence · Mission Control · Technical Editorial. 팔레트 Industrial Black `#111820`(배경) ·
+  - 디자인 (2026-09-30): Industrial Intelligence · Mission Control · Technical Editorial → **산업 제어실(HMI, ISA-101) 기준으로 정리** — 무채색 불투명 패널,
+    색은 상태·핵심 조작에만, 일치율 계기에 판정 기준 75% 눈금, 안돈식 정답 화면(14 §11). 수료증 = 성명·사원 코드·수료 일시·번호 + 가상 기관 직인.
+    회사 사이트(같은 회원 DB)는 `services/portal` — [19_회사웹사이트](../../document/19_회사웹사이트.md). 팔레트 Industrial Black `#111820`(배경) ·
     Safety Orange `#F28C28`(핵심 강조, 주 버튼은 검정 글자) · Steel Gray `#687582`(보조 정보) · Signal White `#F4F6F8`(주요 텍스트) ·
     Safe Green `#22C55E`(정상) · Alert Red `#EF4444`(위험 경고). SC-01 오른쪽은 제품 소개(손 관절 21점 인식 애니메이션),
     판정 중 카메라에는 실시간 판정값 계기판(`live_judgment`: 손 검출 · 인식 수신호 · 신뢰도).
