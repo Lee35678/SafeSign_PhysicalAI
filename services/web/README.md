@@ -52,7 +52,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
     0.6초)은 `/command`가 전부 timeout 나서 철회됐다. micro:bit가 명령을 하나씩 처리하므로 actuation
     호출은 순차로 보낸다.
   - vision/actuation/picar의 `GET /health`를 5초 간격으로 확인해 `devices`로 노출한다.
-  - 손 미검출(no_hand/normalize_failed)이 `CAMERA_FAIL_STREAK_THRESHOLD`(잠정 15회)회 연속되면 SC-04로
+  - 손 미검출(no_hand/normalize_failed)이 `CAMERA_FAIL_STREAK_THRESHOLD`(25회 ≈ 5초, 환경변수)회 연속되면 SC-04로
     전환하고, 손이 다시 보이면 자동으로 SC-03에 복귀한다.
   - **회원 결과 저장** (2026-09-29): 7종을 마쳐 SC-05로 넘어가는 순간 `backend/members.py`로 회원 기록에 저장한다.
     회원은 `/api/start` 때 로그인해 있던 학습자로 고정한다. 저장 상태는 `/api/state`의 `result_save`, 이 회차의 학습자는 `member`.
@@ -114,8 +114,9 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 - [x] ~~`picar_command`의 `motor.speed` 값~~ → 2026-09-23 바닥 주행 테스트로 확정: 서행 20,
   좌/우회전·후진 40, 정지/확인_완료/주의 0 (13_picar_하드웨어_검증리포트.md §4.5). picar 서비스가
   50 초과를 잘라내지만(`speed_capped_from`) 안전망일 뿐
-- [x] ~~SC-04(camera_fail) 진입 조건~~ → `CAMERA_FAIL_STREAK_THRESHOLD`(연속 15회, ~3초) 잠정치로
-  2026-09-22 구현. 실측 후 조정 필요
+- [x] ~~SC-04(camera_fail) 진입 조건~~ → `CAMERA_FAIL_STREAK_THRESHOLD` 25회(약 5초, 2026-09-29 조은수 결정 — 웹 A 이동혁 확인 대기; 이전 15회·3초 잠정치).
+  9/25 실물 데모에서 판정 시작 → 정답까지 1.2~8.0초라 3초는 짧았다. 필요하면 환경변수로 조정
+- [x] ~~SC-05·06 "성공률"(100/시도 횟수)~~ → **"첫 시도 정답"(O/X, 전체 k/7)**으로 교체(2026-09-29 조은수 결정 — 웹 A 이동혁 확인 대기) — KPI 정답률과 혼동 방지
 - [ ] 커리큘럼 순서(`CURRICULUM`)가 PRD §3.2 표 순서 그대로인데, 실제 교육 설계상 순서인지 확인 필요
 - [ ] SC-03b "권장 재도전 횟수" 산식 — 어느 문서에도 정의돼 있지 않아 `_recommended_retry_count`에
   match_score 구간별 잠정치(1~3회)로 구현. 실측/교육 설계 확정 필요
@@ -136,15 +137,39 @@ docker compose up --build web
 
 ## 테스트
 
-`tests/test_members.py` — 가짜 Supabase(httpx.MockTransport)로 가입·로그인·회원코드·결과 저장·오프라인 대기열·재전송,
-로컬 모드, 시작한 회원에게 저장되는지. `tests/test_camera_proxy.py` — 영상 중계·vision 다운 시 503.
-테스트 동안 회원 파일·시행 로그는 임시 폴더를 쓰고 Supabase 키는 지운다(`tests/conftest.py`).
+vision/actuation/picar 실물·mock 서버 없이 httpx 호출만 patch해 검증한다.
 
-`tests/test_state_machine.py` — vision/actuation/picar 실물·mock 서버 없이 httpx 호출만 patch해
-정답/오답/below_tau/out_of_distribution 분기, SC-04 임계값·자동 복귀, 4xx/5xx 실패 감지, SC-06 발급
-조건을 검증한다 (services/vision/tests와 동일한 스타일 — pytest 없이도 단독 실행 가능).
+- `tests/test_state_machine.py` — 정답/오답/below_tau/out_of_distribution 분기, SC-04 임계값·자동 복귀,
+  4xx/5xx 실패 감지, SC-06 발급 조건
+- `tests/test_judging_timing_spec.py` — 판정 타이밍 스펙 인수 테스트(①-a·②-a·③)
+- `tests/test_microbit_button_confirm.py` — micro:bit 버튼 A 확인(스펙 §9)
+- `tests/test_members.py` — 가짜 Supabase(httpx.MockTransport)로 가입·로그인·회원코드·결과 저장·오프라인 대기열·재전송,
+  로컬 모드, 시작한 회원에게 저장되는지
+- `tests/test_camera_proxy.py` — 영상 중계·vision 다운 시 503
+- `tests/test_aggregate_kpi.py` — KPI 집계 스크립트(아래)
+
+테스트 동안 회원 파일·시행 로그는 임시 폴더를 쓰고 Supabase 키는 지운다(`tests/conftest.py`).
 
 ```bash
 cd services/web && python -m pytest tests -q
-# (pytest가 없으면) python tests/test_state_machine.py
 ```
+
+> ⚠️ **반드시 pytest로 실행한다.** `tests/conftest.py`가 테스트 동안 시행 로그를 임시 폴더로 돌린다.
+> `python tests/test_state_machine.py`처럼 직접 실행하면 이 설정을 거치지 않아 실제 `logs/`에 가짜 판정 행이 쓰인다
+> (그래서 직접 실행하면 안내만 하고 끝나게 해 두었다).
+
+## KPI 집계 (06 2부)
+
+`scripts/aggregate_kpi.py` — 시행 로그 CSV를 `06_테스트·평가리포트` §2 표(요약·혼동행렬·지연 분포·대상자별)로
+집계한다(16 §5.7 규칙, §5.8 명세). `mocked=true` 행은 빼고 제외 건수를 출력한다. 미결 KPI 정의는
+[회의안건_KPI측정방법](../../document/proposals/회의안건_KPI측정방법.md)의 잠정치가 기본값이다. web `timeout`(판정 제한시간
+초과)은 기본적으로 분모에서 빼고 건수만 적으며, `--timeout-as-reject`면 미판정으로 센다(16 §6.4 결정 대기).
+
+```bash
+cd services/web
+python scripts/aggregate_kpi.py logs/web_trials_*.csv --out kpi_out   # kpi_out/kpi_report.md
+# web 없는 데모 CSV를 같이 주면 따로 집계해 비교한다(합치지 않음)
+python scripts/aggregate_kpi.py logs/web_trials_*.csv ../actuation/aihand_vision_picar_*.csv
+```
+
+PNG(혼동행렬·지연 히스토그램)는 matplotlib이 설치돼 있을 때만 만든다 — web 의존성에는 넣지 않았다.
