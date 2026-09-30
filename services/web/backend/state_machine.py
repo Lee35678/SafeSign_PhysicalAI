@@ -618,6 +618,13 @@ def _poll_once(vision_client: httpx.Client) -> None:
         if outcome == "correct" or given_up:
             _session["completed"].append({
                 "signal": target_signal, "attempts": attempt_no, "match_score": match_score,
+                # 마지막 시도가 어떻게 끝났는지 남긴다 (18_DB설계서 §2-3).
+                #   given_up 하나로는 불합격 사유가 "3회 오답"인지 "시간 초과"인지 구분되지 않고,
+                #   학습자가 실제로 무슨 수신호를 한 것으로 읽혔는지도 사라진다.
+                #   좌회전_유도↔후진·우회전_유도↔주의는 엄지 하나로 갈려(10_PRD §3.2) 이 값이 있어야
+                #   "무엇을 어떻게 틀렸는가"를 교육 결과로 설명할 수 있다.
+                "last_outcome": outcome,        # correct · wrong · timeout
+                "last_predicted": predicted,    # 마지막 시도에 인식된 수신호 (없으면 None)
                 **({"given_up": True} if given_up else {}),
             })
             _session["curriculum_index"] += 1
@@ -658,7 +665,8 @@ def _save_member_results(gen: int) -> None:
             "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "results": [
                 {"order_no": i + 1, "signal": c["signal"], "attempts": c["attempts"],
-                 "match_score": c["match_score"], "given_up": bool(c.get("given_up"))}
+                 "match_score": c["match_score"], "given_up": bool(c.get("given_up")),
+                 "last_outcome": c.get("last_outcome"), "last_predicted": c.get("last_predicted")}
                 for i, c in enumerate(_session["completed"])
             ],
         }

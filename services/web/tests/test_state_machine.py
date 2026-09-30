@@ -109,7 +109,8 @@ def test_poll_once_correct_advances_curriculum_and_calls_picar():
         sm._poll_once(client)
 
     assert sm._session["curriculum_index"] == 1
-    assert sm._session["completed"] == [{"signal": "정지", "attempts": 1, "match_score": 92}]
+    assert sm._session["completed"] == [{"signal": "정지", "attempts": 1, "match_score": 92,
+                                        "last_outcome": "correct", "last_predicted": "정지"}]
     assert sm._session["last_result"]["outcome"] == "correct"
     assert client.reset_called is True, "정답 시 vision POST /reset을 호출해야 한다"
     picar_calls = [c for c in fake_post.call_args_list if "/picar" in c.args[0]]
