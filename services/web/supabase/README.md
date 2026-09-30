@@ -55,7 +55,7 @@ Docker로 띄울 때는 저장소 루트 `.env`(git에 올리지 않는다)에 �
 | --- | --- | --- |
 | `members` | 회원 1명 | `member_code`(SS-00001, 자동), `email`, `name`, `org`, `created_at` |
 | `training_sessions` | 7종을 끝까지 학습한 1회 | `member_code`, `started_at`, `completed_at`, `total_attempts`, `first_try_correct`, **`passed_count`**(합격 수), **`all_passed`** |
-| `training_results` | 그 회차의 수신호 1종 | `order_no`, `signal`, `attempts`, `match_score`(목표 수신호 확률 × 100), `given_up`, **`passed`(합격)**, `first_try` |
+| `training_results` | 그 회차의 수신호 1종 | `order_no`, `signal`, `attempts`, `match_score`(목표 수신호 확률 × 100), `given_up`, **`passed`(합격)**, `first_try`, **`last_outcome`**(correct·wrong·timeout), **`last_predicted`**(틀렸을 때 인식된 수신호) |
 | `member_signal_status` (뷰) | 회원 × 수신호 | 합격·불합격 회차 수, 최근 결과 `last_passed`, 최고 일치율 |
 
 비밀번호는 Supabase Auth(`auth.users`)가 보관한다 — 우리 테이블에는 없다.

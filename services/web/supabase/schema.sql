@@ -44,6 +44,9 @@ create table if not exists public.training_results (
   attempts    integer not null,
   match_score integer not null,            -- 일치율 0~100 = 목표 수신호 확률 × 100 (불합격이면 마지막 시도의 값)
   given_up    boolean not null default false,  -- 재시도 상한(기본 3회)을 넘겨 다음으로 넘어간 수신호
+  -- 마지막 시도가 어떻게 끝났는지. given_up만으로는 "3회 오답"과 "시간 초과"가 구분되지 않는다.
+  last_outcome   text,                       -- correct · wrong · timeout
+  last_predicted text,                       -- 마지막 시도에 인식된 수신호 (틀린 경우 무엇으로 읽혔는가)
   -- 합격 = 시도 상한 안에 정답 / 불합격 = 상한을 넘겨 넘어감. given_up에서 DB가 계산한다(따로 어긋날 수 없게)
   passed      boolean generated always as (not given_up) stored,
   first_try   boolean generated always as (attempts = 1 and not given_up) stored,
@@ -52,6 +55,8 @@ create table if not exists public.training_results (
 alter table public.training_results add column if not exists given_up boolean not null default false;
 alter table public.training_results add column if not exists passed boolean generated always as (not given_up) stored;
 alter table public.training_results add column if not exists first_try boolean generated always as (attempts = 1 and not given_up) stored;
+alter table public.training_results add column if not exists last_outcome text;
+alter table public.training_results add column if not exists last_predicted text;
 
 create index if not exists training_sessions_member_idx
   on public.training_sessions (member_code, completed_at desc);
@@ -83,9 +88,10 @@ begin
   on conflict (id) do nothing;
 
   if found then
-    insert into public.training_results (session_id, order_no, signal, attempts, match_score, given_up)
+    insert into public.training_results
+      (session_id, order_no, signal, attempts, match_score, given_up, last_outcome, last_predicted)
     select sid, (r->>'order_no')::smallint, r->>'signal', (r->>'attempts')::int, (r->>'match_score')::int,
-           coalesce((r->>'given_up')::boolean, false)
+           coalesce((r->>'given_up')::boolean, false), r->>'last_outcome', r->>'last_predicted'
     from jsonb_array_elements(payload->'results') as r;
 
     update public.training_sessions s
