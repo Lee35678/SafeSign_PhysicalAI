@@ -50,7 +50,7 @@ python -m uvicorn app.main:app --port 8100
 
 `SUPABASE_URL` · `SUPABASE_SERVICE_ROLE_KEY` · `PORTAL_SESSION_SECRET`은 **저장소 루트의 `.env`** 에 둔다(`.gitignore`의 `.env`·`*.env`·`.env.*`).
 web(RPi5)과 portal 모두 시작할 때 이 파일을 읽고(`members._load_dotenv` — 셸·호스팅에서 준 값이 우선), **테스트는 읽지 않는다.**
-RPi5에는 git으로 가지 않으니 파일을 직접 복사한다: `scp .env <사용자>@<RPi5 주소>:~/SafeSign_PhysicalAI/.env`
+RPi5에는 git으로 가지 않으니 파일을 직접 복사한다: `scp .env <사용자>@<RPi5 주소>:~/git/SafeSign_PhysicalAI/.env`
 
 ## 외부에 열기 — ngrok (지금 쓰는 방법, 2026-09-30 결정)
 

@@ -26,11 +26,12 @@ SafeSign_PhysicalAI/
 │   ├── actuation/          ← 송승호 담당 (AI Hand + micro:bit, 하드웨어 R) — Raspberry Pi 5
 │   ├── picar/              ← 송승호 담당 (picar 전용 컨트롤러, 하드웨어 R) — Raspberry Pi 4B 8GB (신규)
 │   ├── web/                ← 조은수 담당 (웹 R, 화면) — 백엔드 state_machine.py는 이동혁 (분담 document/14 §8)
+│   ├── portal/             ← 이동혁 (2026-09-30) 회사 웹사이트 — 같은 회원 DB, RPi5 없이 개발 PC + ngrok (document/19)
 │   └── data/                ← 김지훈 담당 (데이터 수집 스크립트 + 수신호 템플릿 DB, 데이터수집 R)
 ├── shared/                 # 5개 서비스 공통: 03_인터페이스계약서 기반 스키마 (필드명 그대로 코드 변수명에 사용)
 ├── docker-compose.yml      # 서비스 4개 통합 실행 + data-tools(--profile tools) (개발 PC mock·CI 전용)
 ├── docker-compose.hw.yml   # actuation·picar 실물 오버라이드 — 미검증·선택 사항, 시연 미사용
-├── .env.example
+├── .env.example           # 비밀 값(Supabase 키 등)은 루트 .env — git 제외, 팀원에게는 파일로 전달
 └── .gitignore
 ```
 
@@ -216,8 +217,8 @@ PICAR_URL=http://192.168.50.10:8000 uvicorn backend.app:app --host 0.0.0.0 --por
 
 `PICAR_URL`을 빼면 기본값(`localhost:8003`)으로 가서 picar가 움직이지 않는다.
 
-회원 기록을 Supabase에 저장하려면 같은 셸에 `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`를 넣고 띄운다(없으면 로컬 모드 —
-[services/web/supabase/README.md](services/web/supabase/README.md)). vision 모델 번들은 2026-09-30 갱신본(일치율 클래스별 환산 포함)을 복사해 둔다.
+회원 기록을 Supabase에 저장하려면 저장소 루트에 `.env`(git 제외 — 노트북에서 `scp .env`로 복사)를 두면 web이 시작할 때 읽는다
+(`SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`, 셸에서 준 값이 우선. 없으면 로컬 모드 — [services/web/supabase/README.md](services/web/supabase/README.md)). vision 모델 번들은 2026-09-30 갱신본(일치율 클래스별 환산 포함)을 복사해 둔다.
 
 **PC — 브라우저**
 

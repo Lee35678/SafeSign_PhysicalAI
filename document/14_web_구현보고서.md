@@ -350,6 +350,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 버전 | 날짜 | 내용 |
 | --- | --- | --- |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
+| v1.14 | 2026-09-30 | **(이동혁) §11 추가 행** — 제어실(HMI) 정리, 노트북 화면 맞춤, 수료증 재디자인, 회사 사이트 연결(`members.py` 조회 메서드·`.env` 로드). 남은 것 갱신 |
 | v1.13 | 2026-09-30 | **(이동혁) §11 추가** — Gemini 디자인 새 화면(옛 `index.html`·`main.js`·`style.css`·예시 사진 삭제), 로그인·회원가입·회원코드, 회원별 결과 저장(Supabase, SC-05 CSV 대체), 라이브 영상 중계, 일치율 재정의(목표 수신호 확률). 본문 §1~§9는 그대로 — 조은수 몫 ⑦ 보완 때 반영 필요 |
 | v1.12 | 2026-09-29 | **⑥ 재시험 결함 2건 실물 재검증 통과**(`cb8a25b`) — SC-04 재시도(시범 단계 복귀·재시범)와 시도 횟수 상한(3회·판정 제한시간 10초) 모두 RPi5+RPi4B에서 확인. §7 두 행 ✅. **web 전 구간 실물 검증 완료** |
 | v1.11 | 2026-09-29 | **SC-04 탈출·시도 상한 재작성** — 1차 수정이 실물에서 해결되지 않음(수정이 커밋 전이라 RPi에 없었고, 설계도 부족했다). SC-04 재시도 → 시범 단계 + 재시범(화면 버튼·Space·micro:bit A), 조회 도중 재시도 경합 차단. 판정 제한시간 `JUDGING_TIMEOUT_S` 10초 → `timeout`도 시도로 셈(below_tau/OOD만 나와도 상한 적용). `/api/state`에 `max_attempts`, 배지 "시도 n / 3", `main.js?v=` 캐시 방지. 회귀 테스트 11건, web 61·전체 170 통과(§2·§4.1·§6.1·§7). 실물 재검증 대기 |
@@ -374,7 +375,10 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 항목 | 내용 | 코드 |
 | --- | --- | --- |
 | 새 화면 | Gemini AI Edition 디자인. `style.css` = 디자인 원본 구조(`stitch_safesign_design_system_final/`), `app.css` = 원본에 없는 요소만. 옛 `index.html`·`main.js`·`style.css`·`images/` 삭제(사진은 git 기록에 있음) | `frontend/` |
-| 디자인 방향 (09-30) | 산업 안전 팔레트(Industrial Black·Safety Orange·Steel Gray·Signal White·Safe Green·Alert Red)로 `style.css` 색 교체, Mission Control·Technical Editorial 요소(관제 시계, 도면 격자·크레인 선화, 편집 라벨, 비대칭 7:5 랜딩, 손 관절 21점 인식 애니메이션, 판정 중 카메라 계기판), SUIT·Inter 동봉. 마우스 추적 빛 제거, 테두리 회전 효과는 유지 | `frontend/app.css`·`fonts/` |
+| 디자인 방향 (09-30) | 산업 안전 팔레트(Industrial Black·Safety Orange·Steel Gray·Signal White·Safe Green·Alert Red)로 `style.css` 색 교체, Mission Control·Technical Editorial 요소(관제 시계, 도면 격자·크레인 선화, 비대칭 7:5 랜딩, 손 관절 21점 인식 애니메이션, 판정 중 카메라 **실시간 판정 계기판**), SUIT·Inter 동봉(`fonts/`, OFL). 마우스 추적 빛 제거 | `frontend/app.css`·`fonts/` |
+| 제어실(HMI) 정리 (09-30) | 산업 제어실 화면 지침(ISA-101) 기준 — 평상시 무채색 불투명 패널, 색은 상태·핵심 조작에만. 그라데이션·유리 블러·발광·알약 모양 제거(모서리 4px·단색 버튼), 의미 없는 번호(SC-01 등) 라벨 제거, **일치율 계기**(한 색 채움 + **판정 기준 75% 눈금**, 넘으면 정상색 + "기준 이상" 글자), 정답 = 안돈식 단색 초록 판(검정 글자), 오답 = 빨간 경보 띠, SC-04 = 안전 표지 사선 띠. 회전 테두리는 움직임 유지·색만 안전색 | `app.css` "HMI 정리" |
+| 노트북 화면 맞춤 (09-30) | 기준 1920×1080 전체 화면. 1366×768 · 1366×657(창 모드)에서 SC-03 확인 버튼이 밀리던 문제 → 세로 820·700px 이하 간격·글자 축소. 14개 화면 × 3해상도 잘림·스크롤 0 | `app.css` "노트북 화면 맞춤" |
+| 수료증 재디자인 (09-30) | A4 가로 2배 해상도(2246×1588), 웹과 같은 디자인(검정 머리띠·사선 띠·합격 칩·일치율 막대). **성명·사원 코드·소속·수료 일시·수료증 번호**(사원 코드+시각), 이수 기준, 가상 기관 "주식회사 심기일전" + 붉은 직인, "교육 시연용 가상 기관" 표기. 글꼴 로드 후 그리기 | `main.js` `drawCertificate` |
 | 로그인·회원가입 | SC-01 → 로그인/가입(이름·소속·이메일·비밀번호) → 가입 완료 시 **회원코드 SS-00001**(DB 시퀀스) → SC-02. 게스트 학습 가능. 교육 중에는 로그아웃 숨김 | `backend/members.py`, `/api/auth/*` |
 | 결과 저장 | 7종 완료 순간 **교육을 시작한 회원** 이름으로 Supabase에 자동 저장(SC-05에 저장 상태). 오프라인이면 대기열 → 30초마다 재전송. 키가 없으면 로컬 모드. SC-05 CSV 내려받기(⑨)를 대신한다 | `members.save_session_results`, `supabase/schema.sql` |
 | 라이브 영상 | 예시 사진 폐지(회의) → vision `GET /stream`(MJPEG)을 web `GET /api/camera/stream`으로 중계. 시범·판정 두 단계 모두 영상, 정답 손모양은 **손가락 패턴** | `backend/camera.py`, vision `perception/preview.py` |
@@ -384,6 +388,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 아이디·비밀번호 찾기 (09-30) | 이름+회원코드 → 가린 이메일 / 메일 6자리 코드 → 새 비밀번호 | `/api/auth/find-id`·`/password/*` |
 | 보안 (09-30) | 로그인 5회 실패 잠금, 비밀번호 8자+영문·숫자, 코드·찾기 횟수 제한, CSP 등 보안 헤더, 키 역할 점검, 5분 무입력 자동 로그아웃 | 18 §6 |
 | 테스트 | web 92개(회원 25 · 영상 중계 2 · 일치율 4 …) · Chrome 헤드리스 전 구간(가입 → 7종 → 합격표 → 수료증 → 아이디 찾기 → 비밀번호 재설정 → 새 비밀번호 로그인, CSP 위반 0) | `tests/` |
+| 회사 사이트 연결 (09-30) | `members.py`에 읽기 전용 `get_member`·`list_sessions`·`ping` 추가(회사 사이트 `services/portal`이 같은 저장소 코드를 쓴다), 루트 `.env` 자동 로드(`_load_dotenv` — 셸 값 우선, **pytest는 안 읽음**). 교육장 동작은 그대로 | [19](19_회사웹사이트.md) |
 
-**남은 것**: Supabase 프로젝트 생성·키 설정(`supabase/README.md`), RPi5에서 영상 켠 채 `result_fps` 확인, `judgment_result` 선택 필드
-`class_probabilities` 팀 확인, 화면 캡처(⑧) 갱신.
+**남은 것**: ~~Supabase 프로젝트 생성·키 설정~~ → ✅ 2026-09-30 연결(키는 루트 `.env`) — **RPi5에 `.env` 복사**, RPi5에서 영상 켠 채 `result_fps` 확인, `judgment_result` 선택 필드
+`class_probabilities` 팀 확인, 화면 캡처(⑧) 갱신(HMI 디자인 기준).
