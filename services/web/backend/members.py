@@ -114,10 +114,13 @@ def _now_iso() -> str:
 
 
 def _public(member: Optional[dict]) -> Optional[dict]:
-    """화면에 내보낼 회원 정보 — user_id·해시 같은 내부 값은 빼고."""
+    """화면에 내보낼 회원 정보 — user_id·해시 같은 내부 값은 빼고.
+
+    이메일도 뺀다(2026-10-01): /api/state는 인증 없이 0.4초마다 나가서 같은 망의 누구나 지금 학습자의 이메일을
+    읽을 수 있었다. 화면은 이메일을 쓰지 않는다(회사 사이트 /api/me는 본인 쿠키로만 자기 이메일을 받는다)."""
     if member is None:
         return None
-    return {k: member.get(k) for k in ("member_code", "name", "email", "org", "guest")}
+    return {k: member.get(k) for k in ("member_code", "name", "org", "guest")}
 
 
 def _validate_password(password: str) -> None:
@@ -528,31 +531,67 @@ class SupabaseStore:
 _file_lock = threading.Lock()
 
 
+PENDING_FILE = "results_pending.jsonl"
+REJECTED_FILE = "results_rejected.jsonl"
+
+# 대기열 건수 — /api/state가 0.4초마다 묻는 값이라 파일을 매번 읽지 않고 메모리에 둔다(_file_lock 안에서만 읽고 쓴다).
+# 파일 경로별로 둔다(테스트가 MEMBER_DATA_DIR를 임시 폴더로 바꿔 끼운다). 없는 경로 = 아직 안 셈 → 첫 조회 때 파일에서 한 번 센다.
+# 대기열 파일을 바꾸는 곳(_append_jsonl·_rewrite_jsonl)이 함께 고친다.
+_pending_n: dict = {}
+
+
 def _append_jsonl(name: str, record: dict) -> None:
     path = Path(MEMBER_DATA_DIR) / name
     with _file_lock:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        if name == PENDING_FILE and str(path) in _pending_n:
+            _pending_n[str(path)] += 1
 
 
 def _read_jsonl(name: str) -> list[dict]:
+    """jsonl 파일을 읽는다. **호출자가 _file_lock을 쥐고 부른다.**
+
+    깨진 줄(저장 중 전원이 끊겨 반쪽만 남은 끝 줄 등)은 건너뛰고 `<name>.bad`로 옮긴 뒤 파일을 정상 줄만으로 다시
+    쓴다(2026-10-01). 예전에는 한 줄이 깨지면 JSONDecodeError가 /api/state까지 올라가, 파일을 지우기 전에는 재시작해도
+    교육 화면 전체가 500으로 멈췄다."""
     path = Path(MEMBER_DATA_DIR) / name
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records, bad = [], []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            bad.append(line)
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+        else:
+            bad.append(line)
+    if bad:
+        logger.error("%s에서 깨진 줄 %d개를 %s.bad로 옮겼습니다", name, len(bad), name)
+        try:
+            with path.with_name(path.name + ".bad").open("a", encoding="utf-8") as f:
+                f.write("".join(line + "\n" for line in bad))
+            _rewrite_jsonl(name, records)
+        except OSError:
+            logger.exception("깨진 줄을 옮기지 못했습니다 — 정상 줄만 읽고 계속합니다")
+    return records
 
 
 def _rewrite_jsonl(name: str, records: list[dict]) -> None:
+    """파일을 통째로 바꾼다. **호출자가 _file_lock을 쥐고 부른다.**"""
     path = Path(MEMBER_DATA_DIR) / name
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
     tmp.replace(path)
-
-
-PENDING_FILE = "results_pending.jsonl"
-REJECTED_FILE = "results_rejected.jsonl"
+    if name == PENDING_FILE:
+        _pending_n[str(path)] = len(records)
 
 
 # ══ 현재 학습자 · 공개 함수 ══════════════════════════════════════════════════════
@@ -600,8 +639,12 @@ def reset_last_save() -> None:
 
 
 def pending_count() -> int:
+    """대기열 건수 — 처음 한 번만 파일을 세고 이후는 메모리 값(_pending_n)."""
+    key = str(Path(MEMBER_DATA_DIR) / PENDING_FILE)
     with _file_lock:
-        return len(_read_jsonl(PENDING_FILE))
+        if key not in _pending_n:
+            _pending_n[key] = len(_read_jsonl(PENDING_FILE))
+        return _pending_n[key]
 
 
 _SENTINEL = object()
@@ -785,13 +828,13 @@ def find_id(body: FindIdBody, request: Request):
     FIND_LIMIT.hit(key)
     name, code = (body.name or "").strip(), (body.member_code or "").strip().upper()
     if not name or not _CODE_RE.match(code):
-        return _error(MemberError("invalid_input", "이름과 회원코드(예: SS-00001)를 확인해 주세요."))
+        return _error(MemberError("invalid_input", "이름과 사원 코드(예: SS-00001)를 확인해 주세요."))
     try:
         email = get_store().find_email(name, code)
     except MemberError as exc:
         return _error(exc)
     if not email:
-        return _error(MemberError("not_found", "일치하는 회원이 없습니다. 이름과 회원코드를 확인해 주세요."))
+        return _error(MemberError("not_found", "일치하는 회원이 없습니다. 이름과 사원 코드를 확인해 주세요."))
     return {"status": "ok", "email_masked": mask_email(email)}
 
 

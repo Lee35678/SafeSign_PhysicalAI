@@ -695,6 +695,10 @@ def _check_devices(client: httpx.Client) -> dict:
             continue
 
         entry = {"status": body.get("status", "unknown")}
+        if name == "vision":
+            # 판정 규칙(τ·N프레임) — 화면 일치율 막대의 기준선·수료증 문구가 이 값을 쓴다(2026-10-01, 하드코딩 75 대체)
+            entry["tau"] = body.get("tau")
+            entry["n_frames"] = body.get("n_frames")
         if name == "actuation":
             entry["microbit_connected"] = body.get("microbit_connected")
         if name == "picar":
@@ -743,8 +747,19 @@ def get_state():
             "certificate_issued_at": _session["certificate_issued_at"],
             # 회원 (2026-09-29) — 이 회차의 학습자와 회원 기록 저장 상태(saved·queued·saved_local·failed)
             "member": members._public(_session.get("member")),
-            "result_save": members.store_status(),
+            "result_save": _store_status_safe(),
+            # vision /health의 τ·N프레임 (아직 못 받았으면 None — 화면이 기본값 0.75·3을 쓴다)
+            "judge_rule": {k: (_session["devices"].get("vision") or {}).get(k) for k in ("tau", "n_frames")},
         }
+
+
+def _store_status_safe() -> dict:
+    """회원 저장 상태 — 여기서 난 오류가 /api/state 전체를 500으로 만들어 교육 화면을 멈추면 안 된다."""
+    try:
+        return members.store_status()
+    except Exception:  # noqa: BLE001
+        logger.exception("회원 저장 상태를 읽지 못했습니다 — 화면에는 상태 없이 보냅니다")
+        return {"backend": "unknown", "pending": None, "last_save": None}
 
 
 @router.post("/start")

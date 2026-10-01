@@ -144,8 +144,9 @@ def test_signup_assigns_member_code_and_logs_in(fake):
     r = _client().post("/api/auth/signup", json={"email": "Kim@Example.com", "password": "secret12",
                                                  "name": "김학습", "org": "A공장"}).json()
     assert r["status"] == "ok"
-    assert r["member"]["member_code"] == "SS-00001" and r["member"]["email"] == "kim@example.com"
+    assert r["member"]["member_code"] == "SS-00001"
     assert "user_id" not in r["member"], "내부 ID는 화면에 내보내지 않는다"
+    assert "email" not in r["member"], "이메일도 화면에 내보내지 않는다(/api/state는 인증 없이 열려 있다)"
     assert members.current_member()["member_code"] == "SS-00001"
 
 
@@ -369,3 +370,30 @@ def test_security_headers_on_every_response():
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
     assert r.headers["x-content-type-options"] == "nosniff" and r.headers["x-frame-options"] == "DENY"
     assert c.get("/api/auth/me").headers["cache-control"] == "no-store", "회원 정보가 캐시에 남지 않게"
+
+
+# ── 대기열 파일 손상 (2026-10-01) ─────────────────────────────────────────────
+def test_broken_queue_line_is_quarantined_not_fatal(fake):
+    """저장 중 전원이 끊겨 끝 줄이 반쪽으로 남아도 대기 건수·재전송이 예외 없이 돈다(예전엔 /api/state가 계속 500)."""
+    good = {"id": str(uuid.uuid4()), "user_id": "u1", "member_code": "SS-00001", "results": []}
+    path = Path(members.MEMBER_DATA_DIR) / members.PENDING_FILE
+    path.write_text(json.dumps(good) + "\n" + '{"id": "half-writ', encoding="utf-8")
+
+    assert members.pending_count() == 1, "깨진 줄은 세지 않는다"
+    status = members.store_status()
+    assert status["pending"] == 1
+    bad = path.with_name(path.name + ".bad")
+    assert bad.read_text(encoding="utf-8").strip() == '{"id": "half-writ', "깨진 줄은 .bad로 옮겨 남긴다"
+    assert path.read_text(encoding="utf-8").count("\n") == 1, "원본에는 정상 줄만 남는다"
+    assert members.flush_pending() == {"sent": 1, "left": 0}
+    assert members.pending_count() == 0
+
+
+def test_pending_count_follows_queue_without_rereading(fake):
+    fake.online = False
+    members.save_session_results(RESULTS, {"user_id": "u1", "member_code": "SS-00001", "guest": False})
+    members.save_session_results(RESULTS, {"user_id": "u1", "member_code": "SS-00001", "guest": False})
+    assert members.pending_count() == 2
+    fake.online = True
+    assert members.flush_pending()["left"] == 0 and members.pending_count() == 0
+

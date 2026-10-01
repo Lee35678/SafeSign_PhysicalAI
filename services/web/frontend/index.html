@@ -138,7 +138,7 @@
       <div class="auth-layout">
         <div class="auth-copy screen-head">
           <h1 id="auth-title">로그인</h1>
-          <p id="auth-lead">학습 기록은 회원마다 저장됩니다. 처음이면 회원가입을 하세요 — 회원코드를 드립니다.</p>
+          <p id="auth-lead">학습 기록은 회원마다 저장됩니다. 처음이면 회원가입을 하세요 — 사원 코드를 드립니다.</p>
           <p id="auth-store-note" class="auth-note"></p>
         </div>
 
@@ -162,12 +162,12 @@
             </p>
           </form>
 
-          <!-- 아이디(이메일) 찾기 — 이름 + 회원코드가 맞으면 가린 이메일만 보여 준다 -->
+          <!-- 아이디(이메일) 찾기 — 이름 + 사원 코드가 맞으면 가린 이메일만 보여 준다 -->
           <form id="find-id-form" class="auth-form hidden" novalidate>
-            <p class="auth-sub">가입할 때 받은 <b>회원코드</b>와 이름을 입력하세요.</p>
+            <p class="auth-sub">가입할 때 받은 <b>사원 코드</b>와 이름을 입력하세요.</p>
             <label for="find-name">이름</label>
             <input id="find-name" type="text" autocomplete="name" maxlength="30" required />
-            <label for="find-code">회원코드</label>
+            <label for="find-code">사원 코드</label>
             <input id="find-code" type="text" placeholder="SS-00001" maxlength="8" autocomplete="off" required />
             <p id="find-id-result" class="form-result" role="status"></p>
             <p id="find-id-error" class="form-error" role="alert"></p>
@@ -228,7 +228,7 @@
               </div>
             </div>
             <p id="signup-error" class="form-error" role="alert"></p>
-            <button id="signup-submit" type="submit">가입하고 회원코드 받기</button>
+            <button id="signup-submit" type="submit">가입하고 사원 코드 받기</button>
           </form>
 
           <div class="auth-guest">
@@ -239,14 +239,14 @@
       </div>
     </section>
 
-    <!-- 가입 완료 — 회원코드 안내 -->
+    <!-- 가입 완료 — 사원 코드 안내 -->
     <section id="screen-welcome" class="screen screen-notice">
       <div class="notice-card">
         <div class="notice-icon welcome-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></div>
         <h1>가입이 완료되었습니다</h1>
-        <p><span id="welcome-name"></span> 님의 회원코드</p>
+        <p><span id="welcome-name"></span> 님의 사원 코드</p>
         <p id="welcome-code" class="welcome-code"></p>
-        <p class="notice-sub">다음부터는 이메일과 비밀번호로 로그인하세요. 학습 기록은 이 회원코드로 저장됩니다.</p>
+        <p class="notice-sub">다음부터는 이메일과 비밀번호로 로그인하세요. 학습 기록은 이 사원 코드로 저장됩니다.</p>
         <button id="welcome-continue-btn" type="button">교육으로 이동</button>
       </div>
     </section>
@@ -301,7 +301,7 @@
             <div><dt>HAND</dt><dd id="hud-hand">-</dd></div>
             <div><dt>인식</dt><dd id="hud-pred">-</dd></div>
             <div><dt>신뢰도</dt><dd id="hud-conf">-</dd></div>
-            <div><dt>규칙</dt><dd>3프레임 연속 · τ 0.75</dd></div>
+            <div><dt>규칙</dt><dd id="hud-rule">3프레임 연속 · τ 0.75</dd></div>
           </dl>
         </div>
 

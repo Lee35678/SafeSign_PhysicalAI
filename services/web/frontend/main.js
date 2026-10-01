@@ -137,6 +137,7 @@ async function init() {
   const state = await apiGet("/api/state");
   rememberCurriculum(state.curriculum);
   renderDeviceStatus(state.devices);
+  applyJudgeRule(state.judge_rule);
   // 09_화면목록 SC-07: 학습 중 이탈 후 재접속 — 세션 이어하기 미구현, 항상 처음부터.
   show(state.state && state.state !== "landing" ? "screen-reentry" : "screen-landing");
 }
@@ -325,6 +326,8 @@ $("reset-confirm-form").addEventListener("submit", async (event) => {
 
 // ---- 자리 비움 자동 로그아웃 (공용 교육장 PC) ----
 // 교육 중(SC-03·SC-04)이 아닐 때 5분 동안 입력이 없으면 로그아웃한다 — 다음 사람의 기록이 앞사람 계정에 쌓이지 않게.
+// 교육 중에는 입력이 없어도 활동으로 본다(2026-10-01): 확인·재시도를 micro:bit A로만 하면 키보드·마우스 입력이 없어서,
+// 5분 넘게 교육한 사람이 SC-05에 들어가자마자 로그아웃돼 결과표·수료증을 못 봤다. 5분은 교육이 끝난 뒤부터 센다.
 const IDLE_LOGOUT_MS = 5 * 60 * 1000;
 let lastInputAt = Date.now();
 ["pointerdown", "keydown", "touchstart"].forEach((ev) =>
@@ -332,7 +335,11 @@ let lastInputAt = Date.now();
 setInterval(() => {
   if (!member) return;
   const training = $("screen-training").classList.contains("active") || $("screen-camera-fail").classList.contains("active");
-  if (!training && Date.now() - lastInputAt > IDLE_LOGOUT_MS) {
+  if (training) {
+    lastInputAt = Date.now();
+    return;
+  }
+  if (Date.now() - lastInputAt > IDLE_LOGOUT_MS) {
     lastInputAt = Date.now();
     logout();
   }
@@ -466,6 +473,7 @@ async function refreshTraining() {
     return;                        // web이 잠깐 응답하지 않아도 다음 폴링에서 이어간다
   }
   renderDeviceStatus(state.devices);
+  applyJudgeRule(state.judge_rule);
   rememberCurriculum(state.curriculum);
 
   if (state.state === "camera_fail") {
@@ -610,12 +618,27 @@ function hideOverlay() {
   $("hold-hint").classList.add("hidden");
 }
 
+// 판정 규칙(τ·N프레임) — web이 vision /health 값을 /api/state `judge_rule`로 넘긴다(2026-10-01, 하드코딩 75 대체).
+// 아직 못 받았거나 값이 이상하면 기본값(05 §8-0: τ 0.75, 3프레임)을 그대로 쓴다.
+let judgeRule = { tau: 0.75, n_frames: 3 };
+function tauPct() { return Math.round(judgeRule.tau * 100); }
+function applyJudgeRule(rule) {
+  const tau = Number(rule && rule.tau);
+  const n = Number(rule && rule.n_frames);
+  if (tau > 0 && tau < 1) judgeRule.tau = tau;
+  if (Number.isInteger(n) && n > 0) judgeRule.n_frames = n;
+  const tick = document.querySelector(".match-tick");
+  tick.style.left = `${tauPct()}%`;
+  tick.querySelector("b").textContent = `판정 기준 ${tauPct()}%`;
+  $("hud-rule").textContent = `${judgeRule.n_frames}프레임 연속 · τ ${judgeRule.tau.toFixed(2)}`;
+}
+
 function setMatchScore(score) {
   const value = Math.max(0, Math.min(100, score || 0));
   $("match-score-fill").style.width = `${value}%`;
   $("match-score-value").textContent = `${value}%`;
-  // 판정 기준(τ 0.75) 이상이면 막대를 정상색으로 — 색만으로 알리지 않도록 글자도 함께 (05 §10 일치율)
-  const pass = value >= 75;
+  // 판정 기준(τ) 이상이면 막대를 정상색으로 — 색만으로 알리지 않도록 글자도 함께 (05 §10 일치율)
+  const pass = value >= tauPct();
   $("match-score-fill").classList.toggle("pass", pass);
   $("match-score-state").textContent = pass ? "기준 이상" : "";
 }
@@ -864,7 +887,7 @@ function hazardBand(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-// 직인 — 붉은 정사각 도장. 찍힌 느낌을 위해 살짝 기울이고, 종이색 점으로 인주가 덜 묻은 자리를 만든다(회원코드로 정해진 무늬).
+// 직인 — 붉은 정사각 도장. 찍힌 느낌을 위해 살짝 기울이고, 종이색 점으로 인주가 덜 묻은 자리를 만든다(사원 코드로 정해진 무늬).
 function drawSeal(ctx, cx, cy, size, seedText) {
   let seed = [...(seedText || "SAFESIGN")].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
   const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -1027,7 +1050,7 @@ async function drawCertificate(completed, issuedAt) {
     ctx.font = `600 15px ${CERT_SANS}`;
     ctx.fillText(`${item.attempts}회`, col.tries, y);
 
-    // 일치율 막대 — 웹과 같이 한 색 채움 + 옅은 트랙, 판정 기준 75% 눈금
+    // 일치율 막대 — 웹과 같이 한 색 채움 + 옅은 트랙, 판정 기준(τ) 눈금
     const score = Math.max(0, Math.min(100, item.match_score || 0));
     const mw = 80, mx = col.meter;
     ctx.fillStyle = "rgba(242, 140, 40, 0.18)";
@@ -1035,7 +1058,7 @@ async function drawCertificate(completed, issuedAt) {
     ctx.fillStyle = fail ? CERT_C.steelLight : CERT_C.orange;
     ctx.fillRect(mx, y - 9, mw * score / 100, 7);
     ctx.fillStyle = CERT_C.ink;
-    ctx.fillRect(mx + mw * 0.75, y - 12, 1.5, 13);
+    ctx.fillRect(mx + mw * judgeRule.tau, y - 12, 1.5, 13);
     ctx.textAlign = "right";
     ctx.font = `700 15px ${CERT_SANS}`;
     ctx.fillText(`${score}%`, TR, y);
@@ -1047,7 +1070,7 @@ async function drawCertificate(completed, issuedAt) {
   ctx.textAlign = "left";
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `500 11.5px ${CERT_KR}`;
-  ctx.fillText("판정: 카메라 AI 비전 · 3프레임 연속 확정 · 막대의 눈금 = 판정 기준 75%", TX, y + 8);
+  ctx.fillText(`판정: 카메라 AI 비전 · ${judgeRule.n_frames}프레임 연속 확정 · 막대의 눈금 = 판정 기준 ${tauPct()}%`, TX, y + 8);
 
   // ── 하단: 발급일 · 발급 기관 · 직인
   ctx.fillStyle = CERT_C.ink;
