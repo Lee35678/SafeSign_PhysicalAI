@@ -3,9 +3,8 @@
 정답/오답/below_tau/out_of_distribution 분기, SC-04(camera_fail) 임계값·자동 복귀,
 2026-09-21 web_picar_통신_신뢰성_개선안.md의 4xx/5xx 실패 감지, SC-06 수료증 발급 조건을 검증한다.
 
-실행:
+실행 (반드시 pytest — conftest.py가 시행 로그를 임시 폴더로 돌린다):
     cd services/web && python -m pytest tests -q
-    (pytest가 없으면) python tests/test_state_machine.py
 """
 from __future__ import annotations
 
@@ -109,7 +108,8 @@ def test_poll_once_correct_advances_curriculum_and_calls_picar():
         sm._poll_once(client)
 
     assert sm._session["curriculum_index"] == 1
-    assert sm._session["completed"] == [{"signal": "정지", "attempts": 1, "match_score": 92}]
+    assert sm._session["completed"] == [{"signal": "정지", "attempts": 1, "match_score": 92,
+                                        "last_outcome": "correct", "last_predicted": "정지"}]
     assert sm._session["last_result"]["outcome"] == "correct"
     assert client.reset_called is True, "정답 시 vision POST /reset을 호출해야 한다"
     picar_calls = [c for c in fake_post.call_args_list if "/picar" in c.args[0]]
@@ -357,8 +357,36 @@ def test_certificate_requires_all_signals_completed():
 
 
 if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
-    for fn in tests:
-        fn()
-        print(f"  ok  {fn.__name__}")
-    print(f"{len(tests)}개 통과")
+    # 직접 실행하면 conftest.py를 거치지 않아 판정 테스트가 실제 logs/ 시행 로그(KPI 원본)에 가짜 행을 쓴다
+    sys.exit("pytest로 실행하세요: cd services/web && python -m pytest tests -q")
+
+
+# ── 2026-10-01 수정 ──────────────────────────────────────────────────────────
+def test_state_survives_member_store_error():
+    """회원 저장 상태를 읽다 오류가 나도 /api/state는 정상 응답한다 — 교육 화면이 멈추면 안 된다."""
+    _reset_session()
+    with patch.object(sm.members, "store_status", side_effect=ValueError("broken")):
+        state = sm.get_state()
+    assert state["result_save"]["pending"] is None and state["state"] == "training"
+
+
+def test_state_exposes_judge_rule_from_vision_health():
+    _reset_session()
+    sm._session["devices"] = {"vision": {"status": "ok", "tau": 0.8, "n_frames": 4}}
+    assert sm.get_state()["judge_rule"] == {"tau": 0.8, "n_frames": 4}
+    sm._session["devices"] = {}
+    assert sm.get_state()["judge_rule"] == {"tau": None, "n_frames": None}, "못 받았으면 None — 화면이 기본값을 쓴다"
+
+
+def test_check_devices_reads_vision_tau():
+    client = MagicMock()
+    client.get.return_value.json.return_value = {"status": "ok", "tau": 0.75, "n_frames": 3}
+    assert sm._check_devices(client)["vision"] == {"status": "ok", "tau": 0.75, "n_frames": 3}
+
+
+def test_member_in_state_has_no_email():
+    _reset_session()
+    sm._session["member"] = {"user_id": "u1", "member_code": "SS-00001", "name": "김", "email": "kim@example.com",
+                             "org": None, "guest": False}
+    assert "email" not in sm.get_state()["member"]
+

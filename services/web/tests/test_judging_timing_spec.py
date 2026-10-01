@@ -337,8 +337,10 @@ def test_max_attempts_gives_up_and_advances_without_double_demo(fast_hold, monke
     assert sm._session["last_result"]["given_up"] is True
     assert sm._session["attempts"]["정지"] == 2
     assert sm._session["curriculum_index"] == 1
+    # 불합격 사유를 남긴다 — given_up만으로는 "3회 오답"과 "시간 초과"가 구분되지 않는다 (18 §2-3)
     assert sm._session["completed"][-1] == {
         "signal": "정지", "attempts": 2, "match_score": 60, "given_up": True,
+        "last_outcome": "wrong", "last_predicted": "서행",
     }
     demo_commands = [(b["command"], b["target_signal"]) for _, b in devices.urls("command")]
     # "정지" 재시범은 1번째 오답(상한 전) 때 한 번만 나가야 한다 — 2번째(상한 도달)에서 또 나가면 이중 시범이다.

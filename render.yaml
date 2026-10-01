@@ -1,0 +1,20 @@
+# Render 무료 호스팅 설정 — 회사 사이트(services/portal)만 올린다 (교육장 web·vision은 RPi5에서 돈다)
+# 비밀 값(sync: false)은 Render 대시보드에서 직접 입력한다 — 이 파일에는 절대 적지 않는다. 절차: services/portal/README.md
+services:
+  - type: web
+    name: safesign-portal
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./services/portal/Dockerfile
+    dockerContext: ./services
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PORTAL_SESSION_SECRET
+        sync: false
+      - key: PORTAL_COOKIE_SECURE
+        value: "1"

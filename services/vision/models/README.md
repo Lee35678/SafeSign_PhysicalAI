@@ -13,7 +13,13 @@ python training/train_svm.py      # svm_classifier.joblib + sign_templates.json 
 | `svm_classifier.joblib` | [`../training/train_svm.py`](../training/train_svm.py) (또는 Colab 노트북) | vision 서비스는 뜨지만 항상 `negative`/`is_reject=true` (reason=`model_not_loaded`) |
 | `sign_templates.json` | 같은 스크립트 | 데이터 담당의 `seed_templates.py` 입력용. 없어도 `match_score`는 번들 centroid로 폴백된다 |
 | `hand_landmarker.task` | MediaPipe 공식 모델 번들 (05_모델카드 §1의 다운로드 URL) | 카메라 실물 연동 시 Perception이 기동 실패 — `MOCK_CAMERA=true`로는 무관 |
-| `cmp_*.joblib` | `train_svm.py --out models/cmp_....joblib` | 없어도 무방. 있으면 `evaluate_kpi.py`·`analyze_log.py`가 자동으로 함께 평가해 비교표를 낸다 |
+| `cmp_*.joblib` | `train_svm.py --out models/cmp_....joblib` | 없어도 무방. `evaluate_kpi.py --compare`·`analyze_log.py`가 함께 평가해 비교표를 낸다 (최종 KPI 측정에는 쓰지 않는다) |
+| `svm_classifier.bak-*.joblib` | `scripts/add_match_calibration.py`가 번들을 고치기 전에 남긴 원본 | 없어도 무방 (되돌릴 때 이름만 바꾸면 된다) |
+
+> **2026-09-30 — 일치율 클래스별 보정 추가.** `python scripts/add_match_calibration.py`로 기존 번들에
+> `match_score_calibration.per_class`만 넣었다(재학습 없음, 판정·τ·게이트 그대로 — 공개 데이터 27,735건 예측 동일 확인).
+> 확인_완료·주의·후진이 정답인데도 일치율이 50~70점대로 나오던 문제를 고친다. **RPi5의 번들도 이 파일로 다시 복사해야 한다**
+> (복사하지 않으면 예전 공통 구간으로 계속 계산된다 — 판정에는 영향 없음).
 
 ## 넣은 뒤 확인
 

@@ -1,0 +1,3901 @@
+{
+ "rule_official": "3연속",
+ "rule_reference": "최빈값",
+ "excluded_subjects": {},
+ "model": {
+  "feature_mode": "joint23",
+  "feature_dim": 23,
+  "sklearn_version": "1.9.1",
+  "numpy_version": "2.5.2",
+  "trained_at": "2026-09-22T12:56:02+00:00",
+  "trained_on": "local",
+  "n_samples": 27735,
+  "class_counts": {
+   "정지": 308,
+   "서행": 4637,
+   "좌회전_유도": 5629,
+   "우회전_유도": 4810,
+   "확인_완료": 4802,
+   "후진": 2463,
+   "주의": 5086
+  },
+  "split": "session",
+  "cv_folds": 5,
+  "hyperparams": {
+   "C": 10.0,
+   "gamma": "scale"
+  },
+  "critical_weight": 10.0,
+  "cv_accuracy": 0.8868,
+  "cv_macro_f1": 0.8786,
+  "cv_critical_errors": 4,
+  "gate_percentile": 10.0,
+  "note": "공개 데이터 기준 수치. KPI 실측은 자체 촬영 데이터로 별도 측정할 것 (04 §4).",
+  "match_score_calibration_per_class_added_at": "2026-09-30T00:14:23+09:00"
+ },
+ "kpi": {
+  "official": {
+   "n": 210,
+   "accuracy": 95.23809523809523,
+   "misclass": 0.0,
+   "reject": 4.761904761904762,
+   "critical": 0,
+   "macro_f1": 0.9741868796284497
+  },
+  "reference": {
+   "n": 210,
+   "accuracy": 96.66666666666667,
+   "misclass": 0.0,
+   "reject": 3.3333333333333335,
+   "critical": 0,
+   "macro_f1": 0.9824485024869095
+  },
+  "target": {
+   "accuracy": 92.0,
+   "misclass": 3.0,
+   "reject": 5.0,
+   "macro_f1": 0.9
+  },
+  "misclass_wilson_upper": 1.7964699104383803,
+  "critical_wilson_upper": 11.3517091390478,
+  "n_stop": 30
+ },
+ "per_subject": {
+  "ext01": {
+   "official": {
+    "n": 70,
+    "accuracy": 97.14285714285714,
+    "misclass": 0.0,
+    "reject": 2.857142857142857,
+    "critical": 0,
+    "macro_f1": 0.9841269841269842
+   },
+   "reference": {
+    "n": 70,
+    "accuracy": 97.14285714285714,
+    "misclass": 0.0,
+    "reject": 2.857142857142857,
+    "critical": 0,
+    "macro_f1": 0.9841269841269842
+   }
+  },
+  "ext02": {
+   "official": {
+    "n": 70,
+    "accuracy": 94.28571428571428,
+    "misclass": 0.0,
+    "reject": 5.714285714285714,
+    "critical": 0,
+    "macro_f1": 0.9682539682539684
+   },
+   "reference": {
+    "n": 70,
+    "accuracy": 98.57142857142858,
+    "misclass": 0.0,
+    "reject": 1.4285714285714286,
+    "critical": 0,
+    "macro_f1": 0.9924812030075189
+   }
+  },
+  "ext03": {
+   "official": {
+    "n": 70,
+    "accuracy": 94.28571428571428,
+    "misclass": 0.0,
+    "reject": 5.714285714285714,
+    "critical": 0,
+    "macro_f1": 0.9690893901420219
+   },
+   "reference": {
+    "n": 70,
+    "accuracy": 94.28571428571428,
+    "misclass": 0.0,
+    "reject": 5.714285714285714,
+    "critical": 0,
+    "macro_f1": 0.9690893901420219
+   }
+  }
+ },
+ "takes": [
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 1,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 10,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 2,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 3,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 4,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 5,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 6,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 7,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 8,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext01",
+   "take": 9,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 1,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 10,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 2,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 3,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 4,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 5,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 6,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "REJ:out_of_distribution",
+    "후진",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 7,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 8,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext02",
+   "take": 9,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "REJ:out_of_distribution",
+    "후진"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "서행",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "서행",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "서행",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "서행",
+    "서행",
+    "서행"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "우회전_유도",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "우회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "우회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "우회전_유도",
+    "우회전_유도",
+    "우회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "정지",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "정지",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "정지",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "정지",
+    "정지",
+    "정지"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "좌회전_유도",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "좌회전_유도",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "좌회전_유도",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "좌회전_유도",
+    "좌회전_유도",
+    "좌회전_유도"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "주의",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "주의",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "주의",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "주의",
+    "주의",
+    "주의"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "확인_완료",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "확인_완료",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "확인_완료",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "확인_완료",
+    "확인_완료",
+    "확인_완료"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 1,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 10,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 2,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 3,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 4,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 5,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 6,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 7,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "정면",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 8,
+   "pred": "후진",
+   "reject": false,
+   "reason": null,
+   "mode_pred": "후진",
+   "mode_reject": false,
+   "mode_reason": null,
+   "frames": [
+    "후진",
+    "후진",
+    "후진"
+   ],
+   "orientation": "좌기울임",
+   "n": 3
+  },
+  {
+   "cls": "후진",
+   "subject": "ext03",
+   "take": 9,
+   "pred": "negative",
+   "reject": true,
+   "reason": "out_of_distribution",
+   "mode_pred": "negative",
+   "mode_reject": true,
+   "mode_reason": "out_of_distribution",
+   "frames": [
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution",
+    "REJ:out_of_distribution"
+   ],
+   "orientation": "우기울임",
+   "n": 3
+  }
+ ]
+}

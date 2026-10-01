@@ -165,8 +165,10 @@ fi
 
 # ── 4. web (RPi5) ────────────────────────────────────────────────────────────
 step 4 "web 기동"
+# URL 3개를 모두 명시한다 — web은 기동 때 저장소 루트 .env를 읽어 빈 환경변수를 채우는데(members._load_dotenv),
+# .env.example을 복사한 .env에는 docker-compose용 http://vision:8000 · http://actuation:8000 이 들어 있다
 start_window web "$REPO/services/web" \
-  "source .venv/bin/activate && PICAR_URL=$PICAR_URL uvicorn backend.app:app --host 0.0.0.0 --port 8000" \
+  "source .venv/bin/activate && VISION_URL=$VISION_URL ACTUATION_URL=$ACTUATION_URL PICAR_URL=$PICAR_URL uvicorn backend.app:app --host 0.0.0.0 --port 8000" \
   || abort "web 창을 만들지 못했습니다"
 wait_until 30 web http_up "$WEB_URL/health" \
   || abort "web /health 응답 없음 → tmux attach -t $SESSION (창 2) 로그 확인"

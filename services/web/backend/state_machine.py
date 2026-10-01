@@ -113,10 +113,10 @@ _TRIAL_LOG_NAME = f"web_trials_{datetime.now():%Y%m%d_%H%M%S}.csv"
 DEVICE_HEALTH_INTERVAL_S = float(os.getenv("DEVICE_HEALTH_INTERVAL_S", "5.0"))
 DEVICE_HEALTH_TIMEOUT_S = 1.5
 
-# 손 미검출(no_hand/normalize_failed)이 연속 몇 회 지속되면 SC-04로 전환할지 — 09_화면목록.md가
-# "임계값 필요"라고만 표시하고 수치는 정의하지 않아, POLL_INTERVAL_S 0.2초 기준 약 3초에 해당하는
-# 잠정치를 둔다. 실측 후 조정 대상(TBD).
-CAMERA_FAIL_STREAK_THRESHOLD = 15
+# 판정 단계에서 손 미검출(no_hand/normalize_failed)이 연속 몇 회면 SC-04로 전환할지. 25회 = POLL_INTERVAL_S 0.2초 기준
+# 약 5초(2026-09-29 조은수 결정, 14 §9). 9/25 실물 데모에서 판정 시작 → 정답까지 1.2~8.0초(중앙값 2.3초)라 예전 15회(3초)는
+# 정상적으로 손을 올리는 학습자도 SC-04로 넘길 수 있었다. 재시험(⑥)에서 코드 수정 없이 바꿀 수 있게 환경변수로 받는다.
+CAMERA_FAIL_STREAK_THRESHOLD = int(os.getenv("CAMERA_FAIL_STREAK_THRESHOLD", "25"))
 
 # SC-01~SC-07 상태값. 09_화면목록.md 표와 동기화 유지.
 # 구 SC-02(분야 선택)·SC-08(관리자 등록)은 아키텍처 변경으로 제거됨.
@@ -201,6 +201,7 @@ TRIAL_FIELDS = (
     "picar_ok", "picar_ms", "microbit_ok", "microbit_ms", "feedback_ms",
     "aihand_ok", "aihand_ms", "feedback_done_ms", "aihand_status", "microbit_status",
     "picar_status", "picar_led_ok", "mocked", "subject",
+    "target_score",     # 2026-09-30 — 학습자 화면의 일치율(목표 수신호 확률 × 100). match_score 열은 vision 원값 그대로
 )
 
 _lock = threading.Lock()
@@ -246,6 +247,25 @@ _session = _fresh_session()
 def _current_target_signal() -> "str | None":
     idx = _session["curriculum_index"]
     return CURRICULUM[idx] if idx < len(CURRICULUM) else None
+
+
+def _target_score(judgment: dict, target_signal: "str | None") -> int:
+    """학습자 화면의 일치율 = 분류기가 본 **목표 수신호의 확률 × 100** (2026-09-30 이동혁).
+
+    판정(confidence·τ)에 쓰는 바로 그 값이라, 목표를 제대로 하면 높고(τ 0.75 → 75점 이상이어야 정답),
+    다른 손동작이면 낮다. 예전 값(vision `match_score` = 예측 클래스 템플릿과의 코사인)은 7종을 가르는 값이
+    아니어서(주의↔우회전 대표 손끼리 0.958), 오답인데 85%·정답인데 55%가 나왔다.
+    vision이 `class_probabilities`를 주지 않으면(구버전·손 미검출·소속 게이트 차단) vision `match_score`를 쓴다."""
+    probs = judgment.get("class_probabilities")
+    if isinstance(probs, dict) and target_signal in probs:
+        try:
+            return int(round(max(0.0, min(1.0, float(probs[target_signal]))) * 100))
+        except (TypeError, ValueError):
+            pass
+    try:
+        return int(judgment.get("match_score", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _recommended_retry_count(match_score: int) -> int:
@@ -353,7 +373,7 @@ def _dispatch_feedback(target_signal: str, outcome: str, judgment: dict, *, rese
     False면 재시도 상한을 넘겨 다음 수신호로 넘어가는 경우라 여기서는 재시범을 보내지 않는다 — 다음 수신호의
     시범은 호출부가 `_send_demo`로 따로 보낸다(정답 뒤 다음 시범과 같은 경로, 이중 전송 방지)."""
     is_correct = outcome == "correct"
-    match_score = judgment.get("match_score", 0)
+    match_score = _target_score(judgment, target_signal)
     results = {}
 
     if is_correct:
@@ -418,6 +438,7 @@ def _trial_row(*, when: datetime, t_dec: float, target_signal: str, attempt: int
         listen_ms=_ms(t_confirm, t_dec),
         # 대상자: LOG_SUBJECT(외부인 KPI 시행용 ID)가 우선, 없으면 로그인한 회원코드 (supabase/README.md §5)
         subject=os.getenv("LOG_SUBJECT") or (_session.get("member") or {}).get("member_code") or "",
+        target_score=_target_score(judgment, target_signal),
     )
     for key, col in (("picar", "picar"), ("result", "microbit"), ("aihand", "aihand")):
         r = dispatch.get(key)
@@ -492,7 +513,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
         _session["live_judgment"] = {
             "predicted_class": predicted,
             "confidence": judgment.get("confidence", 0),
-            "match_score": judgment.get("match_score", 0),
+            "match_score": _target_score(judgment, target_signal),     # 목표 수신호 기준 (화면 일치율)
             "is_reject": is_reject,
             "reason": reason,
         }
@@ -531,7 +552,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
         return  # 과도기 상태(모델 로딩/N프레임 누적 중 등) — 오버레이 없이 대기
     elif is_reject and reason in HOLD_REASONS:
         # 화면 안내만 — 물리 피드백·시도 횟수·시행 로그 없음, 판정 단계 유지 (스펙 §5, 이동혁 결정)
-        match_score = judgment.get("match_score", 0)
+        match_score = _target_score(judgment, target_signal)
         with _lock:
             key = (_session["curriculum_index"], "reject", reason)
             if _session["_last_dispatched"] == key:
@@ -571,7 +592,7 @@ def _poll_once(vision_client: httpx.Client) -> None:
 
     dispatch_results = _dispatch_feedback(target_signal, outcome, judgment, resend_demo=not given_up)
 
-    match_score = judgment.get("match_score", 0)
+    match_score = _target_score(judgment, target_signal)
     next_signal = None
     finished = False
     with _lock:
@@ -597,6 +618,13 @@ def _poll_once(vision_client: httpx.Client) -> None:
         if outcome == "correct" or given_up:
             _session["completed"].append({
                 "signal": target_signal, "attempts": attempt_no, "match_score": match_score,
+                # 마지막 시도가 어떻게 끝났는지 남긴다 (18_DB설계서 §2-3).
+                #   given_up 하나로는 불합격 사유가 "3회 오답"인지 "시간 초과"인지 구분되지 않고,
+                #   학습자가 실제로 무슨 수신호를 한 것으로 읽혔는지도 사라진다.
+                #   좌회전_유도↔후진·우회전_유도↔주의는 엄지 하나로 갈려(10_PRD §3.2) 이 값이 있어야
+                #   "무엇을 어떻게 틀렸는가"를 교육 결과로 설명할 수 있다.
+                "last_outcome": outcome,        # correct · wrong · timeout
+                "last_predicted": predicted,    # 마지막 시도에 인식된 수신호 (없으면 None)
                 **({"given_up": True} if given_up else {}),
             })
             _session["curriculum_index"] += 1
@@ -637,7 +665,8 @@ def _save_member_results(gen: int) -> None:
             "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "results": [
                 {"order_no": i + 1, "signal": c["signal"], "attempts": c["attempts"],
-                 "match_score": c["match_score"], "given_up": bool(c.get("given_up"))}
+                 "match_score": c["match_score"], "given_up": bool(c.get("given_up")),
+                 "last_outcome": c.get("last_outcome"), "last_predicted": c.get("last_predicted")}
                 for i, c in enumerate(_session["completed"])
             ],
         }
@@ -666,6 +695,10 @@ def _check_devices(client: httpx.Client) -> dict:
             continue
 
         entry = {"status": body.get("status", "unknown")}
+        if name == "vision":
+            # 판정 규칙(τ·N프레임) — 화면 일치율 막대의 기준선·수료증 문구가 이 값을 쓴다(2026-10-01, 하드코딩 75 대체)
+            entry["tau"] = body.get("tau")
+            entry["n_frames"] = body.get("n_frames")
         if name == "actuation":
             entry["microbit_connected"] = body.get("microbit_connected")
         if name == "picar":
@@ -714,8 +747,19 @@ def get_state():
             "certificate_issued_at": _session["certificate_issued_at"],
             # 회원 (2026-09-29) — 이 회차의 학습자와 회원 기록 저장 상태(saved·queued·saved_local·failed)
             "member": members._public(_session.get("member")),
-            "result_save": members.store_status(),
+            "result_save": _store_status_safe(),
+            # vision /health의 τ·N프레임 (아직 못 받았으면 None — 화면이 기본값 0.75·3을 쓴다)
+            "judge_rule": {k: (_session["devices"].get("vision") or {}).get(k) for k in ("tau", "n_frames")},
         }
+
+
+def _store_status_safe() -> dict:
+    """회원 저장 상태 — 여기서 난 오류가 /api/state 전체를 500으로 만들어 교육 화면을 멈추면 안 된다."""
+    try:
+        return members.store_status()
+    except Exception:  # noqa: BLE001
+        logger.exception("회원 저장 상태를 읽지 못했습니다 — 화면에는 상태 없이 보냅니다")
+        return {"backend": "unknown", "pending": None, "last_save": None}
 
 
 @router.post("/start")
