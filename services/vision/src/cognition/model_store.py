@@ -151,8 +151,7 @@ def swapped_bundle(model_path: Optional[Path]) -> Iterator[Optional[dict]]:
     try:
         if model_path is not None:
             MODEL_PATH = model_path
-        load_bundle(force=True)
-        yield load_bundle()
+        yield load_bundle(force=True)
     finally:
         MODEL_PATH = original
         load_bundle(force=True)

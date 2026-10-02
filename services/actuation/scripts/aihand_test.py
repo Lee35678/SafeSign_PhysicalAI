@@ -61,11 +61,10 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-# 통신 헬퍼·중립 각도는 aihand_picar_demo와 공유한다(aihand_vision_picar_demo와 같은 방식).
-from aihand_picar_demo import _NEUTRAL_ANGLES, _get, _post  # noqa: E402
+# 통신 헬퍼·중립 각도·수신호 순서(G1~G7)는 aihand_picar_demo 것을 쓴다(aihand_vision_picar_demo도 재사용 중).
+from aihand_picar_demo import SIGNALS, _NEUTRAL_ANGLES, _get, _post  # noqa: E402
 
-# (라벨, 엔드포인트, 페이로드, 관찰 안내)
-GESTURES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
+GESTURES = SIGNALS   # 순서가 펌웨어 G{n} 번호다 (G1=정지 … G7=주의)
 
 VERDICTS = {"1": "정상", "2": "기지 제약(감수)", "3": "🔴 실패"}
 

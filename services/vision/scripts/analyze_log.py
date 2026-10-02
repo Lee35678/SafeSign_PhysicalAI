@@ -29,7 +29,7 @@ import numpy as np
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_ROOT / "src"))
 
-from cognition import model_store  # noqa: E402
+from cognition import classify, model_store  # noqa: E402
 
 AMBIGUOUS = "애매한자세"
 
@@ -206,8 +206,6 @@ def rejudge(frames: list[dict], model_path: Path | None):
 
     Returns: (모드, 정답 수, 미판정 수, 오판정 수, 전체) 또는 로드 실패 시 None.
     """
-    from cognition import classify
-
     with model_store.swapped_bundle(model_path) as bundle:
         if bundle is None:
             return None
@@ -235,8 +233,6 @@ def rejudge(frames: list[dict], model_path: Path | None):
 
 def header_order(by_label):
     """7종 표준 순서 우선, 그 뒤 애매한자세."""
-    from cognition import classify
-
     std = [*classify.SIGN_CLASSES, AMBIGUOUS]
     return [c for c in std if c in by_label] + [c for c in by_label if c not in std]
 
