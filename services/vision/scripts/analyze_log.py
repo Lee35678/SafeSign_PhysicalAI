@@ -235,7 +235,9 @@ def rejudge(frames: list[dict], model_path: Path | None):
 
 def header_order(by_label):
     """7종 표준 순서 우선, 그 뒤 애매한자세."""
-    std = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의", AMBIGUOUS]
+    from cognition import classify
+
+    std = [*classify.SIGN_CLASSES, AMBIGUOUS]
     return [c for c in std if c in by_label] + [c for c in by_label if c not in std]
 
 

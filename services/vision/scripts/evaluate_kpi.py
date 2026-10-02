@@ -37,7 +37,7 @@ sys.path.insert(0, str(SERVICE_ROOT / "src"))
 from cognition import classify, model_store  # noqa: E402
 from cognition.normalize import FEATURE_MODE_JOINT, to_feature_vector  # noqa: E402
 
-CLASSES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
+CLASSES = classify.SIGN_CLASSES   # 운영 분류기와 같은 7종·같은 순서
 CRITICAL = "정지"
 AMBIGUOUS = "애매한자세"
 KPI = {"accuracy": 92.0, "misclass": 3.0, "reject": 5.0, "macro_f1": 0.90}
