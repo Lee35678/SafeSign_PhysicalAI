@@ -27,7 +27,7 @@ web은 학습 흐름 전체를 지휘하는 **오케스트레이터**다. vision
 | 실행 위치 | **RPi5** (vision·actuation과 같은 보드), 포트 **8000**, `0.0.0.0` 바인딩 |
 | 접속 | 시연 PC 브라우저 → RPi5와 **UTP 직결**(설계서 §6.2) → `http://<RPi5 eth0 주소>:8000` |
 | 백엔드 | Python · FastAPI · `httpx` (`backend/app.py`, `backend/state_machine.py`) |
-| 프론트엔드 | 바닐라 JS (프레임워크 없음) — `frontend/index.html`·`main.js`·`style.css` |
+| 프론트엔드 | 바닐라 JS (프레임워크 없음) — `frontend/index.html`·`main.js`·`station.css`(2026-10-02, 옛 `style.css`·`app.css` 대체)·`hand-data.js`·`icons/` |
 | 상태 저장 | 프로세스 메모리 딕셔너리 `_session` 1개 (DB·세션 ID 없음 — §5 D1) |
 | 호출 대상 | vision `:8001`(RPi5) · actuation `:8002`(RPi5) · picar `:8000`(**RPi4B**, Wi-Fi `192.168.50.10`) — 실물에서는 **`PICAR_URL=http://192.168.50.10:8000` 지정 필수**. 코드 기본값은 docker-compose용 `http://localhost:8003`이라 빼면 picar가 움직이지 않는다(루트 README §4) |
 
@@ -351,6 +351,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | --- | --- | --- |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
 | v1.15 | 2026-09-30 | **`feature/web` → `feature/picar` 병합** — 조은수 09-29 작업(`feature/web`에서 v1.13으로 적었던 것; 이동혁 v1.13·v1.14와 번호가 겹쳐 재번호): (조은수) §9 결정 2건 — 성공률 → "첫 시도 정답", SC-04 15회 → 25회(D5, 이동혁 확인 대기). §8 ②-b 집계 스크립트(`aggregate_kpi.py`) 작성, ⑧ 화면 캡처 11장·부록 A. 조은수가 따로 만든 ①-b(`feature/web` `d03a2dc`)는 `dev`의 송승호 대행본(`edb5da9`)으로 대체 |
+| v1.15 | 2026-10-02 | **(이동혁) §11 리뉴얼 행 추가** — Taste Skill 진단 기반 전면 재배치, `station.css` 하나로 정리, 실측 손 관절·Phosphor 아이콘, 기능 계약·DB 무수정 |
 | v1.14 | 2026-09-30 | **(이동혁) §11 추가 행** — 제어실(HMI) 정리, 노트북 화면 맞춤, 수료증 재디자인, 회사 사이트 연결(`members.py` 조회 메서드·`.env` 로드). 남은 것 갱신 |
 | v1.13 | 2026-09-30 | **(이동혁) §11 추가** — Gemini 디자인 새 화면(옛 `index.html`·`main.js`·`style.css`·예시 사진 삭제), 로그인·회원가입·회원코드, 회원별 결과 저장(Supabase, SC-05 CSV 대체), 라이브 영상 중계, 일치율 재정의(목표 수신호 확률). 본문 §1~§9는 그대로 — 조은수 몫 ⑦ 보완 때 반영 필요 |
 | v1.12 | 2026-09-29 | **⑥ 재시험 결함 2건 실물 재검증 통과**(`cb8a25b`) — SC-04 재시도(시범 단계 복귀·재시범)와 시도 횟수 상한(3회·판정 제한시간 10초) 모두 RPi5+RPi4B에서 확인. §7 두 행 ✅. **web 전 구간 실물 검증 완료** |
@@ -375,7 +376,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 
 | 항목 | 내용 | 코드 |
 | --- | --- | --- |
-| 새 화면 | Gemini AI Edition 디자인. `style.css` = 디자인 원본 구조(`stitch_safesign_design_system_final/`), `app.css` = 원본에 없는 요소만. 옛 `index.html`·`main.js`·`style.css`·`images/` 삭제(사진은 git 기록에 있음) | `frontend/` |
+| 새 화면 | Gemini AI Edition 디자인. `style.css` = 디자인 원본 구조(`stitch_safesign_design_system_final/` — 예시 코드, 2026-10-02 삭제), `app.css` = 원본에 없는 요소만. 옛 `index.html`·`main.js`·`style.css`·`images/` 삭제(사진은 git 기록에 있음) | `frontend/` |
 | 디자인 방향 (09-30) | 산업 안전 팔레트(Industrial Black·Safety Orange·Steel Gray·Signal White·Safe Green·Alert Red)로 `style.css` 색 교체, Mission Control·Technical Editorial 요소(관제 시계, 도면 격자·크레인 선화, 비대칭 7:5 랜딩, 손 관절 21점 인식 애니메이션, 판정 중 카메라 **실시간 판정 계기판**), SUIT·Inter 동봉(`fonts/`, OFL). 마우스 추적 빛 제거 | `frontend/app.css`·`fonts/` |
 | 제어실(HMI) 정리 (09-30) | 산업 제어실 화면 지침(ISA-101) 기준 — 평상시 무채색 불투명 패널, 색은 상태·핵심 조작에만. 그라데이션·유리 블러·발광·알약 모양 제거(모서리 4px·단색 버튼), 의미 없는 번호(SC-01 등) 라벨 제거, **일치율 계기**(한 색 채움 + **판정 기준 75% 눈금**, 넘으면 정상색 + "기준 이상" 글자), 정답 = 안돈식 단색 초록 판(검정 글자), 오답 = 빨간 경보 띠, SC-04 = 안전 표지 사선 띠. 회전 테두리는 움직임 유지·색만 안전색 | `app.css` "HMI 정리" |
 | 노트북 화면 맞춤 (09-30) | 기준 1920×1080 전체 화면. 1366×768 · 1366×657(창 모드)에서 SC-03 확인 버튼이 밀리던 문제 → 세로 820·700px 이하 간격·글자 축소. 14개 화면 × 3해상도 잘림·스크롤 0 | `app.css` "노트북 화면 맞춤" |
@@ -389,6 +390,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 아이디·비밀번호 찾기 (09-30) | 이름+회원코드 → 가린 이메일 / 메일 6자리 코드 → 새 비밀번호 | `/api/auth/find-id`·`/password/*` |
 | 보안 (09-30) | 로그인 5회 실패 잠금, 비밀번호 8자+영문·숫자, 코드·찾기 횟수 제한, CSP 등 보안 헤더, 키 역할 점검, 5분 무입력 자동 로그아웃 | 18 §6 |
 | 테스트 | web 92개(회원 25 · 영상 중계 2 · 일치율 4 …) · Chrome 헤드리스 전 구간(가입 → 7종 → 합격표 → 수료증 → 아이디 찾기 → 비밀번호 재설정 → 새 비밀번호 로그인, CSP 위반 0) | `tests/` |
+| 리뉴얼 (10-02) | Industrial Intelligence + Premium Technical Design. Taste Skill(design-taste-frontend · redesign-existing-projects) 진단 후 전면 재배치: 상단 상태 스트립(장치 정상 = 회색, 이상 = 빨간 칸), SC-02 신호 레지스터, SC-03 8:4 고정 카메라 + 오른쪽 계기 열(판정값 HUD를 영상 밖으로), 안돈 판 7:5, SC-05 성적서형, Phosphor 아이콘(MIT), **KPI 촬영 실측 손 관절 21점**(hand-data.js)으로 손그림 SVG 대체, 무한 장식 정리(판정 중 테두리·옅은 앰비언트만), 화면 문구 em-dash 0. CSS는 `station.css` 하나(옛 style.css·app.css 삭제). 기능 계약(id·클래스·JS 흐름) 유지, DB·백엔드 무수정. 검증: pytest 108, 전체 흐름 E2E 기준선 동일, 1920×1080·1366×768·1366×657 × 14화면 잘림 0, 콘솔 오류 0 | `frontend/station.css`·`main.js`(표시용)·`hand-data.js` |
 | 회사 사이트 연결 (09-30) | `members.py`에 읽기 전용 `get_member`·`list_sessions`·`ping` 추가(회사 사이트 `services/portal`이 같은 저장소 코드를 쓴다), 루트 `.env` 자동 로드(`_load_dotenv` — 셸 값 우선, **pytest는 안 읽음**). 교육장 동작은 그대로 | [19](19_회사웹사이트.md) |
 
 **남은 것**: ~~Supabase 프로젝트 생성·키 설정~~ → ✅ 2026-09-30 연결(키는 루트 `.env`) — **RPi5에 `.env` 복사**, RPi5에서 영상 켠 채 `result_fps` 확인, `judgment_result` 선택 필드

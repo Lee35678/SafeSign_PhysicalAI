@@ -24,9 +24,56 @@ const SIGN_ORDER = Object.keys(SIGN_PATTERNS);
 // 판정은 계속되고 화면 안내만 하는 사유 (스펙 §5 결정 — 물리 피드백·시도 횟수 없음)
 const HOLD_OUTCOMES = ["below_tau", "out_of_distribution"];
 const HOLD_SUBTEXT = {
-  below_tau: "손모양은 비슷하지만 확신이 부족해요 — 손가락을 더 분명하게 펴거나 접어 보세요",
-  out_of_distribution: "7종 중 어느 손모양과도 달라요 — 위의 정답 손모양을 다시 확인하세요",
+  below_tau: "손 모양은 비슷하지만 확신이 부족합니다. 손가락을 더 분명하게 펴거나 접어 보세요.",
+  out_of_distribution: "7종 중 어느 손 모양과도 다릅니다. 위의 정답 손 모양을 다시 확인하세요.",
 };
+
+// ---- 표시 전용 도우미 (2026-10-02 리뉴얼). 서버 값·상태 전환은 건드리지 않고 화면 글자·그림만 만든다 ----
+
+// 내부 식별자(좌회전_유도)를 화면 글자(좌회전 유도)로. 비교·dataset에는 원래 값을 그대로 쓴다.
+function signLabel(signal) { return String(signal ?? "").replace(/_/g, " "); }
+// AI Hand 설명에 붙은 변경 이력 괄호("(2026-09-20 변경: …)")는 학습자 화면에서 뺀다 (API 값은 그대로)
+function aihandText(text) { return String(text ?? "").replace(/\s*\(\d{4}-\d{2}-\d{2}\s*변경[^)]*\)/g, ""); }
+// 02_설계문서 §4: 크레인 작업표준신호 5종 + 자체 지정 2종(후진, 주의)
+const SELF_SIGNS = ["후진", "주의"];
+
+// 실측 손 관절 21점(hand-data.js, KPI 촬영 RPi5 Camera Module 3)을 SVG로 그린다.
+// 펴는 손가락(SIGN_PATTERNS)의 뼈대는 강조색, 나머지는 회색. 데이터가 없으면 빈 문자열.
+const FINGER_OF_JOINT = (j) => (j >= 1 && j <= 4 ? 0 : j >= 6 && j <= 8 ? 1 : j >= 10 && j <= 12 ? 2 : j >= 14 && j <= 16 ? 3 : j >= 18 ? 4 : -1);
+function handSvg(signal) {
+  const data = typeof HAND_LANDMARKS === "undefined" ? null : HAND_LANDMARKS;
+  const pts = data && data.signals[signal];
+  if (!pts) return "";
+  const pattern = SIGN_PATTERNS[signal] || [0, 0, 0, 0, 0];
+  const P = (p) => [(p[0] * 84 + 8).toFixed(1), (p[1] * 84 + 8).toFixed(1)];
+  const bones = data.connections.map(([a, b]) => {
+    const f = FINGER_OF_JOINT(b);
+    const [x1, y1] = P(pts[a]), [x2, y2] = P(pts[b]);
+    return `<line class="${f >= 0 && pattern[f] ? "b-up" : "b-dn"}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  }).join("");
+  const joints = pts.map((p, i) => {
+    const [x, y] = P(p);
+    return `<circle class="${i === 0 ? "j-wrist" : "j"}" cx="${x}" cy="${y}" r="${i === 0 ? 2.8 : 1.9}"/>`;
+  }).join("");
+  // 장식으로 숨긴다: 이 그림이 쓰이는 곳마다 수신호 이름 글자가 바로 옆에 있어 스크린 리더가 같은 이름을 두 번 읽게 된다
+  return `<svg class="hand-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">${bones}${joints}</svg>`;
+}
+function paintHands(root) {
+  root.querySelectorAll("[data-hand]").forEach((el) => { el.innerHTML = handSvg(el.dataset.hand); });
+}
+
+// 상태 스트립의 공정 경로 — 지금 화면이 어느 단계인지 표시만 한다
+const ROUTE_OF_SCREEN = {
+  "screen-auth": "auth", "screen-welcome": "auth", "screen-curriculum": "course",
+  "screen-training": "train", "screen-camera-fail": "train", "screen-summary": "result", "screen-certificate": "cert",
+};
+function renderRoute(screenId) {
+  const step = ROUTE_OF_SCREEN[screenId] || "";
+  document.querySelectorAll("#route li").forEach((li) => {
+    if (li.dataset.route === step) li.setAttribute("aria-current", "step");
+    else li.removeAttribute("aria-current");
+  });
+}
 
 let member = null;              // 로그인한 학습자 {member_code, name, email, org, guest}
 let storeInfo = null;           // 회원 저장소 상태 {backend: supabase|local, pending, last_save}
@@ -53,6 +100,17 @@ function show(screenId) {
   if (screenId === "screen-training") startCamera(); else stopCamera();
   if (screenId !== "screen-summary") stopSavePolling();
   renderMember();
+  renderRoute(screenId);   // 표시 전용: 상태 스트립 공정 경로
+  focusScreenTitle(screenId);
+}
+
+// 접근성(표시 전용): 화면이 바뀌면 누른 버튼이 숨겨져 포커스가 BODY로 빠진다 — 새 화면의 제목(h1)으로 옮겨
+// 스크린 리더가 새 화면을 읽고 Tab이 그 화면에서 이어지게 한다. showAuth는 이 뒤에 입력칸으로 다시 옮긴다.
+function focusScreenTitle(screenId) {
+  const title = $(screenId).querySelector("h1");
+  if (!title) return;
+  if (!title.hasAttribute("tabindex")) title.setAttribute("tabindex", "-1");
+  title.focus({ preventScroll: true });
 }
 
 async function apiGet(path) {
@@ -95,33 +153,52 @@ function renderMember() {
   $("logout-btn").classList.toggle("hidden", training);
 }
 
+// 장치 하나의 이상 사유(표시 전용). 빈 문자열 = 정상. 상단 스트립·SC-01 패널·요약이 모두 이 한 기준을 쓴다
+// (예전에는 요약만 status === "ok"로 세어, BLE·I2C 이상이 있어도 "장치 3/3 정상"이라고 적었다).
+function deviceProblem(name, info) {
+  let extra = "";
+  if (name === "actuation" && info.microbit_connected === false) extra = "micro:bit 끊김";
+  if (name === "picar" && info.i2c_reachable === false) extra = "응답 없음";
+  if (info.status !== "ok") extra = extra || "연결 안 됨";
+  return extra;
+}
+
 function renderDeviceStatus(devices) {
   const el = $("device-status-bar");
   renderAboutSys(devices);
   if (!devices || Object.keys(devices).length === 0) {
     el.innerHTML = "";
+    $("station-devices").innerHTML = "";   // 표시 전용: SC-01 스테이션 준비 패널
     return;
   }
-  const labels = { vision: "인식 · 카메라", actuation: "AI Hand · micro:bit", picar: "picar" };
-  el.innerHTML = Object.entries(devices).map(([name, info]) => {
-    const ok = info.status === "ok";
-    let extra = "";
-    if (name === "actuation" && info.microbit_connected === false) extra = " · BLE 끊김";
-    if (name === "picar" && info.i2c_reachable === false) extra = " · I2C 응답 없음";
-    if (!ok) extra = extra || " · 연결 안 됨";
-    const bad = !ok || extra;
-    return `<span class="device${bad ? " bad" : ""}"><i class="device-dot"></i>${esc(labels[name] ?? name)}${esc(extra)}</span>`;
+  const labels = { vision: "카메라", actuation: "AI Hand", picar: "picar" };
+  const cells = Object.entries(devices).map(([name, info]) => {
+    const extra = deviceProblem(name, info);
+    const bad = Boolean(extra);
+    // 표시: 칸마다 라벨/값. 정상 = 회색 글자, 이상 = 칸 전체 경보색(station.css .device.bad)
+    return { name, bad, extra, html: `<span class="device${bad ? " bad" : ""}"><i class="device-dot"></i><b>${esc(labels[name] ?? name)}</b><small>${esc(extra || "정상")}</small></span>` };
+  });
+  el.innerHTML = cells.map((c) => c.html).join("");
+  // 표시 전용: SC-01 스테이션 준비 패널 = 교육 흐름도(AI Hand 시범 > 카메라 판정 > picar 동작).
+  // 정상 상태 글자는 상단 스트립과 요약에 이미 있으므로 여기서는 이상일 때만 칸을 경보색으로 바꾸고 사유를 적는다.
+  const FLOW = [["actuation", "수신호 시범"], ["vision", "손 모양 판정"], ["picar", "신호대로 동작"]];
+  const byName = Object.fromEntries(cells.map((c) => [c.name, c]));
+  const ordered = [...FLOW.filter(([n]) => byName[n]), ...cells.filter((c) => !FLOW.some(([n]) => n === c.name)).map((c) => [c.name, ""])];
+  $("station-devices").innerHTML = ordered.map(([n, role]) => {
+    const c = byName[n];
+    return `<span class="device${c.bad ? " bad" : ""}"><b>${esc(labels[n] ?? n)}</b><em>${esc(role)}</em>${c.bad ? `<small>${esc(c.extra)}</small>` : ""}</span>`;
   }).join("");
 }
 
-// SC-01 제품 소개의 장치 요약 — 상단 표시줄과 같은 실제 상태
+// SC-01 스테이션 준비의 장치 요약: 상단 스트립과 같은 기준(deviceProblem)으로 센다
 function renderAboutSys(devices) {
   const box = $("about-sys");
-  const list = Object.values(devices || {});
-  const ok = list.filter((d) => d.status === "ok").length;
-  box.classList.toggle("warn", !list.length || ok < list.length);
-  box.querySelector("span").textContent = !list.length ? "장치 정보 없음"
-    : ok === list.length ? `장치 ${ok}/${list.length} 정상` : `장치 ${ok}/${list.length} 연결`;
+  const entries = Object.entries(devices || {});
+  const bad = entries.filter(([name, info]) => deviceProblem(name, info)).length;
+  const good = entries.length - bad;
+  box.classList.toggle("warn", !entries.length || bad > 0);
+  box.querySelector("span").textContent = !entries.length ? "장치 정보 없음"
+    : bad ? `장치 이상 ${bad}대, 정상 ${good}/${entries.length}` : `장치 ${good}/${entries.length} 정상`;
 }
 
 // ---- SC-07 / SC-01 ----
@@ -159,7 +236,7 @@ function showAuth(tab) {
   setAuthTab(tab);
   const note = $("auth-store-note");
   note.textContent = storeInfo && storeInfo.backend === "local"
-    ? "지금은 로컬 모드입니다 — 회원 정보가 이 기기에만 저장됩니다 (Supabase 미설정)."
+    ? "회원 기록 서버에 연결되지 않아 회원 정보가 이 교육장 기기에만 저장됩니다."
     : "";
   show("screen-auth");
   (tab === "signup" ? $("signup-name") : $("login-email")).focus();
@@ -167,9 +244,9 @@ function showAuth(tab) {
 
 // 인증 화면의 보기: login · signup · find(아이디 찾기) · reset(비밀번호 찾기 1단계) · reset2(코드 + 새 비밀번호)
 const AUTH_VIEWS = {
-  login: { form: "login-form", title: "로그인" },
-  signup: { form: "signup-form", title: "회원가입" },
-  find: { form: "find-id-form", title: "아이디 찾기" },
+  login: { form: "login-form", title: "교육 시작 전 로그인" },
+  signup: { form: "signup-form", title: "사원 코드 받기" },
+  find: { form: "find-id-form", title: "아이디(이메일) 찾기" },
   reset: { form: "reset-request-form", title: "비밀번호 찾기" },
   reset2: { form: "reset-confirm-form", title: "비밀번호 재설정" },
 };
@@ -368,25 +445,45 @@ async function goCurriculum() {
   const state = await apiGet("/api/state");
   rememberCurriculum(state.curriculum);
   renderCurriculumList(state.curriculum || []);
+  renderCourseSpec(state);   // 표시 전용: 오른쪽 과정 사양
   show("screen-curriculum");
 }
 
+// 신호 레지스터 (2026-10-02 리뉴얼, 표시 전용): 행마다 순서 | 수신호 | 실측 손 관절 + 손가락 글리프 | AI Hand | picar.
+// 크레인 표준 / 자체 지정 묶음 머리 행(li.register-group)은 장식이 아닌 분류 표시다.
 function renderCurriculumList(curriculum) {
   const list = $("curriculum-list");
   list.innerHTML = "";
+  let group = null;
   curriculum.forEach((item, i) => {
+    const self = SELF_SIGNS.includes(item.signal);
+    const groupName = self ? "자체 지정" : "크레인 작업표준신호";
+    const firstOfGroup = group !== self;
+    if (firstOfGroup) {
+      group = self;
+      // 보이는 묶음 머리는 스크린 리더에서 숨기고(목록이 7항목으로 읽히게), 묶음 이름은 그 묶음 첫 행에 붙인다
+      const head = document.createElement("li");
+      head.className = "register-group";
+      head.setAttribute("aria-hidden", "true");
+      head.textContent = groupName;
+      list.appendChild(head);
+    }
     const li = document.createElement("li");
-    li.className = "sign-card";
-    li.innerHTML = `
-      <div class="sign-card-figure">${fingerPattern(item.signal)}</div>
-      <div class="sign-card-body">
-        <span class="sign-card-no">${String(i + 1).padStart(2, "0")}</span>
-        <p class="sign-card-name">${esc(item.signal)}</p>
-        <p class="sign-card-hand">${esc(item.aihand)}</p>
-        <p class="sign-card-picar"><i>picar</i>${esc(item.picar)}</p>
-      </div>`;
+    li.className = `sign-card${self ? " self" : ""}`;
+    li.innerHTML = `${firstOfGroup ? `<span class="sr-only">${groupName}: </span>` : ""}
+      <span class="sign-card-no">${String(i + 1).padStart(2, "0")}</span>
+      <p class="sign-card-name">${esc(signLabel(item.signal))}</p>
+      <div class="sign-card-figure"><span class="hand-fig">${handSvg(item.signal)}</span>${fingerPattern(item.signal)}</div>
+      <p class="sign-card-hand">${esc(aihandText(item.aihand))}</p>
+      <p class="sign-card-picar">${esc(item.picar)}</p>`;
     list.appendChild(li);
   });
+}
+
+function renderCourseSpec(state) {
+  const n = (state.curriculum || []).length;
+  if (n) $("spec-count").textContent = n;
+  if (state.max_attempts) $("spec-attempts").textContent = state.max_attempts;
 }
 
 $("curriculum-back-btn").addEventListener("click", () => show("screen-landing"));
@@ -446,7 +543,7 @@ function setCameraOnline(online, text) {
 $("camera-img").addEventListener("error", () => {
   if (!cameraWanted) return;
   clearInterval(cameraCheckTimer);
-  setCameraOnline(false, "카메라 영상을 받을 수 없어요");
+  setCameraOnline(false, "카메라 영상을 받을 수 없습니다");
   cameraRetryTimer = setTimeout(connectCamera, CAMERA_RETRY_MS);
 });
 
@@ -513,13 +610,18 @@ async function refreshTraining() {
 function renderHeader(state) {
   const signal = state.target_signal ?? "-";
   const info = state.signal_info || curriculumInfo[signal] || {};
-  $("signal-name").textContent = signal;
-  $("signal-desc").textContent = info.aihand ? `AI Hand: ${info.aihand}` : "";
+  $("signal-name").textContent = signLabel(signal);
+  $("signal-desc").textContent = info.aihand ? `AI Hand: ${aihandText(info.aihand)}` : "";
   $("signal-picar-text").textContent = info.picar || "";
   $("signal-progress").innerHTML = `<b>${state.progress.current}</b> / ${state.progress.total}`;
+  // 공정 레일: 칸마다 수신호 이름을 함께 적는다(표시 전용, 순서는 커리큘럼 그대로)
+  const order = (state.curriculum || []).map((c) => c.signal);
   $("progress-steps").innerHTML = Array.from({ length: state.progress.total }, (_, i) => {
     const n = i + 1;
-    return `<i class="${n < state.progress.current ? "done" : n === state.progress.current ? "current" : ""}"></i>`;
+    const name = order[i] ?? SIGN_ORDER[i] ?? "";
+    const st = n < state.progress.current ? "done" : n === state.progress.current ? "current" : "";
+    const sr = st === "done" ? '<span class="sr-only"> 마침</span>' : st === "current" ? '<span class="sr-only"> 현재</span>' : "";
+    return `<i class="${st}"${st === "current" ? ' aria-current="step"' : ""}><span>${esc(signLabel(name))}</span>${sr}</i>`;
   }).join("");
   $("attempt-count").textContent = state.attempts ?? 0;
   $("attempt-max").textContent = state.max_attempts ? ` / ${state.max_attempts}회` : "회";
@@ -527,7 +629,8 @@ function renderHeader(state) {
   if (guide.dataset.signal !== signal) {
     guide.dataset.signal = signal;
     guide.innerHTML = fingerPattern(signal, true);
-    $("guide-text").textContent = info.aihand || "";
+    $("guide-text").textContent = aihandText(info.aihand || "");
+    $("guide-hand").innerHTML = handSvg(signal);   // 표시 전용: 실측 손 관절
   }
 }
 
@@ -564,8 +667,8 @@ function renderPhase(state) {
   const actuation = (state.devices || {}).actuation;
   const bleDown = Boolean(actuation) && (actuation.status !== "ok" || actuation.microbit_connected === false);
   $("confirm-keys").innerHTML = bleDown
-    ? "<kbd>Space</kbd> 키로 확인할 수 있어요 (micro:bit 연결 끊김 — A 버튼은 지금 동작하지 않아요)"
-    : "<kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd> 버튼으로도 확인할 수 있어요";
+    ? "<kbd>Space</kbd> 키만 됩니다. micro:bit 연결이 끊겨 A 버튼은 지금 동작하지 않습니다."
+    : "<kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd> 버튼";
 }
 
 async function confirmReady() {
@@ -604,7 +707,8 @@ document.addEventListener("keydown", (event) => {
 
 function showHoldHint(result) {
   const myGen = ++holdGen;
-  $("hold-title").textContent = result.message ?? "조금 더 정확히 해주세요";
+  // 표시 전용: below_tau 백엔드 문구("…해주세요")는 화면의 다른 문구와 띄어쓰기만 달라 화면 문구로 쓴다. 그 밖은 백엔드 문구 그대로
+  $("hold-title").textContent = result.outcome === "below_tau" ? "조금 더 정확히 해 주세요" : (result.message ?? "조금 더 정확히 해 주세요");
   $("hold-sub").textContent = `${HOLD_SUBTEXT[result.outcome] ?? ""} (일치율 ${result.match_score}%)`;
   $("hold-hint").classList.remove("hidden");
   setTimeout(() => {
@@ -630,7 +734,12 @@ function applyJudgeRule(rule) {
   const tick = document.querySelector(".match-tick");
   tick.style.left = `${tauPct()}%`;
   tick.querySelector("b").textContent = `판정 기준 ${tauPct()}%`;
-  $("hud-rule").textContent = `${judgeRule.n_frames}프레임 연속 · τ ${judgeRule.tau.toFixed(2)}`;
+  $("hud-rule").textContent = `${judgeRule.n_frames}프레임 연속, ${tauPct()}% 이상`;   // 눈금 라벨·과정 사양과 같은 표기(τ 기호는 학습자에게 개발 용어)
+  // 표시 전용: SC-02 과정 사양·SC-05 KPI 띠의 판정 기준도 같은 값으로
+  $("spec-tau").textContent = tauPct();
+  $("spec-frames").textContent = judgeRule.n_frames;
+  $("kpi-tau").textContent = tauPct();
+  $("th-tau").textContent = tauPct();
 }
 
 function setMatchScore(score) {
@@ -643,7 +752,7 @@ function setMatchScore(score) {
   $("match-score-state").textContent = pass ? "기준 이상" : "";
 }
 
-// 카메라 계기판 — vision이 지금 보고 있는 것 (판정 중에만 보인다, app.css .phase-judging .camera-hud)
+// 카메라 계기판 — vision이 지금 보고 있는 것 (판정 중에만 보인다, station.css .phase-judging .camera-hud)
 const NO_HAND_REASONS = ["no_hand", "normalize_failed"];
 function renderHud(live) {
   const hand = $("hud-hand"), pred = $("hud-pred"), conf = $("hud-conf");
@@ -655,12 +764,14 @@ function renderHud(live) {
   const noHand = live.is_reject && NO_HAND_REASONS.includes(live.reason);
   hand.textContent = noHand ? "찾는 중" : "검출";
   hand.className = noHand ? "warn" : "ok";
-  pred.textContent = noHand || !live.predicted_class ? "-" : live.predicted_class;
+  // vision이 미판정(OOD·모델 없음·추론 오류)일 때 보내는 내부 라벨 'negative'는 학습자에게 개발 용어라 "-"로 보인다(표시 전용)
+  pred.textContent = noHand || !live.predicted_class || live.predicted_class === "negative" ? "-" : signLabel(live.predicted_class);
   conf.textContent = noHand ? "-" : `${Math.round((live.confidence || 0) * 100)}%`;
 }
 
-const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>';
-const ICON_X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+// Phosphor Icons 2.1.1 (MIT, icons/LICENSE.txt): check / x
+const ICON_CHECK = '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
+const ICON_X = '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
 
 function showOverlay(result, state) {
   const overlay = $("training-overlay");
@@ -670,35 +781,54 @@ function showOverlay(result, state) {
   const info = curriculumInfo[result.signal] || {};
   let body;
 
+  // 안돈 판 배치(표시 전용, 2026-10-02): 왼쪽 7열 = 판정 단어, 오른쪽 5열 = 데이터, 맨 아래 = 남은 시간 띠
+  const timer = `<div class="overlay-timer"><span style="animation-duration:${holdMs}ms"></span></div>`;
+  // 긴 문구(백엔드 메시지)는 판정 단어 크기를 줄여 두 줄 안에 둔다
+  const verdict = (icon, title) => `<div class="ov-verdict"><div class="overlay-icon">${icon}</div><h2${String(title).length > 9 ? ' class="is-long"' : ""}>${title}</h2></div>`;
+  const score = `<p class="overlay-score">일치율<b>${esc(result.match_score)}%</b></p>`;
   if (correct) {
     const next = state.state === "training" && state.target_signal !== result.signal ? state.target_signal : null;
     body = `
-      <div class="overlay-icon">${ICON_CHECK}</div>
-      <h2>정답입니다</h2>
-      <p class="overlay-score">일치율<b>${esc(result.match_score)}%</b></p>
-      ${info.picar ? `<p class="overlay-picar"><span class="chip">picar</span><strong>${esc(info.picar)}</strong></p>` : ""}
-      <div class="overlay-timer"><span style="animation-duration:${holdMs}ms"></span></div>
-      <p class="overlay-next">${next ? `다음 수신호: ${esc(next)}` : "모든 수신호를 마쳤어요"}</p>`;
+      ${verdict(ICON_CHECK, "정답입니다")}
+      <div class="ov-data">
+        ${score}
+        ${info.picar ? `<p class="overlay-picar"><span class="chip">picar</span><strong>${esc(info.picar)}</strong></p>` : ""}
+        <p class="overlay-next">${next ? `다음 수신호: ${esc(signLabel(next))}` : "모든 수신호를 마쳤습니다"}</p>
+      </div>
+      ${timer}`;
   } else if (result.given_up) {
-    // 재시도 상한 초과 — 같은 수신호를 다시 보여주지 않고 다음으로 넘어간다(state_machine.py MAX_ATTEMPTS_PER_SIGNAL)
+    // 재시도 상한 초과: 같은 수신호를 다시 보여주지 않고 다음으로 넘어간다(state_machine.py MAX_ATTEMPTS_PER_SIGNAL)
+    // 표시 전용(2026-10-02): 백엔드 문구("…다시 시도하세요")는 실제 동작(다음 수신호로 이동)과 반대라 제목으로 쓰지 않고,
+    // 판정 단어 자리에 실제로 일어나는 일을, 데이터 열에 사유(오답/시간 초과)와 시도 수를 적는다.
+    const why = result.outcome === "timeout" ? "시간 초과" : "오답";
     body = `
-      <div class="overlay-icon">${ICON_X}</div>
-      <h2>${esc(result.message ?? "다시 시도하세요")}</h2>
-      <p class="overlay-score">일치율<b>${esc(result.match_score)}%</b></p>
-      <div class="overlay-timer"><span style="animation-duration:${holdMs}ms"></span></div>
-      <p class="overlay-next">재시도 횟수를 초과해 다음 수신호로 넘어갑니다</p>`;
+      ${verdict(ICON_X, "다음 수신호로 넘어갑니다")}
+      <div class="ov-data">
+        ${score}
+        <dl class="overlay-stats">
+          <div><dt>마지막 판정</dt><dd>${why}</dd></div>
+          <div><dt>사용한 시도</dt><dd>${esc(result.attempt)}${state.max_attempts ? ` / ${esc(state.max_attempts)}` : ""}회</dd></div>
+        </dl>
+        <p class="overlay-next">시도 횟수를 모두 써서 이 수신호는 불합격입니다</p>
+      </div>
+      ${timer}`;
   } else {
     // 오답(SC-03b). below_tau / out_of_distribution은 오버레이 대신 showHoldHint()로 문구만 띄운다(스펙 §5)
+    // 표시 전용(2026-10-02): 시간 초과는 백엔드 문구("시간이 초과됐습니다 — 다시 시도하세요")를 판정 단어로 쓰지 않고
+    // given_up 분기와 같은 방식으로 판정 단어 "시간 초과" + 데이터 열 "다시 시도하세요"로 나눠 적는다.
+    const timeout = result.outcome === "timeout";
+    const word = timeout ? "시간 초과" : esc(result.message ?? "다시 시도하세요");
     body = `
-      <div class="overlay-icon">${ICON_X}</div>
-      <h2>${esc(result.message ?? "다시 시도하세요")}</h2>
-      <p class="overlay-score">일치율<b>${esc(result.match_score)}%</b></p>
-      <dl class="overlay-stats">
-        <div><dt>현재 시도</dt><dd>${esc(result.attempt)}회</dd></div>
-        <div><dt>권장 재도전</dt><dd>${esc(result.recommended_retry)}회</dd></div>
-      </dl>
-      <div class="overlay-timer"><span style="animation-duration:${holdMs}ms"></span></div>
-      <p class="overlay-next">AI Hand가 다시 보여줍니다</p>`;
+      ${verdict(ICON_X, word)}
+      <div class="ov-data">
+        ${score}
+        <dl class="overlay-stats">
+          <div><dt>현재 시도</dt><dd>${esc(result.attempt)}${state.max_attempts ? ` / ${esc(state.max_attempts)}` : ""}회</dd></div>
+          <div><dt>권장 재도전</dt><dd>${esc(result.recommended_retry)}회</dd></div>
+        </dl>
+        <p class="overlay-next">${timeout ? "다시 시도하세요. " : ""}AI Hand가 다시 보여 줍니다</p>
+      </div>
+      ${timer}`;
   }
 
   overlay.className = `overlay ${correct ? "correct" : "wrong"}`;
@@ -739,21 +869,28 @@ function renderSummary(state) {
   const first = completed.filter(firstTry).length;
   const gaveUp = completed.filter((c) => c.given_up).length;
   $("summary-sub").textContent =
-    `합격 ${completed.length - gaveUp} / ${completed.length}종 · 첫 시도 정답 ${first}종${gaveUp ? ` · 불합격 ${gaveUp}종` : ""}`;
+    `합격 ${completed.length - gaveUp} / ${completed.length}종, 첫 시도 정답 ${first}종${gaveUp ? `, 불합격 ${gaveUp}종` : ""}`;
+  // 표시 전용: 성적서 KPI 띠 (합격 n/7, 첫 시도 정답, 총 시도)
+  $("kpi-pass").textContent = completed.length - gaveUp;
+  $("kpi-of").textContent = `/ ${completed.length}종`;
+  $("kpi-first").textContent = first;
+  $("kpi-attempts").textContent = completed.reduce((sum, c) => sum + (Number(c.attempts) || 0), 0);
 
   const tbody = $("summary-tbody");
   tbody.innerHTML = "";
   completed.forEach((item) => {
     const tr = document.createElement("tr");
     const score = Math.max(0, Math.min(100, item.match_score || 0));
-    // given_up: 재시도 상한 초과로 넘어간 수신호 — match_score는 마지막 오답의 값이라 "정답 시 일치율"이 아니다
-    // 합격 = 시도 상한(3회) 안에 정답, 불합격 = 상한을 넘겨 넘어감 — DB training_results.passed와 같은 정의
+    const delta = score - tauPct();
+    // given_up: 재시도 상한 초과로 넘어간 수신호. match_score는 마지막 오답의 값이라 "정답 시 일치율"이 아니다
+    // 합격 = 시도 상한(3회) 안에 정답, 불합격 = 상한을 넘겨 넘어감. DB training_results.passed와 같은 정의
+    // 일치율은 트랙 없는 숫자 + 판정 기준(τ) 대비 차이로 적는다
+    tr.className = item.given_up ? "is-fail" : "";
     tr.innerHTML = `
-      <td><span class="col-sign">${item.given_up ? '<span class="warn-mark">!</span>' : '<span class="ok-mark">✓</span>'}
-        ${esc(item.signal)}</span></td>
+      <td><span class="col-sign"><span class="hand-fig sm">${handSvg(item.signal)}</span>${esc(signLabel(item.signal))}</span></td>
       <td>${item.given_up ? '<span class="result-chip fail">불합격</span>' : '<span class="result-chip pass">합격</span>'}</td>
-      <td class="col-attempts"><b>${esc(item.attempts)}</b>회</td>
-      <td class="col-score"><span class="score-bar"><i style="width:${score}%"></i></span><b>${score}</b>%${firstTry(item) ? "<small>첫 시도 정답</small>" : ""}</td>`;
+      <td class="col-attempts"><b>${esc(item.attempts)}</b>회${firstTry(item) ? `<span class="first-mark" title="첫 시도 정답">${ICON_CHECK}<span class="sr-only">첫 시도 정답</span></span>` : ""}</td>
+      <td class="col-score"><b>${score}</b>%<small>${delta >= 0 ? "+" : "−"}${Math.abs(delta)}</small></td>`;
     tbody.appendChild(tr);
   });
   renderSaveStatus(state);
@@ -772,23 +909,23 @@ function renderSaveStatus(state) {
   if (!who || who.guest) {
     cls = "local"; final = true;
     title = "게스트 학습";
-    sub = "기록은 이 기기에만 남고 회원 DB에는 저장되지 않아요.";
+    sub = "게스트 학습 기록은 회원 기록에 저장되지 않습니다.";
   } else if (save && save.status === "saved") {
     cls = "saved"; final = true;
-    title = `${who.member_code} 회원 기록에 저장했어요`;
+    title = `${who.member_code} 회원 기록에 저장했습니다`;
     sub = `${who.name} 님의 학습 기록으로 저장되었습니다.`;
   } else if (save && save.status === "saved_local") {
     cls = "local"; final = true;
-    title = "이 기기에 저장했어요 (로컬 모드)";
-    sub = "Supabase가 설정되지 않아 회원 DB 대신 교육장 기기에 저장했습니다.";
+    title = "이 교육장 기기에 저장했습니다";
+    sub = "회원 기록 서버에 연결되지 않아 학습 기록을 이 기기에만 저장했습니다.";
   } else if (save && save.status === "queued") {
     cls = "queued";
     title = "인터넷 연결을 기다리는 중";
-    sub = `연결되면 자동으로 회원 기록에 저장돼요 (대기 ${pending}건). 화면을 닫아도 기록은 남습니다.`;
+    sub = `연결되면 자동으로 회원 기록에 저장됩니다(대기 ${pending}건). 화면을 닫아도 기록은 남습니다.`;
   } else if (save && save.status === "failed") {
     cls = "failed"; final = true;
-    title = "회원 기록에 저장하지 못했어요";
-    sub = "교육 담당자에게 알려 주세요 — 기록은 교육장 기기에 따로 보관되어 있습니다.";
+    title = "회원 기록에 저장하지 못했습니다";
+    sub = "교육 담당자에게 알려 주세요. 기록은 교육장 기기에 따로 보관되어 있습니다.";
   }
   el.className = `save-status ${cls}`;
   el.innerHTML = `<div><b>${esc(title)}</b>${esc(sub)}</div>`;
@@ -983,8 +1120,8 @@ async function drawCertificate(completed, issuedAt) {
   const when = `${issued.getFullYear()}. ${pad2(issued.getMonth() + 1)}. ${pad2(issued.getDate())}.  ${pad2(issued.getHours())}:${pad2(issued.getMinutes())}`;
   const rows = [
     ["성명", guest ? "게스트 학습자" : member.name],
-    ["사원 코드", guest ? "— (게스트)" : code],
-    ["소속", (!guest && member.org) ? member.org : "—"],
+    ["사원 코드", guest ? "게스트" : code],
+    ["소속", (!guest && member.org) ? member.org : "없음"],
     ["수료 일시", when],
   ];
   let y = 292;
@@ -993,7 +1130,7 @@ async function drawCertificate(completed, issuedAt) {
     ctx.font = `600 12.5px ${CERT_KR}`;
     ctx.fillText(label, L, y);
     ctx.fillStyle = CERT_C.ink;
-    ctx.font = label === "사원 코드" ? `700 21px ${CERT_MONO}` : `700 22px ${CERT_SANS}`;
+    ctx.font = label === "사원 코드" && !guest ? `700 21px ${CERT_MONO}` : `700 22px ${CERT_SANS}`;   // 게스트는 한글이라 고정폭(라틴) 글꼴 대신 본문 글꼴
     ctx.fillText(value, L + 108, y + 1);
     ctx.fillStyle = CERT_C.line;
     ctx.fillRect(L, y + 18, 480, 1);
@@ -1006,7 +1143,7 @@ async function drawCertificate(completed, issuedAt) {
   wrapLines(ctx, statement, 480).forEach((line, i) => ctx.fillText(line, L, 540 + i * 27));
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `500 12px ${CERT_KR}`;
-  ctx.fillText("이수 기준: 수신호 7종 전 과정 · 합격 = 수신호마다 시도 3회 안에 정답", L, 624);
+  ctx.fillText("이수 기준: 수신호 7종 전 과정. 합격은 수신호마다 시도 3회 안에 정답", L, 624);
 
   // ── 오른쪽: 교육 결과표
   const TX = 620, TR = R;
@@ -1016,7 +1153,7 @@ async function drawCertificate(completed, issuedAt) {
   ctx.textAlign = "right";
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `600 13px ${CERT_KR}`;
-  ctx.fillText(`합격 ${passed} / ${completed.length}종 · 첫 시도 정답 ${first}종`, TR, 164);
+  ctx.fillText(`합격 ${passed} / ${completed.length}종, 첫 시도 정답 ${first}종`, TR, 164);
 
   const col = { sign: TX, result: TX + 178, tries: TX + 258, meter: TX + 316 };
   ctx.textAlign = "left";
@@ -1070,7 +1207,7 @@ async function drawCertificate(completed, issuedAt) {
   ctx.textAlign = "left";
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `500 11.5px ${CERT_KR}`;
-  ctx.fillText(`판정: 카메라 AI 비전 · ${judgeRule.n_frames}프레임 연속 확정 · 막대의 눈금 = 판정 기준 ${tauPct()}%`, TX, y + 8);
+  ctx.fillText(`판정: 카메라 AI 비전, ${judgeRule.n_frames}프레임 연속 확정. 막대의 눈금 = 판정 기준 ${tauPct()}%`, TX, y + 8);
 
   // ── 하단: 발급일 · 발급 기관 · 직인
   ctx.fillStyle = CERT_C.ink;
@@ -1117,4 +1254,5 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 1000);
 
+paintHands(document);   // 표시 전용: SC-01 실측 손 관절 띠(data-hand)
 init();
