@@ -200,6 +200,10 @@ def main() -> int:
                     print(f"   🔴 status={status}  reason={(body or {}).get('reason', '')}")
                 else:
                     print(f"   HTTP {dt * 1000:.0f}ms   status={status}   reply={reply or '-'}")
+                    # 라벨의 G 번호는 SIGNALS 순서에서 나온다 — actuation이 실제로 보낸 번호와 대조한다.
+                    gesture = body.get("gesture")
+                    if gesture is not None and not label.startswith(f"G{gesture} "):
+                        print(f"   ⚠️  actuation이 보낸 제스처는 G{gesture} — 라벨({label})과 다릅니다")
 
                 if args.auto:
                     verdict, memo = "auto", ""

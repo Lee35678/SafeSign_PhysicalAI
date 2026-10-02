@@ -76,7 +76,7 @@ PICAR_RETRY = 1
 AIHAND_TIMEOUT_S = 5.0
 
 # aihand_command.schema.json은 servo_angles를 필수로 요구하지만 actuation은 target_signal만으로
-# G{n}을 결정한다(aihand_test.py와 동일). 계약을 지키되 값은 중립값으로 채운다.
+# G{n}을 결정한다. 계약을 지키되 값은 중립값으로 채운다.
 _NEUTRAL_ANGLES = {"thumb": 90, "index": 90, "middle": 90,
                    "ring": 90, "pinky": 90, "wrist_rotation": 90}
 

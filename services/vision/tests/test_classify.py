@@ -64,7 +64,7 @@ def test_classes_match_documents():
 
     negative는 **학습 클래스가 아니다** (2026-09-21 회의 안건 2 A) — τ 미달 시 출력 라벨로만 쓴다.
     """
-    assert classify.SIGN_CLASSES == [
+    assert classify.SIGN_CLASSES == (
         "정지",
         "서행",
         "좌회전_유도",
@@ -72,7 +72,7 @@ def test_classes_match_documents():
         "확인_완료",
         "후진",
         "주의",
-    ]
+    )
     assert classify.NEGATIVE_CLASS not in classify.SIGN_CLASSES
 
 

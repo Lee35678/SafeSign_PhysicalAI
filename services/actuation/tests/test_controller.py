@@ -70,6 +70,16 @@ def test_gesture_map_order_matches_prd_table():
     }
 
 
+def test_demo_signal_order_matches_gesture_numbers():
+    """aihand_test는 aihand_picar_demo.SIGNALS 순서를 G1~G7 라벨로 쓴다(KPI 물리 지연 로그).
+    picar 메뉴 순서가 밀리면 로그에 엉뚱한 G 번호가 경고 없이 찍힌다."""
+    spec = importlib.util.spec_from_file_location(
+        "aihand_picar_demo", _SRC.parent / "scripts" / "aihand_picar_demo.py")
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+    assert demo.SIGNALS == sorted(controller.GESTURE_MAP, key=controller.GESTURE_MAP.get)
+
+
 # ── controller.execute() ─────────────────────────────────────────────────────
 def _execute(command: dict) -> dict:
     return asyncio.run(controller.execute(command, mock=True))

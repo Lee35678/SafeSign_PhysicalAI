@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # document/02_설계문서 §4 확정 7종 (04_데이터셋명세서 §1과 동일 순서 유지).
 # 분류기가 실제로 학습하는 클래스 목록이다 — negative는 여기 없다 (안건 2 A).
-SIGN_CLASSES = [
+SIGN_CLASSES = (
     "정지",
     "서행",
     "좌회전_유도",
@@ -41,7 +41,7 @@ SIGN_CLASSES = [
     "확인_완료",
     "후진",
     "주의",
-]
+)
 
 # 미판정(reject) 시 predicted_class에 넣는 라벨. 학습 클래스가 아니라 **출력 전용 값**이다.
 # Macro F1 계산에서도 제외된다 (05_모델카드 §7-1).

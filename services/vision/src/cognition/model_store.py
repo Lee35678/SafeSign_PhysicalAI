@@ -145,6 +145,9 @@ def swapped_bundle(model_path: Optional[Path]) -> Iterator[Optional[dict]]:
     오프라인 비교 도구(evaluate_kpi·analyze_log)가 **운영과 같은 classify.predict 경로**로 다른 모델을
     판정할 때 쓴다. model_path가 None이면 현재 MODEL_PATH를 강제로 다시 읽기만 한다.
     번들을 읽지 못하면 None을 넘긴다.
+
+    **오프라인 전용.** 전역 MODEL_PATH·_bundle을 _lock 밖에서 바꾸므로, vision 서비스 프로세스
+    (_cognition_loop가 도는 중)에서 부르면 그동안의 실제 판정이 비교 모델로 나간다.
     """
     global MODEL_PATH
     original = MODEL_PATH

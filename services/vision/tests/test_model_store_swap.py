@@ -3,6 +3,7 @@
 실행: python -m pytest tests/test_model_store_swap.py -q
 """
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,23 @@ def test_swapped_bundle_restores_even_on_error(tmp_path):
             raise RuntimeError("비교 중 실패")
 
     assert model_store.MODEL_PATH == original
+
+
+def test_swapped_bundle_reloads_original_bundle(tmp_path, monkeypatch):
+    """경로만 되돌리고 캐시를 안 비우면 비교 모델이 _bundle에 남아 이후 판정에 쓰일 수 있다."""
+    original, compare = tmp_path / "orig.joblib", tmp_path / "cmp.joblib"
+    original.touch()
+    compare.touch()
+    fake_joblib = types.SimpleNamespace(load=lambda p: {"model": Path(p).name})
+    monkeypatch.setitem(sys.modules, "joblib", fake_joblib)
+    monkeypatch.setattr(model_store, "MODEL_PATH", original)
+    for name in ("_bundle", "_loaded", "_loaded_mtime"):
+        monkeypatch.setattr(model_store, name, getattr(model_store, name))
+
+    with model_store.swapped_bundle(compare) as bundle:
+        assert bundle["model"] == "cmp.joblib"
+
+    assert model_store._bundle["model"] == "orig.joblib"
 
 
 def test_swapped_bundle_none_keeps_current_path():
