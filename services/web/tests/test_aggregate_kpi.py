@@ -91,18 +91,62 @@ def test_decision_latency_uses_correct_rows_only_by_default():
     rows = [_row("정지", "correct", latency=100), _row("정지", "wrong", predicted="서행", latency=1200)]
     assert agg.latencies(rows, include_wrong=False)["decision"] == [100]
     assert agg.latencies(rows, include_wrong=True)["decision"] == [100, 1200]
-    assert agg.latencies(rows, include_wrong=False)["feedback"] == [40, 40]
+    assert agg.latencies(rows, include_wrong=False)["feedback"] == [40]
+
+
+def test_feedback_uses_correct_rows_only_by_default():
+    """D2(2026-10-01) — 오답 행은 picar를 부르지 않아 micro:bit만 반영되므로 물리 피드백 모수에서 뺀다."""
+    rows = [_row("정지", "correct", feedback=300, done=1500), _row("정지", "wrong", predicted="서행", feedback=30, done=1030)]
+    lat = agg.latencies(rows, include_wrong=False)
+    assert lat["feedback"] == [300] and lat["feedback_done"] == [1500]
+    lat = agg.latencies(rows, include_wrong=False, feedback_include_wrong=True)
+    assert lat["feedback"] == [300, 30]
+
+
+def test_hand_based_upper_adds_decision_latency_and_poll_wait():
+    """D1 — 손 기준 보수적 상한 = 판정 지연 + 폴링 대기(200ms) + 반응 시작."""
+    rows = [_row("정지", "correct", latency=60, feedback=300), _row("서행", "correct", latency="", feedback=300)]
+    assert agg.latencies(rows, include_wrong=False)["feedback_hand"] == [60 + agg.POLL_WAIT_MS + 300]
+
+
+def test_p95_upper_needs_59_samples():
+    """D4 — 0.95^59 < 0.05라 59개부터 P95의 95% 상한(= 최댓값)을 낼 수 있다. 표본이 많으면 최댓값보다 아래로 내려온다."""
+    assert agg.p95_upper(list(range(58))) is None
+    assert agg.p95_upper(list(range(1, 60))) == 59
+    up = agg.p95_upper(list(range(1, 201)))
+    assert agg.p95(list(range(1, 201))) <= up < 200
 
 
 def test_small_sample_marks_provisional_pass():
-    """점추정은 목표를 넘어도 Wilson 하한이 목표보다 낮으면 '잠정 달성'(§5.7)."""
+    """점추정은 목표를 넘어도 Wilson 하한이 목표보다 낮으면 '잠정 달성'(§5.7). 지연도 n<59면 '잠정 달성'(D4)."""
     rows = [_row(s, "correct") for s in agg.SIGNS]
     k = agg.classify_rows(rows)
     lat = agg.latencies(rows, include_wrong=False)
     verdicts = {name: status for name, _, _, status in agg.verdict_rows(k, lat)}
     assert verdicts["정답률"] == "잠정 달성"
     assert verdicts["Macro F1"] == "달성"
+    assert verdicts["판정 지연 (P95)"] == "잠정 달성"
+
+
+def test_latency_pass_with_59_samples_and_fail_over_target():
+    rows = [_row(agg.SIGNS[i % 7], "correct", latency=80, feedback=400) for i in range(59)]
+    verdicts = {name: status for name, _, _, status in agg.verdict_rows(agg.classify_rows(rows),
+                                                                           agg.latencies(rows, include_wrong=False))}
     assert verdicts["판정 지연 (P95)"] == "달성"
+    assert verdicts["물리 피드백 지연 (P95, 반응 시작)"] == "달성"
+    rows += [_row("정지", "correct", latency=1500) for _ in range(10)]   # 69개 중 10개 초과 → P95 초과
+    verdicts = {name: status for name, _, _, status in agg.verdict_rows(agg.classify_rows(rows),
+                                                                           agg.latencies(rows, include_wrong=False))}
+    assert verdicts["판정 지연 (P95)"] == "미달"
+
+
+def test_report_notes_guest_rows_without_subject(tmp_path, capsys):
+    """D5 — LOG_SUBJECT 없이 진행하면 subject는 사원 코드, 게스트 회차는 빈 값 → 보고서에 건수를 적는다."""
+    path = _write(tmp_path / "web_trials_4.csv", WEB_FIELDS,
+                  [_row("정지", "correct", subject="SS-00001"), _row("서행", "correct", subject="")])
+    assert agg.main([str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "대상자 미기재 1행" in out and "손 기준 상한" in out
 
 
 def test_main_writes_report(tmp_path, capsys):

@@ -289,11 +289,23 @@ def summarize(path: Path) -> None:
             print(f"  {name:<10}      프로세스를 찾지 못함")
             continue
         grow = rss[-1] - rss[0]
-        rate = grow / minutes * 60 if minutes >= 5 else None
-        leak = f" · 시간당 {rate:+.0f}MB" if rate is not None else ""
+        # 누수 판단은 후반 절반만 본다 — 첫 회차에서 모듈·연결·캐시가 올라오는 시작 구간 증가는 누수가 아니다
+        # (2026-10-01 15분 기록: web 53→80MB가 처음 2~3분에 오르고 이후 82MB로 평평했는데, 처음→끝으로 계산하면 시간당 +101MB로 보였다).
+        timed = [(_num(r["elapsed_s"]), _num(r.get(f"{name}_rss_mb"))) for r in rows]
+        timed = [(t, v) for t, v in timed if t is not None and v is not None]
+        leak = ""
+        if minutes >= 10 and len(timed) >= 4:
+            half = timed[len(timed) // 2:]
+            span_h = (half[-1][0] - half[0][0]) / 3600
+            if span_h > 0:
+                leak = f" · 후반 절반 {half[-1][1] - half[0][1]:+.1f}MB(시간당 {(half[-1][1] - half[0][1]) / span_h:+.0f}MB)"
+        elif minutes < 10:
+            leak = " · (10분 미만 — 누수 판단 안 함)"
         print(f"  {name:<10} CPU  {_stats(col(f'{name}_cpu_pct'))}  (100 = 코어 1개)")
         print(f"  {'':<10} RSS  {_stats(rss)}  · 처음→끝 {grow:+.1f}MB{leak}")
-    print(f"  판정 fps        {_stats(col('vision_result_fps'))}")
+    fps = col("vision_result_fps")
+    low = f"  · 27 미만 {sum(x < 27 for x in fps) / len(fps) * 100:.1f}% 시간" if fps else ""
+    print(f"  판정 fps        {_stats(fps)}{low}")
     print(f"  캡처 fps        {_stats(col('vision_capture_fps'))}")
     print(f"  영상 시청자     최대 {max(col('preview_viewers') or [0]):g}")
 
