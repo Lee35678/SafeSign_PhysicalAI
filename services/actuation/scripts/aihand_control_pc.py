@@ -48,8 +48,8 @@ async def send_gesture(client, g: int):
 
 async def send_result(client, is_correct: bool):
     # TEST_MODE와 무관하게 항상 지원
-    # "correct"   -> LED 'O' 2초 표시 후 소등, "OK:CORRECT" 회신
-    # "incorrect" -> LED 'X' 2초 표시 후 소등, "OK:INCORRECT" 회신
+    # "correct"   -> "OK:CORRECT" 먼저 회신, LED 'O'를 백그라운드로 1초 표시 후 소등
+    # "incorrect" -> "OK:INCORRECT" 먼저 회신, LED 'X'를 백그라운드로 1초 표시 후 소등
     # 소리(부저)는 쓰지 않는다 — BLE 시작 후 music.* 호출은 패닉 070을 유발한다
     # (aihand_control.ts 최상단 "절대 규칙" 참고)
     msg = "correct\n" if is_correct else "incorrect\n"
