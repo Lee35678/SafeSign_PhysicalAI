@@ -12,6 +12,8 @@ httpx로 호출한다. picar는 actuation이 아니라 **별도 서비스 picar(
 2026-09-29 추가 (이동혁): 회원가입·로그인과 회원별 결과 저장(/api/auth/*, backend/members.py — Supabase),
 카메라 라이브 영상 중계(/api/camera/stream, backend/camera.py — 수신호 예시 사진을 대신한다).
 """
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -61,4 +63,6 @@ def health():
     return {"status": "ok", "service": "web"}
 
 
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+# 작업 폴더가 아니라 이 파일 기준으로 잡는다 — 저장소 루트에서 pytest를 돌려도 같은 폴더를 찾는다.
+app.mount("/", StaticFiles(directory=Path(__file__).resolve().parent.parent / "frontend", html=True),
+          name="frontend")

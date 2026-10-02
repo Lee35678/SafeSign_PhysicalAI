@@ -5,16 +5,23 @@
 
 실행: python -m pytest tests/test_reset.py -q
 """
+import importlib.util
 import sys
 import time
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+_SRC = Path(__file__).resolve().parent.parent / "src"
+sys.path.insert(0, str(_SRC))
 
-import app  # noqa: E402
 from cognition import classify, smoothing  # noqa: E402
+
+# actuation·picar에도 src/app.py가 있다. `import app`은 저장소 루트에서 전체 pytest를 돌릴 때 먼저 올라간
+# 다른 서비스의 sys.modules["app"]을 집는다 — 경로로 적재하고 고유 이름을 준다(actuation 테스트와 같은 방식).
+_spec = importlib.util.spec_from_file_location("vision_app", _SRC / "app.py")
+app = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(app)
 
 
 def _ok(cls="정지"):
