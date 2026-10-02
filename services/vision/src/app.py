@@ -32,6 +32,8 @@ _latest_judgment: dict = {
     "latency_ms": 0,
     "reason": classify.REASON_NO_HAND,
 }
+_reset_gen = 0        # /reset 횟수 — 분류하는 사이 /reset이 왔는지 가린다
+_reset_at_ms = 0      # 마지막 /reset 벽시계 시각 — 그 전에 캡처된 프레임은 누적에 넣지 않는다
 
 
 def _cognition_loop() -> None:
@@ -42,7 +44,6 @@ def _cognition_loop() -> None:
 
     TODO(이동혁): 폴링 대신 capture 콜백에서 큐로 밀어주는 구조로 바꿔 불필요한 재계산 제거.
     """
-    global _latest_judgment
     last_seen_ts = None
     idle_sleep_s = 0.005  # 새 프레임이 없을 때 CPU를 점유하지 않도록 (RPi5는 추론에 CPU를 다 써야 함)
     while True:
@@ -51,9 +52,23 @@ def _cognition_loop() -> None:
             time.sleep(idle_sleep_s)
             continue
         last_seen_ts = frame.get("timestamp")
+        _process_frame(frame)
 
-        result = classify.predict(frame)
 
+def _process_frame(frame: dict) -> None:
+    """한 프레임을 판정해 N프레임 누적에 넣고 `_latest_judgment`를 갱신한다.
+
+    `/reset` 전에 읽었거나 `/reset` 전에 캡처된 프레임은 버린다 — 분류(수십 ms)하는 사이 `/reset`이 오면
+    그 결과가 초기화된 누적에 들어가거나 직전 판정을 되살려, web이 확인 버튼 직후 **확인 전 손모양으로 내린
+    판정**을 받았다(2026-10-02 지연 측정 91회 중 2회, 확인→판정 8·18ms)."""
+    global _latest_judgment
+    gen = _reset_gen
+    result = classify.predict(frame)
+
+    with _judgment_lock:
+        captured_at = frame.get("captured_at_ms")
+        if gen != _reset_gen or (captured_at and captured_at < _reset_at_ms):
+            return
         # 프레임 단위로 τ를 통과한 클래스만 누적, 그 외(미판정)는 누적을 끊는다
         observed = None if result["is_reject"] else result["predicted_class"]
         confirmed = smoothing.push_and_check(observed)
@@ -61,9 +76,7 @@ def _cognition_loop() -> None:
             result["is_reject"] = True
             result["reason"] = "awaiting_consecutive_frames"
         result["consecutive"] = smoothing.streak()
-
-        with _judgment_lock:
-            _latest_judgment = result
+        _latest_judgment = result
 
 
 @app.on_event("startup")
@@ -125,6 +138,14 @@ def snapshot():
 
 @app.post("/reset")
 def reset():
-    """다음 수신호로 넘어갈 때 웹 상태머신이 호출 — N프레임 누적을 초기화한다."""
-    smoothing.reset()
+    """다음 수신호로 넘어갈 때·확인 버튼 때 웹 상태머신이 호출 — N프레임 누적과 **직전 판정**을 함께 초기화한다.
+
+    누적만 비우면 `/latest`가 다음 프레임이 처리될 때까지(약 33ms) 초기화 전 판정을 그대로 돌려줬다."""
+    global _latest_judgment, _reset_gen, _reset_at_ms
+    with _judgment_lock:
+        _reset_gen += 1
+        _reset_at_ms = int(time.time() * 1000)
+        smoothing.reset()
+        _latest_judgment = {**_latest_judgment, "is_reject": True,
+                            "reason": "awaiting_consecutive_frames", "consecutive": 0}
     return {"status": "ok"}
