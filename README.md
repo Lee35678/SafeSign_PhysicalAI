@@ -170,8 +170,7 @@ MakeCode(makecode.microbit.org)에서 **StartbitV2 확장이 들어 있는 기�
 기존 내용을 지운 뒤 [services/actuation/src/firmware/aihand_control.ts](services/actuation/src/firmware/aihand_control.ts)를
 **통째로 붙여 넣어** 플래시한다. 켜면 LED에 ◇가 뜬다.
 
-> ⚠️ 일부만 고쳐 넣지 말 것 — 엄지 서보가 고장이라 손모양 차이가 **눈으로 안 보이는** 경우가 있어,
-> 저장소와 micro:bit가 어긋나도 모를 수 있다(2026-09-25 `gesture5` 사례).
+> ⚠️ 일부만 고쳐 넣지 말 것 — 저장소와 micro:bit가 어긋나도 동작만 보고는 모를 수 있다(2026-09-25 `gesture5` 사례).
 
 ### 4.2 실행 — 매번 (터미널 4개, 이 순서대로)
 

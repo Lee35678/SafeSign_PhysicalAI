@@ -102,10 +102,6 @@ PICAR_COMMANDS = {
 }
 SIGNALS = list(PICAR_COMMANDS)
 
-# 엄지 서보 고장으로 손모양이 겹치는 쌍(11_하드웨어설계서 §4.7) — 실패로 오해하지 않게 안내만 한다.
-KNOWN_COLLISIONS = {"좌회전_유도": "후진", "후진": "좌회전_유도",
-                    "우회전_유도": "주의", "주의": "우회전_유도"}
-
 
 def _log(msg: str) -> None:
     print(f"[{datetime.now():%H:%M:%S.%f}"[:-3] + f"] {msg}", flush=True)
@@ -264,8 +260,7 @@ def _menu() -> str:
     lines = ["", "── 수신호 선택 ──"]
     for i, s in enumerate(SIGNALS, start=1):
         m = PICAR_COMMANDS[s]["motor"]
-        note = f"  (손모양이 {KNOWN_COLLISIONS[s]}와 겹침)" if s in KNOWN_COLLISIONS else ""
-        lines.append(f"  {i}. {s:<7} → picar {m['action']} {m['speed']}%{note}")
+        lines.append(f"  {i}. {s:<7} → picar {m['action']} {m['speed']}%")
     lines.append("  q. 종료")
     return "\n".join(lines)
 

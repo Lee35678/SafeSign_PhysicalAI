@@ -33,8 +33,8 @@
 
 ## 화면이 없으므로
 
-- 학습자에게 지금 수신호 이름을 알려줄 수단은 **콘솔 + AI Hand**뿐이다. 엄지 서보 고장으로 손모양이
-  겹치는 쌍(좌회전_유도≈후진, 우회전_유도≈주의)이 있으니 콘솔을 학습자에게 보이게 두거나 진행자가 읽어준다.
+- 학습자에게 지금 수신호 이름을 알려줄 수단은 **콘솔 + AI Hand**뿐이다. 콘솔을 학습자에게 보이게 두거나
+  진행자가 읽어준다.
 - 진행자는 콘솔로 조작한다: `Enter` 다음 수신호 시작 · `s`+Enter 현재 수신호 건너뛰기 · `q`+Enter 종료.
 - 끝나면 요약 표를 출력하고, 시도별 기록을 CSV(`--log`)로 남긴다(지연 KPI 분석용).
 
@@ -86,9 +86,8 @@ FOV_CHECK_S = 2.0       # 화각 점검 관찰 시간
 
 NEGATIVE_CLASS = "negative"  # services/vision/src/cognition/classify.py와 동일
 
-# 학습자에게 보여줄 손모양 — PRD §3.2 확정 스펙(학습 데이터 기준). AI Hand 실물과 다를 수 있다:
-# 엄지 서보 고장(교체 안 함). 확인_완료는 2026-09-25 펌웨어 gesture5를 주먹으로 맞췄다(저장소·플래시 모두)
-# (엄지가 고장이라 실물 동작은 옛 코드와 같다 — 플래시 여부는 MakeCode 소스로만 확인 가능).
+# 학습자에게 보여줄 손모양 — PRD §3.2 확정 스펙(학습 데이터 기준).
+# 확인_완료는 2026-09-25 펌웨어 gesture5를 주먹으로 맞췄다(저장소·플래시 모두).
 HAND_SHAPES = {
     "정지": "다섯 손가락 펴기",
     "서행": "검지 + 중지 펴기",
@@ -359,8 +358,6 @@ def _listen(vision: str, target: str, timeout_s: float, op: Operator,
 def _banner(idx: int, total: int, sig: str) -> None:
     line = "═" * 56
     print(f"\n{line}\n  [{idx}/{total}]  {sig}   —   {HAND_SHAPES[sig]}")
-    if sig in base.KNOWN_COLLISIONS:
-        print(f"  ⚠️  AI Hand 손모양이 '{base.KNOWN_COLLISIONS[sig]}'와 비슷합니다 — 위 설명대로 하세요")
     print(line, flush=True)
 
 

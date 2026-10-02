@@ -56,8 +56,6 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
 - [x] ~~AI Hand GPIO 핀 배정 및 연결 방식~~ → RPi5가 서보를 직접 구동하지 않음. micro:bit 펌웨어가
   서보를 직접 제어하고 RPi5는 BLE로 `G{n}` 제스처만 지시
 - [x] ~~서보 각도 초기값(170/10/90)의 실물 캘리브레이션~~ → 손가락별 안전 가동범위 실측 완료(아래 표).
-  엄지 서보는 **교체하지 않기로 확정**했지만, **엄지 동작은 설계·시현에 그대로 유지**한다(2026-09-21)
-  — 펌웨어의 엄지 각도는 손대지 않고 물리적으로만 움직이지 않는 상태로 진행
 - [x] ~~micro:bit 실제 시리얼 코드로 프로토콜 동작 검증~~ → bluetooth 방식으로 전환 완료
 - [ ] ⏸ `docker-compose.hw.yml`로 RPi5 실물 환경에서 컨테이너 BLE(BlueZ/D-Bus) 접근 검증 — **보류(시연 뒤)**.
   2026-09-28 운영은 네이티브로 결정해 시연 전에는 검증하지 않는다. 구성(D-Bus 소켓 마운트)은 남겨 둠
@@ -66,8 +64,8 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
   항상 처리). **소리는 쓰지 않는다**(부저 코드 삭제, 2026-09-22) — 아래 "절대 규칙" 참고
 - [x] ~~실물 micro:bit로 `MOCK_HARDWARE=false` BLE 검증~~ → 2026-09-21 완료. 스캔·UUID 대조·
   `/health`(`microbit_connected: true`)·`/command` 7종·`/result`(LED O/X)·`/progress`(`OKP37`/`OKP17`
-  회신)까지 전부 확인. 손모양 육안 대조도 완료 — 엄지 미동작으로 `G3`↔`G6`, `G4`↔`G7`이 실제로
-  구별되지 않음을 확인했다(아래 "현재 제약" 참고). 남은 것은 RPi5 컨테이너 BLE 접근 검증뿐(보류, 위 항목)
+  회신)까지 전부 확인. 손모양 육안 대조도 완료.
+  남은 것은 RPi5 컨테이너 BLE 접근 검증뿐(보류, 위 항목)
 - [x] ~~`ble_bridge.py`/`app.py`의 `/result`를 펌웨어의 `correct`/`incorrect` 명령과 연동~~ →
   `ble_bridge.send_result()` 추가, `/result`가 `is_correct` 값을 그대로 BLE로 전송(2026-09-21)
 - [x] ~~PROGRESS 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"P<current><total>"`(둘 다 한 자리
@@ -77,11 +75,6 @@ picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
 - [x] ~~`shared/schemas/microbit_protocol.md`를 BLE 프로토콜 기준으로 갱신~~ → `document/03_인터페이스계약서.md` §5-3과 함께 갱신 완료(2026-09-21)
 - [x] ~~`document/10_PRD.md` §3.2 표의 우회전_유도(G4) 설명을 "엄지+소지"로 정정~~ → 정정 완료.
   PRD 표가 펌웨어와 일치함(2026-09-21 확인)
-- [x] ~~엄지 제외 확정에 따른 제스처 구별성 재검토(4손가락 재설계)~~ → **재설계하지 않기로 확정**
-  (2026-09-21). `G1`~`G7`은 엄지값만 다르고 나머지 4손가락 조합이 같은 쌍이 있어(`G3`(좌회전_유도)↔
-  `G6`(후진), `G4`(우회전_유도)↔`G7`(주의)) 엄지가 멈춰 있으면 AI Hand 상에서 구별되지 않지만,
-  손모양을 바꾸면 PRD §3.2·vision 학습 클래스·공개 데이터까지 연쇄 수정이 필요해 비용이 더 크다.
-  **시현상의 제약으로 감수**하고 펌웨어 제스처 정의는 현행 유지 — 필요하면 web 화면 안내로 보완한다
 
 # AiHand + micro:bit BLE 연동 코드
 
@@ -200,15 +193,6 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 
 **이동 방식**: 손가락 간 텀 150ms 순차 출발 — 인접 2개 50ms 겹침 (초기화 시 주먹 자세 포함) — 두 모드 공통. 제스처 1회 실측 약 0.80초.
 
-**현재 제약**: 엄지 서보 하드웨어 고장 — **교체하지 않기로 확정**(2026-09-21). 다만 **엄지 동작은
-설계·시현에 그대로 유지**하므로 펌웨어의 `G1`~`G7` 엄지 각도는 변경하지 않는다.
-
-**2026-09-21 실물 육안 대조 결과**: 엄지가 움직이지 않아 `G3`(좌회전_유도)↔`G6`(후진),
-`G4`(우회전_유도)↔`G7`(주의)이 **실제로 구별되지 않음을 확인**했다. 즉 AI Hand 시범 단계에서 7종 중
-4종이 2쌍으로 겹친다. 제스처 재설계는 하지 않기로 확정했으므로(위 "아직 확정 안 된 것"),
-시현에서는 web 화면이 표시하는 목표 수신호 이름(`GET /api/state`의 `target_signal`)으로 학습자가
-구분하고 AI Hand는 보조 시범 역할을 한다. 인식·판정 경로는 로봇손과 무관하므로 KPI에는 영향이 없다.
-
 **PC 쪽 (`tests/aihand_control_pc.py`)**: micro:bit 쪽과 동일하게 최상단 `TEST_MODE` 한 줄로 운영
 (숫자 입력 → `G1`~`G7`, `loop` 내구성 테스트, `progress <current> <total>`)/테스트(`idx`/`g`/`hand`
 명령 → `IDX:`/`G:`/`HAND:`) 모드를 전환합니다. micro:bit 펌웨어의 `TEST_MODE` 값과 반드시 맞춰서
@@ -224,8 +208,6 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 **언제 쓰나**:
 - 특정 서보가 무반응/이상 동작할 때 하드웨어(보드 채널) 문제인지 서보 자체 문제인지 구분할 때
 - **서보 스왑 테스트** 절차: 의심되는 채널에 정상 작동 중인 다른 서보를 연결해 반응을 확인 (반전 방향으로 움직이면 채널은 정상, 서보 쪽이 원인)
-
-**진단 이력 참고**: 엄지 채널(1번)은 이 도구로 스왑 테스트를 완료해 보드는 정상, 엄지 서보 자체의 하드웨어 고장으로 최종 확정되었습니다.
 
 ---
 
@@ -249,15 +231,13 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
 
 ## 다음 단계
 
-1. ~~엄지 서보(Hiwonder LFD-01) 교체 → 엄지 min/max 재검증~~ → **교체하지 않기로 확정**(2026-09-21).
-   엄지 각도 상수는 현행 유지하고 엄지 동작은 설계·시현에 그대로 둔다
-2. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
+1. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
    검증 (`tests/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
-3. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
+2. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
    연동~~ → `state_machine.py`에 구현 완료(2026-09-21, `services/web/README.md` 참고)
-4. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
+3. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
    완료(2026-09-21, LED 표시 없이 수신 확인만)
-5. ~~BTN(버튼 입력) 프로토콜 필요 여부 검토~~ → 버튼 A를 web 확인 버튼 대용으로 쓰기로 하고 펌웨어·
+4. ~~BTN(버튼 입력) 프로토콜 필요 여부 검토~~ → 버튼 A를 web 확인 버튼 대용으로 쓰기로 하고 펌웨어·
    `ble_bridge`·`GET /button` 구현(2026-09-28, mock 테스트만), 03 §5-3·`shared/schemas/microbit_protocol.md` 반영 완료.
    남은 것: 펌웨어 재플래시 후 실물 확인, web 폴링(이동혁)
 

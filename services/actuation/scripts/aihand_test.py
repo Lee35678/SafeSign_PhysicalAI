@@ -70,15 +70,6 @@ _NEUTRAL_ANGLES = {"thumb": 90, "index": 90, "middle": 90,
 # (라벨, 엔드포인트, 페이로드, 관찰 안내)
 GESTURES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
 
-# 엄지 서보 고장으로 **구별되지 않는 것이 이미 확정된 쌍**이다(11_하드웨어설계서 §4.7).
-# 이를 "실패"로 적으면 나중에 읽는 사람이 새 버그로 오해하므로 프롬프트에서 미리 알린다.
-KNOWN_COLLISIONS = {
-    "좌회전_유도": "후진",   # G3 ↔ G6
-    "후진": "좌회전_유도",
-    "우회전_유도": "주의",   # G4 ↔ G7
-    "주의": "우회전_유도",
-}
-
 VERDICTS = {"1": "정상", "2": "기지 제약(감수)", "3": "🔴 실패"}
 
 # HTTP 응답이 이보다 느리면 `ok`여도 실패로 본다 (2026-09-23 RPi5 실측 기준).
@@ -121,8 +112,6 @@ def _steps(args) -> list[tuple[str, str, dict, str]]:
     out: list[tuple[str, str, dict, str]] = []
     for i, sig in enumerate(GESTURES, start=1):
         hint = f"G{i} — 손모양이 `{sig}`에 맞는지"
-        if sig in KNOWN_COLLISIONS:
-            hint += f"  ⚠️ `{KNOWN_COLLISIONS[sig]}`와 구별 불가(엄지 고장, 기지 제약)"
         out.append((f"G{i} {sig}", "/command",
                     {"command": "demo", "target_signal": sig, "servo_angles": _NEUTRAL_ANGLES},
                     hint))
