@@ -95,7 +95,8 @@ function handSvg(name, fingers, label) {
     const tip = i > 0 && i % 4 === 0 && fingers[i / 4 - 1];
     return `<circle class="${tip ? "tip" : up ? "up" : ""}" cx="${x}" cy="${y}" r="${tip ? 3.4 : up ? 2 : 1.5}"/>`;
   }).join("");
-  return `<svg class="hand" viewBox="-8 -8 116 116" role="img" aria-label="${esc(label)}">${bones}${joints}</svg>`;
+  const a11y = label ? `role="img" aria-label="${esc(label)}"` : `aria-hidden="true" focusable="false"`;
+  return `<svg class="hand" viewBox="-8 -8 116 116" ${a11y}>${bones}${joints}</svg>`;
 }
 
 const SIGNAL_GROUPS = [
@@ -104,10 +105,12 @@ const SIGNAL_GROUPS = [
 ];
 
 function renderHome() {
+  // 7종 목록: 번호 + 실측 손 관절 + 이름 + 손가락 패턴. 누르면 7종 영상이 그 신호로 이동한다
   const strip = $("hand-strip");
   if (strip) {
-    strip.innerHTML = SIGNALS.map((s) => `
-      <li>${handSvg(s.name, s.fingers, `${s.name} 손 관절 21점`)}<span>${esc(s.name)}</span></li>`).join("");
+    strip.innerHTML = SIGNALS.map((s, i) => `
+      <li><button class="hi" type="button" data-reel="${i}" aria-label="${esc(s.name)} 손모양 보기">
+        <span class="hi-no">${String(i + 1).padStart(2, "0")}</span>${handSvg(s.name, s.fingers, "")}<span class="hi-name">${esc(s.name)}</span>${fingerIcon(s.fingers)}</button></li>`).join("");
   }
 
   // 교육 과정: 크레인 표준 5종 / 자체 지정 2종 두 묶음 (번호 = 실제 교육 순서)
@@ -443,9 +446,75 @@ $("cert-download").addEventListener("click", () => {
 });
 $("cert-print").addEventListener("click", () => window.print());
 
+// ── 표시 전용: 홈 영상 2개(Hyperframes로 렌더링한 MP4)와 스크롤 등장 ──
+// 움직임 줄이기 설정이면 자동 재생하지 않고 포스터(정지 화면)를 보인다. 화면 밖이거나 다른 화면이면 멈춘다
+const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+const REEL_STEP = 2;   // signal-reel.mp4에서 신호 하나가 차지하는 시간(초). 순서는 SIGNALS와 같다
+
+function setupVideo(video) {
+  const btn = document.querySelector(`.vid-toggle[data-video="${video.id}"]`);
+  let held = REDUCED_MOTION;   // 사용자가 멈춘 상태
+  let visible = false;
+  const sync = () => {
+    if (!btn) return;
+    btn.classList.toggle("is-paused", video.paused);
+    btn.setAttribute("aria-label", video.paused ? "영상 재생" : "영상 일시정지");
+    const lab = btn.querySelector(".vt-label");
+    if (lab) lab.textContent = video.paused ? "재생" : "일시정지";
+  };
+  const play = () => { const p = video.play(); if (p && p.catch) p.catch(sync); };
+  video.addEventListener("play", sync);
+  video.addEventListener("pause", sync);
+  if (btn) btn.addEventListener("click", () => {
+    if (video.paused) { held = false; play(); } else { held = true; video.pause(); }
+  });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible && !held) play(); else if (!visible) video.pause();
+    }, { threshold: 0.2 }).observe(video);
+  } else if (!held) play();
+  sync();
+}
+
+function setupReelIndex(video) {
+  const buttons = Array.from(document.querySelectorAll(".hi[data-reel]"));
+  if (!buttons.length) return;
+  let current = -1;
+  const mark = () => {
+    const k = ((Math.floor(video.currentTime / REEL_STEP) % SIGNALS.length) + SIGNALS.length) % SIGNALS.length;
+    if (k === current) return;
+    current = k;
+    buttons.forEach((b, i) => { if (i === k) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); });
+  };
+  if ("requestVideoFrameCallback" in video) {
+    const onFrame = () => { mark(); video.requestVideoFrameCallback(onFrame); };
+    video.requestVideoFrameCallback(onFrame);
+  }
+  video.addEventListener("timeupdate", mark);
+  video.addEventListener("seeked", mark);
+  buttons.forEach((b) => b.addEventListener("click", () => {
+    video.currentTime = Number(b.dataset.reel) * REEL_STEP + 0.9;   // 모핑이 끝나고 손모양이 멈춘 지점
+    mark();
+  }));
+  mark();
+}
+
+function setupReveal() {
+  if (REDUCED_MOTION || !("IntersectionObserver" in window)) return;
+  document.documentElement.classList.add("reveal-on");
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }), { rootMargin: "0px 0px -6% 0px" });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+}
+
 // ── 시작 ──
 (async () => {
   renderHome();
+  document.querySelectorAll("#hero-video, #reel-video").forEach(setupVideo);
+  if ($("reel-video")) setupReelIndex($("reel-video"));
+  setupReveal();
   try { await refreshSession(); } catch (err) { /* 서버가 없으면 로그인 전 화면으로 */ }
   route();
 })();

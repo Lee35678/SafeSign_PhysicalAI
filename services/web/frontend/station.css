@@ -12,6 +12,16 @@
   font-weight: 100 900; font-style: normal; font-display: swap;
 }
 @font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/JetBrainsMono-500.woff2") format("woff2");
+  font-weight: 400 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/JetBrainsMono-700.woff2") format("woff2");
+  font-weight: 600 800; font-style: normal; font-display: swap;
+}
+@font-face {
   font-family: "Inter Variable";
   src: url("fonts/inter-latin-wght-normal.woff2") format("woff2-variations"), url("fonts/inter-latin-wght-normal.woff2") format("woff2");
   font-weight: 100 900; font-style: normal; font-display: swap;
@@ -20,22 +30,23 @@
 
 :root {
   color-scheme: dark;
+  /* 팔레트: UI UX Pro Max "Industrial grey + safety orange"(slate 회색 + 안전 주황)를 다크 바탕에 맞춘 값. 회사 사이트(portal)와 같다 */
   /* 바탕 */
   --bg: #0D1217;
   --panel: #121820;
   --raised: #18202A;
-  --line: rgba(244, 246, 248, 0.08);
-  --line-2: rgba(244, 246, 248, 0.16);
-  --field-line: #647079;      /* 입력칸 테두리: 바탕 #0D1217 대비 3.71:1, 카드 #121820 대비 3.51:1 (WCAG 1.4.11) */
+  --line: rgba(148, 163, 184, 0.13);
+  --line-2: rgba(148, 163, 184, 0.24);
+  --field-line: #64748B;      /* 입력칸 테두리: 바탕 #0D1217 대비 3.95:1, 카드 #121820 대비 3.75:1 (WCAG 1.4.11) */
   /* 글자 */
-  --text: #F4F6F8;
-  --text-2: #A3ADB8;
-  --steel: #687582;            /* 작은 글자에는 쓰지 않는다(대비) */
-  --bone: #4A5562;             /* 접은 손가락 뼈대 */
+  --text: #F1F5F9;
+  --text-2: #94A3B8;
+  --steel: #64748B;            /* 작은 글자에는 쓰지 않는다(대비) */
+  --bone: #475569;             /* 접은 손가락 뼈대 */
   /* 강조·상태 */
-  --orange: #F28C28;
-  --orange-hover: #F59B45;
-  --on-orange: #111820;
+  --orange: #F97316;
+  --orange-hover: #FB923C;
+  --on-orange: #0F172A;
   --green: #22C55E;
   --on-green: #06140B;
   --red: #EF4444;
@@ -45,8 +56,8 @@
   --strip-h: 3.4rem;
   --strip-right-w: max(38rem, 440px);   /* 작은 화면은 글자가 13px 하한에 걸려 rem보다 넓어진다 */
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  /* 글꼴: Inter = 라틴·숫자, SUIT = 한글 */
-  --font: "Inter Variable", "SUIT Variable", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+  /* 글꼴: SUIT = 본문(한글·라틴), JetBrains Mono = 번호·코드·시각 */
+  --font: "SUIT Variable", "Inter Variable", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
   --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
 }
 
@@ -91,7 +102,7 @@ ol, ul { padding: 0; list-style: none; }
   content: "";
   position: absolute; left: -20vmax; top: -35vmax;
   width: 75vmax; height: 75vmax;
-  background: radial-gradient(closest-side, rgba(242, 140, 40, 0.045), rgba(242, 140, 40, 0));
+  background: radial-gradient(closest-side, rgba(249, 115, 22, 0.045), rgba(249, 115, 22, 0));
   animation: amb-drift 48s ease-in-out infinite alternate;
 }
 @keyframes amb-drift { to { transform: translate3d(60vw, 40vh, 0); } }
@@ -151,7 +162,7 @@ input {
   background: var(--bg); border: 1px solid var(--field-line); border-radius: var(--r);
   transition: border-color 160ms var(--ease);
 }
-input::placeholder { color: #8A96A3; }
+input::placeholder { color: #7F8EA3; }
 input:hover:not(:focus) { border-color: var(--text-2); }
 input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange); }
 
@@ -163,6 +174,20 @@ input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px 
 .hand-svg .b-up { stroke: var(--orange); }
 .hand-svg .j { fill: var(--text-2); }
 .hand-svg .j-wrist { fill: var(--text); }
+.hand-svg line { transition: stroke 260ms var(--ease); }
+
+/* 첫 화면 손 관절: 화면에 들어올 때 손목 → 손가락 끝 순서로 그려지고(한 번), 이후 한 신호씩 차례로 밝아진다 */
+.hand-strip.draw .hand-svg line { stroke-dasharray: 1 2; stroke-dashoffset: 1; animation: bone-draw 520ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 28ms + var(--h, 0) * 70ms); }
+.hand-strip.draw .hand-svg circle { transform-box: fill-box; transform-origin: center; transform: scale(0); animation: joint-in 360ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 28ms + var(--h, 0) * 70ms + 120ms); }
+@keyframes bone-draw { to { stroke-dashoffset: 0; } }
+@keyframes joint-in { to { transform: none; } }
+.hand-strip .hand-fig { transition: opacity 420ms var(--ease); }
+.hand-strip.cycling .hand-fig { opacity: 0.68; }
+.hand-strip.cycling li.cur .hand-fig { opacity: 1; }
+.hand-group li { position: relative; }
+.hand-group li::after { content: ""; position: absolute; left: 0.9rem; right: 0.9rem; bottom: -1px; height: 2px; background: var(--orange); transform: scaleX(0); transform-origin: left center; transition: transform 420ms var(--ease); }
+.hand-group li:first-child::after { left: 0; }
+.hand-strip.cycling li.cur::after { transform: none; }
 .hand-caption { font-size: max(13px, 0.85rem); color: var(--text-2); line-height: 1.45; }
 
 /* ---------- 손가락 글리프 (main.js fingerPattern) ---------- */
@@ -439,13 +464,13 @@ input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px 
   background: var(--line-2); border-radius: var(--r);
 }
 .camera-view { position: absolute; inset: 1px; z-index: 1; overflow: hidden; background: #0A0E12; }
-.phase-judging .camera-preview { background: #2A333D; }
+.phase-judging .camera-preview { background: #1E293B; }
 .phase-judging .camera-view { inset: 3px; }
 /* 판정 중 테두리: 강철 회색 바탕 위 느린 주황 회전 호 1개 (사용자 요청 상태 표시, 7s) */
 .phase-judging .camera-preview::before {
   content: ""; position: absolute; left: 50%; top: 50%; z-index: 0;
   width: 125%; aspect-ratio: 1; margin: -62.5% 0 0 -62.5%;
-  background: conic-gradient(from 0deg, rgba(242, 140, 40, 0) 0 72%, var(--orange) 97%, rgba(242, 140, 40, 0) 100%);
+  background: conic-gradient(from 0deg, rgba(249, 115, 22, 0) 0 72%, var(--orange) 97%, rgba(249, 115, 22, 0) 100%);
   animation: cam-arc 7s linear infinite;
 }
 @keyframes cam-arc { to { transform: rotate(360deg); } }
@@ -462,7 +487,7 @@ input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px 
   background: rgba(13, 18, 23, 0.72); border: 1px solid var(--line-2); border-radius: var(--r);
 }
 .camera-preview.offline .camera-tag { display: none; }
-.vf-corner { position: absolute; z-index: 2; width: 2.2rem; height: 2.2rem; border: 0 solid rgba(244, 246, 248, 0.55); }
+.vf-corner { position: absolute; z-index: 2; width: 2.2rem; height: 2.2rem; border: 0 solid rgba(148, 163, 184, 0.7); }
 .vf-corner.tl { top: 0.9rem; left: 0.9rem; border-top-width: 2px; border-left-width: 2px; }
 .vf-corner.tr { top: 0.9rem; right: 0.9rem; border-top-width: 2px; border-right-width: 2px; }
 .vf-corner.bl { bottom: 0.9rem; left: 0.9rem; border-bottom-width: 2px; border-left-width: 2px; }
@@ -520,7 +545,7 @@ input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px 
 .phase-demo .hold-slot { display: none; }
 .hold-hint {
   display: flex; gap: 0.8rem; align-items: flex-start; padding: 0.7rem 0.9rem;
-  background: rgba(242, 140, 40, 0.1); border-left: 3px solid var(--orange);
+  background: rgba(249, 115, 22, 0.1); border-left: 3px solid var(--orange);
   animation: hint-in 180ms var(--ease);
 }
 @keyframes hint-in { from { opacity: 0; transform: translateY(0.3rem); } to { opacity: 1; transform: none; } }
@@ -636,6 +661,7 @@ body:has(#screen-certificate.active) #logout-btn { display: none; }   /* 수료�
 /* ---------- 움직임 줄이기: 장식은 멈춘다. 판정 중 카메라 테두리(상태 표시)와 남은 시간 띠(기능 표시)만 유지 ---------- */
 @media (prefers-reduced-motion: reduce) {
   .ambient::before, .screen.active, .overlay, .hold-hint { animation: none; }
+  .hand-strip.draw .hand-svg line, .hand-strip.draw .hand-svg circle { animation: none; stroke-dashoffset: 0; transform: none; }
   button, input, .progress-steps i { transition: none; }
 }
 

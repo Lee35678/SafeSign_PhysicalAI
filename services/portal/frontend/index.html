@@ -11,7 +11,7 @@
   <meta property="og:description" content="로봇 손이 시범을 보이고, 카메라가 판정하고, picar가 움직여 결과를 알려 주는 수신호 교육 키트" />
   <meta property="og:type" content="website" />
   <!-- 회사 사이트(services/portal): 교육장 키트 화면(services/web)과 같은 회원 DB. 카메라 영상은 받지 않는다 -->
-  <link rel="stylesheet" href="portal.css?v=20261002-r5" />
+  <link rel="stylesheet" href="portal.css?v=20261002-r6" />
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
@@ -59,33 +59,49 @@
           </div>
           <figure class="shot shot-hero">
             <div class="shot-frame">
-              <img class="shot-img" src="img/station-judging.png" width="1600" height="900"
-                   alt="교육장 키트 판정 화면 캡처: 왼쪽 카메라 영역에 손 관절 21점, 오른쪽 계기 열에 목표 수신호 좌회전 유도와 일치율 93%, 판정 기준 75%" />
-              <span class="shot-empty" aria-hidden="true"><svg class="ic" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M251.77,73a8,8,0,0,0-8.21.39L208,97.05V72a16,16,0,0,0-16-16H32A16,16,0,0,0,16,72V184a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V159l35.56,23.71A8,8,0,0,0,248,184a8,8,0,0,0,8-8V80A8,8,0,0,0,251.77,73ZM192,184H32V72H192V184Zm48-22.95-32-21.33V116.28L240,95Z"/></svg>교육장 키트 판정 화면</span>
+              <!-- Hyperframes로 렌더링한 판정 화면 재현(12초 반복). 원본 컴포지션: services/portal/motion/hero -->
+              <video id="hero-video" class="shot-img" muted loop playsinline preload="metadata" width="1600" height="900"
+                     poster="media/station-judging-poster.jpg"
+                     aria-label="교육장 키트 판정 화면 재현: 서행, 좌회전 유도, 우회전 유도 순서로 손 관절 21점이 바뀌고, 일치율이 판정 기준 75%를 넘어 3프레임 연속이면 정답으로 확정됩니다">
+                <source src="media/station-judging.mp4" type="video/mp4" />
+              </video>
             </div>
-            <figcaption>교육장 키트 판정 화면 캡처. 카메라 영역은 실측 손 관절 데이터로 재현했습니다.</figcaption>
+            <figcaption><span>교육장 키트 판정 화면 재현. 손 관절은 실측 데이터이고, 일치율이 기준 75%를 넘어 3프레임 연속이면 정답으로 확정합니다.</span><button class="vid-toggle" type="button" data-video="hero-video" aria-label="영상 일시정지"><svg class="ic ic-pause" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg><svg class="ic ic-play" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg><span class="vt-label">일시정지</span></button></figcaption>
           </figure>
         </div>
       </section>
 
       <section class="hands" aria-labelledby="hands-title">
-        <div class="wrap">
-          <h2 id="hands-title" class="hands-title">수신호 7종을 손 관절 21점으로 읽습니다</h2>
-          <ol id="hand-strip" class="hand-strip"></ol>
-          <p class="caption">KPI 촬영 데이터(RPi5 Camera Module 3)에서 추출한 손 관절 21점</p>
+        <div class="wrap hands-grid">
+          <div class="hands-copy reveal">
+            <h2 id="hands-title" class="hands-title">수신호 7종을 손 관절 21점으로 읽습니다</h2>
+            <p class="hands-lead">손목부터 다섯 손가락 끝까지 21점의 위치에서 특징 23개를 계산해 7종 중 하나로 판정합니다. 목록에서 신호를 고르면 영상이 그 손모양으로 이동합니다.</p>
+          </div>
+          <ol id="hand-strip" class="hand-index reveal"></ol>
+          <figure class="reel reveal">
+            <div class="reel-frame">
+              <!-- Hyperframes로 렌더링한 7종 손 관절 모핑(14초 반복, 신호마다 2초). 원본 컴포지션: services/portal/motion/reel -->
+              <video id="reel-video" muted loop playsinline preload="metadata" width="1200" height="900"
+                     poster="media/signal-reel-poster.jpg"
+                     aria-label="수신호 7종의 손 관절 21점이 정지, 서행, 좌회전 유도, 우회전 유도, 확인 완료, 후진, 주의 순서로 바뀌는 영상">
+                <source src="media/signal-reel.mp4" type="video/mp4" />
+              </video>
+            </div>
+            <figcaption class="caption"><span>KPI 촬영 데이터(RPi5 Camera Module 3)에서 추출한 손 관절 21점</span><button class="vid-toggle" type="button" data-video="reel-video" aria-label="영상 일시정지"><svg class="ic ic-pause" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg><svg class="ic ic-play" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg><span class="vt-label">일시정지</span></button></figcaption>
+          </figure>
         </div>
       </section>
 
       <section id="product" class="section product">
         <div class="wrap">
-          <header class="section-head">
+          <header class="section-head reveal">
             <h2>보고, 따라 하고, 판정받는 교육 키트</h2>
             <p>로봇 손이 먼저 보여 주고 학습자가 자기 손으로 해 봅니다. 틀리면 다시 시범하고, 맞히면 picar가 그 신호대로 움직입니다.</p>
           </header>
 
           <div class="product-grid">
             <div class="product-main">
-              <div class="sys" role="group" aria-labelledby="sys-title">
+              <div class="sys reveal" role="group" aria-labelledby="sys-title">
                 <p id="sys-title" class="sys-title">SafeSign 시스템 구성</p>
                 <div class="sys-top">
                   <div class="node"><svg class="ic" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><b>학습자 손</b><small>수신호 수행</small></div>
@@ -103,7 +119,7 @@
                 <p class="sys-foot">판정 경로: 손 관절 21점 → 특징 23개 → SVM 분류</p>
               </div>
 
-              <ol class="flow">
+              <ol class="flow reveal">
                 <li><b>시범</b><p>AI Hand가 수신호 손모양을 만들어 보여 줍니다.</p></li>
                 <li><b>따라 하기</b><p>학습자가 카메라 앞에서 같은 손모양을 만들고 확인 버튼을 누릅니다.</p></li>
                 <li><b>판정</b><p>손 관절 21점을 읽어 7종 중 어느 신호인지 판정합니다.</p></li>
@@ -111,7 +127,7 @@
               </ol>
             </div>
 
-            <dl class="specs" aria-label="장치 사양">
+            <dl class="specs reveal" aria-label="장치 사양">
               <div class="spec">
                 <dt>AI Hand</dt>
                 <dd>서보로 다섯 손가락을 움직입니다. 오답이면 같은 손모양으로 다시 시범합니다.</dd>
@@ -135,7 +151,7 @@
 
       <section id="curriculum" class="section curriculum">
         <div class="wrap">
-          <header class="section-head">
+          <header class="section-head reveal">
             <h2>수신호 7종</h2>
             <p>산업·건설 현장에서 공통으로 쓰는 크레인 작업표준신호 5종에 후진과 주의를 더했습니다.</p>
           </header>
@@ -159,7 +175,7 @@
 
       <section id="results" class="section results">
         <div class="wrap">
-          <header class="section-head">
+          <header class="section-head reveal">
             <p class="eyebrow">검증 결과</p>
             <h2>틀린 답을 <span class="nw">자신 있게</span> 주지 않습니다</h2>
             <p>210번의 시도에서 다른 신호로 잘못 판정한 경우는 한 번도 없었습니다. 판정할 수 없는 손모양은 오답 대신 "다시 해 주세요"로 보류합니다.</p>
@@ -391,8 +407,8 @@
     </div>
   </footer>
 
-  <script src="hand-data.js?v=20261002-r5"></script>
-  <script src="cert.js?v=20261002-r5"></script>
-  <script src="portal.js?v=20261002-r5"></script>
+  <script src="hand-data.js?v=20261002-r6"></script>
+  <script src="cert.js?v=20261002-r6"></script>
+  <script src="portal.js?v=20261002-r6"></script>
 </body>
 </html>

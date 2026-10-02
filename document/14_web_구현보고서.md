@@ -351,6 +351,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | --- | --- | --- |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
 | v1.15 | 2026-09-30 | **`feature/web` → `feature/picar` 병합** — 조은수 09-29 작업(`feature/web`에서 v1.13으로 적었던 것; 이동혁 v1.13·v1.14와 번호가 겹쳐 재번호): (조은수) §9 결정 2건 — 성공률 → "첫 시도 정답", SC-04 15회 → 25회(D5, 이동혁 확인 대기). §8 ②-b 집계 스크립트(`aggregate_kpi.py`) 작성, ⑧ 화면 캡처 11장·부록 A. 조은수가 따로 만든 ①-b(`feature/web` `d03a2dc`)는 `dev`의 송승호 대행본(`edb5da9`)으로 대체 |
+| v1.16 | 2026-10-02 | **(이동혁) §11 모션·팔레트 행 추가** — UI UX Pro Max 팔레트(slate + `#F97316`), JetBrains Mono, 손 관절 모핑·등장·강조 순환(표시 전용), 수료증 밝은 변형 |
 | v1.15 | 2026-10-02 | **(이동혁) §11 리뉴얼 행 추가** — Taste Skill 진단 기반 전면 재배치, `station.css` 하나로 정리, 실측 손 관절·Phosphor 아이콘, 기능 계약·DB 무수정 |
 | v1.14 | 2026-09-30 | **(이동혁) §11 추가 행** — 제어실(HMI) 정리, 노트북 화면 맞춤, 수료증 재디자인, 회사 사이트 연결(`members.py` 조회 메서드·`.env` 로드). 남은 것 갱신 |
 | v1.13 | 2026-09-30 | **(이동혁) §11 추가** — Gemini 디자인 새 화면(옛 `index.html`·`main.js`·`style.css`·예시 사진 삭제), 로그인·회원가입·회원코드, 회원별 결과 저장(Supabase, SC-05 CSV 대체), 라이브 영상 중계, 일치율 재정의(목표 수신호 확률). 본문 §1~§9는 그대로 — 조은수 몫 ⑦ 보완 때 반영 필요 |
@@ -390,6 +391,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 아이디·비밀번호 찾기 (09-30) | 이름+회원코드 → 가린 이메일 / 메일 6자리 코드 → 새 비밀번호 | `/api/auth/find-id`·`/password/*` |
 | 보안 (09-30) | 로그인 5회 실패 잠금, 비밀번호 8자+영문·숫자, 코드·찾기 횟수 제한, CSP 등 보안 헤더, 키 역할 점검, 5분 무입력 자동 로그아웃 | 18 §6 |
 | 테스트 | web 92개(회원 25 · 영상 중계 2 · 일치율 4 …) · Chrome 헤드리스 전 구간(가입 → 7종 → 합격표 → 수료증 → 아이디 찾기 → 비밀번호 재설정 → 새 비밀번호 로그인, CSP 위반 0) | `tests/` |
+| 모션·팔레트 (10-02 오후) | UI UX Pro Max "Industrial grey + safety orange"로 팔레트 정리(회사 사이트와 같은 값, 대비 재계산: 보조 글자 7.3:1, 입력칸 테두리 3.95:1). 본문 SUIT, 번호·코드 JetBrains Mono(OFL). 안내 손그림 모핑(신호가 바뀌면 이전 손모양에서 관절 순서대로 0.6초), SC-01 7종 띠 등장(뼈대가 그려짐, 한 번) + 2.4초마다 한 신호씩 강조(대기 화면). 동작 줄이기면 끔. 수료증 색 = 같은 팔레트의 밝은 변형. 검증: pytest 113, E2E 기준선 동일, 3해상도 × 14화면 잘림 0, 콘솔 오류 0 | `frontend/station.css`·`main.js`(표시용)·`fonts/` |
 | 리뉴얼 (10-02) | Industrial Intelligence + Premium Technical Design. Taste Skill(design-taste-frontend · redesign-existing-projects) 진단 후 전면 재배치: 상단 상태 스트립(장치 정상 = 회색, 이상 = 빨간 칸), SC-02 신호 레지스터, SC-03 8:4 고정 카메라 + 오른쪽 계기 열(판정값 HUD를 영상 밖으로), 안돈 판 7:5, SC-05 성적서형, Phosphor 아이콘(MIT), **KPI 촬영 실측 손 관절 21점**(hand-data.js)으로 손그림 SVG 대체, 무한 장식 정리(판정 중 테두리·옅은 앰비언트만), 화면 문구 em-dash 0. CSS는 `station.css` 하나(옛 style.css·app.css 삭제). 기능 계약(id·클래스·JS 흐름) 유지, DB·백엔드 무수정. 검증: pytest 108, 전체 흐름 E2E 기준선 동일, 1920×1080·1366×768·1366×657 × 14화면 잘림 0, 콘솔 오류 0 | `frontend/station.css`·`main.js`(표시용)·`hand-data.js` |
 | 회사 사이트 연결 (09-30) | `members.py`에 읽기 전용 `get_member`·`list_sessions`·`ping` 추가(회사 사이트 `services/portal`이 같은 저장소 코드를 쓴다), 루트 `.env` 자동 로드(`_load_dotenv` — 셸 값 우선, **pytest는 안 읽음**). 교육장 동작은 그대로 | [19](19_회사웹사이트.md) |
 

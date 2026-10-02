@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1200, height=900" />
+<title>SafeSign 수신호 7종 손 관절</title>
+<script src="assets/gsap.min.js"></script>
+<script src="assets/hand-data.js"></script>
+<style>
+@font-face { font-family: "SUIT Variable"; src: url("assets/SUIT-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "JetBrains Mono"; src: url("assets/JetBrainsMono-500.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "JetBrains Mono"; src: url("assets/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; background: #0A0E12; }
+body { color: #F1F5F9; font-family: "SUIT Variable", sans-serif; font-feature-settings: "tnum" 1; -webkit-font-smoothing: antialiased; }
+.mono { font-family: "JetBrains Mono", monospace; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0A0E12; }
+.stage { position: absolute; inset: 0; }
+.grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(148,163,184,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.05) 1px, transparent 1px); background-size: 60px 60px; background-position: 30px 30px; }
+.glow { position: absolute; inset: 0; background: radial-gradient(60% 55% at 50% 46%, rgba(148,163,184,.07), rgba(10,14,18,0) 70%); }
+svg.hand { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hdr { position: absolute; left: 48px; right: 48px; top: 40px; display: flex; justify-content: space-between; font-size: 15px; color: #64748B; letter-spacing: .04em; }
+.hdr b { color: #94A3B8; font-weight: 500; }
+.segs { position: absolute; left: 48px; right: 48px; top: 76px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.seg { position: relative; height: 3px; background: rgba(148,163,184,.22); }
+.seg i { position: absolute; inset: 0; background: #F97316; transform-origin: 0 50%; display: block; }
+.foot { position: absolute; left: 48px; right: 48px; bottom: 44px; height: 140px; }
+.idx { position: absolute; left: 0; top: 0; font-size: 20px; color: #F97316; font-weight: 700; letter-spacing: .04em; height: 26px; width: 140px; }
+.idx span, .nm span { position: absolute; left: 0; top: 0; white-space: nowrap; }
+.nm { position: absolute; left: 0; top: 30px; height: 70px; width: 600px; font-size: 58px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; }
+.fs { position: absolute; left: 0; bottom: 0; display: flex; gap: 18px; font-size: 16px; color: #94A3B8; font-weight: 700; }
+.fs span { display: flex; align-items: center; gap: 7px; }
+.fs i { width: 12px; height: 12px; border: 1.5px solid #64748B; display: block; position: relative; }
+.fs i b { position: absolute; inset: -1.5px; background: #F97316; display: block; }
+.meta { position: absolute; right: 0; bottom: 0; text-align: right; font-size: 14px; color: #64748B; line-height: 1.8; }
+.meta b { color: #94A3B8; font-weight: 500; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="reel" data-start="0" data-width="1200" data-height="900" data-duration="14" data-fps="30">
+  <div id="reel-stage" class="stage clip" data-start="0" data-duration="14">
+    <div class="grid"></div><div class="glow"></div>
+    <svg class="hand" viewBox="0 0 1200 900" aria-hidden="true">
+      <g id="box" fill="none" stroke="#94A3B8" stroke-width="2" opacity=".7">
+        <path id="c0" d="M0 26V0H26" /><path id="c1" d="M-26 0H0V26" /><path id="c2" d="M0 -26V0H26" /><path id="c3" d="M-26 0H0V-26" />
+      </g>
+      <g id="hand"><g id="ghost" opacity="0"></g><g id="bones"></g><g id="joints"></g><g id="tips" class="mono" font-size="15" font-weight="500"></g></g>
+    </svg>
+    <div class="hdr mono"><span>HAND LANDMARKS <b>21 pts</b></span><span>RPi5 <b>Camera Module 3</b> · KPI take <b>ext01 f2</b></span></div>
+    <div class="segs" id="segs"></div>
+    <div class="foot">
+      <div class="idx mono" id="idx"></div>
+      <div class="nm" id="nm"></div>
+      <div class="fs" id="fs"></div>
+      <div class="meta mono">x, y ∈ [0, 1] · <b>0</b> = wrist<br /><b>4 8 12 16 20</b> = fingertips</div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const H = SAFESIGN_HAND, C = H.connections;
+  const SIG = [
+    ["정지", [1,1,1,1,1]], ["서행", [0,1,1,0,0]], ["좌회전 유도", [1,1,0,0,0]], ["우회전 유도", [1,0,0,0,1]],
+    ["확인 완료", [0,0,0,0,0]], ["후진", [0,1,0,0,0]], ["주의", [0,0,0,0,1]],
+  ];
+  const T = 2, N = SIG.length, NS = "http://www.w3.org/2000/svg";
+  const BOX = { x: 600 - 270, y: 132, s: 540 };
+  const pose = (n) => H.signals[n.replace(/ /g, "_")].map(([x, y]) => [BOX.x + x * BOX.s, BOX.y + y * BOX.s]);
+  const fingerOf = (i) => (i === 0 ? -1 : Math.floor((i - 1) / 4));
+  const boneF = ([a, b]) => (a === 0 || fingerOf(a) !== fingerOf(b) ? -1 : fingerOf(b));
+  const lineSt = (f, fg) => (f >= 0 && fg[f] ? { stroke: "#E2E8F0", strokeWidth: 5, opacity: 1 } : { stroke: "#64748B", strokeWidth: 3, opacity: 0.8 });
+  const jointSt = (i, fg) => {
+    const tip = i > 0 && i % 4 === 0 && fg[i / 4 - 1], up = i === 0 || fg[fingerOf(i)];
+    return tip ? { fill: "#F97316", r: 10 } : up ? { fill: "#E2E8F0", r: 6.5 } : { fill: "#64748B", r: 5 };
+  };
+  const el = (tag, a, p) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+  const bounds = (P) => { const xs = P.map((p) => p[0]), ys = P.map((p) => p[1]); return [Math.min(...xs) - 34, Math.min(...ys) - 34, Math.max(...xs) + 34, Math.max(...ys) + 34]; };
+
+  const [ln, lf] = SIG[N - 1], p0 = pose(ln);
+  const g = (id) => document.getElementById(id);
+  const ghost = C.map((c) => el("line", { x1: p0[c[0]][0], y1: p0[c[0]][1], x2: p0[c[1]][0], y2: p0[c[1]][1], stroke: "#94A3B8", "stroke-width": 2, "stroke-linecap": "round" }, g("ghost")));
+  const bones = C.map((c) => { const s = lineSt(boneF(c), lf); return el("line", { x1: p0[c[0]][0], y1: p0[c[0]][1], x2: p0[c[1]][0], y2: p0[c[1]][1], "stroke-linecap": "round", style: `stroke:${s.stroke};stroke-width:${s.strokeWidth}px;opacity:${s.opacity}` }, g("bones")); });
+  const joints = p0.map((p, i) => { const s = jointSt(i, lf); return el("circle", { cx: p[0], cy: p[1], r: s.r, style: `fill:${s.fill}` }, g("joints")); });
+  const TIPS = [4, 8, 12, 16, 20];
+  const tips = TIPS.map((i, q) => { const t = el("text", { x: p0[i][0] + 16, y: p0[i][1] - 14, fill: "#94A3B8", style: `opacity:${lf[q] ? 1 : 0.35}` }, g("tips")); t.textContent = i; return t; });
+  const wl = el("text", { x: p0[0][0] + 16, y: p0[0][1] + 22, fill: "#64748B" }, g("tips")); wl.textContent = "0";
+  const corners = [0, 1, 2, 3].map((i) => g("c" + i));
+  const setBox = (b, at) => [[b[0], b[1]], [b[2], b[1]], [b[0], b[3]], [b[2], b[3]]].forEach(([x, y], i) => at === null ? gsap.set(corners[i], { x, y }) : tl.to(corners[i], { x, y, duration: 0.7, ease: "power3.inOut" }, at));
+
+  const segs = SIG.map(() => { const s = document.createElement("div"); s.className = "seg"; s.innerHTML = "<i></i>"; g("segs").appendChild(s); return s.firstChild; });
+  const span = (pid, txt, show) => { const s = document.createElement("span"); s.textContent = txt; if (!show) s.style.opacity = 0; g(pid).appendChild(s); return s; };
+  const idx = SIG.map(([n], k) => span("idx", String(k + 1).padStart(2, "0") + " / 07", k === N - 1));
+  const nm = SIG.map(([n], k) => span("nm", n, k === N - 1));
+  const fs = ["엄지", "검지", "중지", "약지", "소지"].map((n, q) => { const s = document.createElement("span"); s.innerHTML = `<i><b></b></i>${n}`; g("fs").appendChild(s); return s.querySelector("b"); });
+
+  const tl = gsap.timeline({ paused: true });
+  setBox(bounds(p0), null);
+  segs.forEach((s, k) => gsap.set(s, { scaleX: k === N - 1 ? 1 : 0, opacity: 1 }));
+  fs.forEach((b, q) => gsap.set(b, { scale: lf[q] ? 1 : 0 }));
+  tl.fromTo("#hand", { rotation: -0.7, svgOrigin: "600 700" }, { rotation: 0.7, duration: 1.75, ease: "sine.inOut", yoyo: true, repeat: 7 }, 0);
+  tl.fromTo("#hand", { y: -4 }, { y: 4, duration: 2.333, ease: "sine.inOut", yoyo: true, repeat: 5, immediateRender: false }, 0);
+
+  SIG.forEach(([n, fg], k) => {
+    const S = k * T, [pn, pf] = SIG[(k + N - 1) % N], P = pose(n), PP = pose(pn);
+    // 이전 손모양은 옅은 잔상으로 남기고, 손목에서 손가락 끝 순서로 따라 움직인다
+    C.forEach((c, j) => tl.set(ghost[j], { attr: { x1: PP[c[0]][0], y1: PP[c[0]][1], x2: PP[c[1]][0], y2: PP[c[1]][1] } }, S));
+    tl.fromTo("#ghost", { opacity: 0.3 }, { opacity: 0, duration: 1, ease: "power2.out", immediateRender: false }, S);
+    const lag = (i) => (i === 0 ? 0 : ((i - 1) % 4) * 0.035 + 0.02);
+    C.forEach((c, j) => { const st = lineSt(boneF(c), fg); tl.to(bones[j], { attr: { x1: P[c[0]][0], y1: P[c[0]][1], x2: P[c[1]][0], y2: P[c[1]][1] }, stroke: st.stroke, strokeWidth: st.strokeWidth, opacity: st.opacity, duration: 0.72, ease: "power3.inOut" }, S + lag(c[1])); });
+    P.forEach((p, i) => { const st = jointSt(i, fg); tl.to(joints[i], { attr: { cx: p[0], cy: p[1], r: st.r }, fill: st.fill, duration: 0.72, ease: "power3.inOut" }, S + lag(i)); });
+    TIPS.forEach((i, q) => tl.to(tips[q], { attr: { x: P[i][0] + 16, y: P[i][1] - 14 }, opacity: fg[q] ? 1 : 0.35, duration: 0.72, ease: "power3.inOut" }, S + lag(i)));
+    tl.to(wl, { attr: { x: P[0][0] + 16, y: P[0][1] + 22 }, duration: 0.72, ease: "power3.inOut" }, S);
+    setBox(bounds(P), S + 0.08);
+    // 글자: 번호와 이름 교체
+    [idx, nm].forEach((arr) => {
+      tl.to(arr[(k + N - 1) % N], { opacity: 0, y: -12, duration: 0.28, ease: "power2.in" }, S);
+      tl.fromTo(arr[k], { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out", immediateRender: false }, S + 0.24);
+    });
+    fs.forEach((b, q) => tl.to(b, { scale: fg[q] ? 1 : 0, duration: 0.35, ease: fg[q] ? "back.out(2)" : "power2.in" }, S + 0.3 + q * 0.05));
+    // 진행 띠: 지금 신호 칸만 차오른다
+    tl.to(segs[(k + N - 1) % N], { scaleX: 0, duration: 0.3, ease: "power2.in", transformOrigin: "100% 50%" }, S);
+    tl.fromTo(segs[k], { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: T, ease: "none", immediateRender: false }, S);
+  });
+  window.__timelines["reel"] = tl;
+})();
+</script>
+</body>
+</html>

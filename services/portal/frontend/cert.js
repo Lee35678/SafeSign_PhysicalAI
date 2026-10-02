@@ -4,8 +4,8 @@
 
 const CERT = { w: 1123, h: 794, scale: 2 };
 const CERT_C = {
-  paper: "#F4F6F8", ink: "#111820", ink2: "#2A3440", steel: "#687582", steelLight: "#9AA5B1",
-  line: "#D5DAE0", orange: "#F28C28", green: "#15803D", greenBg: "#E3F4E8", red: "#C62828", redBg: "#FBE7E7",
+  paper: "#F8FAFC", ink: "#0F172A", ink2: "#334155", steel: "#64748B", steelLight: "#94A3B8",
+  line: "#E2E8F0", orange: "#EA580C", green: "#15803D", greenBg: "#E3F4E8", red: "#C62828", redBg: "#FBE7E7",
   seal: "#C62828",
 };
 const CERT_SANS = '"Inter Variable", "SUIT Variable", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif';

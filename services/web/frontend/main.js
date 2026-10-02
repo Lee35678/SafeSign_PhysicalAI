@@ -49,17 +49,85 @@ function handSvg(signal) {
   const bones = data.connections.map(([a, b]) => {
     const f = FINGER_OF_JOINT(b);
     const [x1, y1] = P(pts[a]), [x2, y2] = P(pts[b]);
-    return `<line class="${f >= 0 && pattern[f] ? "b-up" : "b-dn"}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    return `<line class="${f >= 0 && pattern[f] ? "b-up" : "b-dn"}" pathLength="1" style="--i:${b}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
   }).join("");
   const joints = pts.map((p, i) => {
     const [x, y] = P(p);
-    return `<circle class="${i === 0 ? "j-wrist" : "j"}" cx="${x}" cy="${y}" r="${i === 0 ? 2.8 : 1.9}"/>`;
+    return `<circle class="${i === 0 ? "j-wrist" : "j"}" style="--i:${i}" cx="${x}" cy="${y}" r="${i === 0 ? 2.8 : 1.9}"/>`;
   }).join("");
   // 장식으로 숨긴다: 이 그림이 쓰이는 곳마다 수신호 이름 글자가 바로 옆에 있어 스크린 리더가 같은 이름을 두 번 읽게 된다
   return `<svg class="hand-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">${bones}${joints}</svg>`;
 }
 function paintHands(root) {
   root.querySelectorAll("[data-hand]").forEach((el) => { el.innerHTML = handSvg(el.dataset.hand); });
+}
+
+// ---- 표시 전용 모션: 손 관절 (움직임 줄이기 설정이면 모두 끈다) ----
+const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+// 안내 손그림: 이전 손모양에서 새 손모양으로 관절을 옮겨 그린다. 손목이 먼저, 손가락 끝이 조금 늦게 따라온다
+function morphHand(box, signal) {
+  const read = (svg) => svg ? {
+    lines: Array.from(svg.querySelectorAll("line"), (l) => ["x1", "y1", "x2", "y2"].map((a) => +l.getAttribute(a))),
+    joints: Array.from(svg.querySelectorAll("circle"), (c) => [+c.getAttribute("cx"), +c.getAttribute("cy")]),
+  } : null;
+  const from = read(box.querySelector("svg"));
+  box.innerHTML = handSvg(signal);
+  const svg = box.querySelector("svg");
+  const to = read(svg);
+  if (REDUCED_MOTION || !from || !to || from.lines.length !== to.lines.length || from.joints.length !== to.joints.length) return;
+  const lines = svg.querySelectorAll("line"), joints = svg.querySelectorAll("circle");
+  const conn = HAND_LANDMARKS.connections;
+  const lag = (j) => (j === 0 ? 0 : ((j - 1) % 4) * 45 + 25);   // ms
+  const DUR = 560, t0 = performance.now(), token = {};
+  box._morph = token;
+  const frame = (now) => {
+    if (box._morph !== token || !svg.isConnected) return;
+    let running = false;
+    const k = (j) => { const p = Math.min(1, Math.max(0, (now - t0 - lag(j)) / DUR)); if (p < 1) running = true; return easeInOutCubic(p); };
+    joints.forEach((c, i) => {
+      const e = k(i);
+      c.setAttribute("cx", (from.joints[i][0] + (to.joints[i][0] - from.joints[i][0]) * e).toFixed(2));
+      c.setAttribute("cy", (from.joints[i][1] + (to.joints[i][1] - from.joints[i][1]) * e).toFixed(2));
+    });
+    lines.forEach((l, n) => {
+      const [a, b] = conn[n], ea = k(a), eb = k(b), f = from.lines[n], t = to.lines[n];
+      l.setAttribute("x1", (f[0] + (t[0] - f[0]) * ea).toFixed(2)); l.setAttribute("y1", (f[1] + (t[1] - f[1]) * ea).toFixed(2));
+      l.setAttribute("x2", (f[2] + (t[2] - f[2]) * eb).toFixed(2)); l.setAttribute("y2", (f[3] + (t[3] - f[3]) * eb).toFixed(2));
+    });
+    if (running) requestAnimationFrame(frame);
+  };
+  frame(t0);
+  requestAnimationFrame(frame);
+}
+
+// 첫 화면 7종 띠: 들어올 때 한 번 그려지고, 머무는 동안 2.4초마다 한 신호씩 차례로 밝아진다(키오스크 대기 화면)
+let handCycleTimer = null;
+function startHandStrip() {
+  const strip = document.querySelector("#screen-landing .hand-strip");
+  if (!strip || REDUCED_MOTION) return;
+  const items = Array.from(strip.querySelectorAll("li"));
+  items.forEach((li, h) => li.querySelector(".hand-svg")?.style.setProperty("--h", h));
+  strip.classList.remove("draw", "cycling");
+  void strip.offsetWidth;   // 다시 들어올 때도 그리기 애니메이션을 처음부터
+  strip.classList.add("draw");
+  let cur = -1;
+  const next = () => {
+    items.forEach((li) => li.classList.remove("cur"));
+    cur = (cur + 1) % items.length;
+    items[cur].classList.add("cur");
+  };
+  clearInterval(handCycleTimer);
+  handCycleTimer = setTimeout(() => {
+    strip.classList.add("cycling"); next();
+    handCycleTimer = setInterval(next, 2400);
+  }, 1500);
+}
+function stopHandStrip() {
+  clearTimeout(handCycleTimer); clearInterval(handCycleTimer); handCycleTimer = null;
+  const strip = document.querySelector("#screen-landing .hand-strip");
+  if (strip) { strip.classList.remove("cycling"); strip.querySelectorAll("li.cur").forEach((li) => li.classList.remove("cur")); }
 }
 
 // 상태 스트립의 공정 경로 — 지금 화면이 어느 단계인지 표시만 한다
@@ -96,6 +164,7 @@ function esc(text) {
 function show(screenId) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
   $(screenId).classList.add("active");
+  if (screenId === "screen-landing") startHandStrip(); else stopHandStrip();   // 표시 전용 모션
   // 라이브 영상은 SC-03에서만 받는다 — 다른 화면에서는 vision이 JPEG를 만들 필요가 없다
   if (screenId === "screen-training") startCamera(); else stopCamera();
   if (screenId !== "screen-summary") stopSavePolling();
@@ -630,7 +699,7 @@ function renderHeader(state) {
     guide.dataset.signal = signal;
     guide.innerHTML = fingerPattern(signal, true);
     $("guide-text").textContent = aihandText(info.aihand || "");
-    $("guide-hand").innerHTML = handSvg(signal);   // 표시 전용: 실측 손 관절
+    morphHand($("guide-hand"), signal);   // 표시 전용: 실측 손 관절, 이전 신호에서 옮겨 그린다
   }
 }
 
@@ -975,8 +1044,8 @@ $("certificate-btn").addEventListener("click", async () => {
 // 발급 기관 "주식회사 심기일전"은 시연용 가상 기관이다(팀 이름) — 증서 하단에 그렇게 적는다.
 const CERT = { w: 1123, h: 794, scale: 2 };
 const CERT_C = {
-  paper: "#F4F6F8", ink: "#111820", ink2: "#2A3440", steel: "#687582", steelLight: "#9AA5B1",
-  line: "#D5DAE0", orange: "#F28C28", green: "#15803D", greenBg: "#E3F4E8", red: "#C62828", redBg: "#FBE7E7",
+  paper: "#F8FAFC", ink: "#0F172A", ink2: "#334155", steel: "#64748B", steelLight: "#94A3B8",
+  line: "#E2E8F0", orange: "#EA580C", green: "#15803D", greenBg: "#E3F4E8", red: "#C62828", redBg: "#FBE7E7",
   seal: "#C62828",
 };
 const CERT_SANS = '"Inter Variable", "SUIT Variable", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif';
