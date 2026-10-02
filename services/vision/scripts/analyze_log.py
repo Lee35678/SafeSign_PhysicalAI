@@ -208,12 +208,7 @@ def rejudge(frames: list[dict], model_path: Path | None):
     """
     from cognition import classify
 
-    original = model_store.MODEL_PATH
-    try:
-        if model_path is not None:
-            model_store.MODEL_PATH = model_path
-        model_store.load_bundle(force=True)
-        bundle = model_store.load_bundle()
+    with model_store.swapped_bundle(model_path) as bundle:
         if bundle is None:
             return None
         mode = (bundle.get("metadata") or {}).get("feature_mode", "?")
@@ -236,9 +231,6 @@ def rejudge(frames: list[dict], model_path: Path | None):
             else:
                 bad += 1
         return mode, ok, rej, bad, len(frames)
-    finally:
-        model_store.MODEL_PATH = original
-        model_store.load_bundle(force=True)
 
 
 def header_order(by_label):

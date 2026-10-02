@@ -113,12 +113,7 @@ def wilson_upper(k: int, n: int, z: float = 1.96) -> float:
 
 def evaluate(samples: list[dict], model_path: Path | None):
     """지정한 모델로 평가. 운영과 같은 코드 경로(classify.predict)를 쓴다."""
-    original = model_store.MODEL_PATH
-    try:
-        if model_path is not None:
-            model_store.MODEL_PATH = model_path
-        model_store.load_bundle(force=True)
-        bundle = model_store.load_bundle()
+    with model_store.swapped_bundle(model_path) as bundle:
         if bundle is None:
             return None
         mode = (bundle.get("metadata") or {}).get("feature_mode", "?")
@@ -139,9 +134,6 @@ def evaluate(samples: list[dict], model_path: Path | None):
                                     for r in judged],
                          "orientation": fs[0]["orientation"], "n": len(fs)})
         return mode, rows
-    finally:
-        model_store.MODEL_PATH = original
-        model_store.load_bundle(force=True)
 
 
 def as_mode_rule(rows: list[dict]) -> list[dict]:

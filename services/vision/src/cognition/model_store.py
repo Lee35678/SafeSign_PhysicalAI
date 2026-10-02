@@ -32,8 +32,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,26 @@ def load_bundle(force: bool = False) -> Optional[dict]:
             (_bundle.get("metadata") or {}).get("trained_at"),
         )
         return _bundle
+
+
+@contextmanager
+def swapped_bundle(model_path: Optional[Path]) -> Iterator[Optional[dict]]:
+    """MODEL_PATH를 잠시 model_path로 바꿔 번들을 다시 읽고, 끝나면 원래 모델로 되돌린다.
+
+    오프라인 비교 도구(evaluate_kpi·analyze_log)가 **운영과 같은 classify.predict 경로**로 다른 모델을
+    판정할 때 쓴다. model_path가 None이면 현재 MODEL_PATH를 강제로 다시 읽기만 한다.
+    번들을 읽지 못하면 None을 넘긴다.
+    """
+    global MODEL_PATH
+    original = MODEL_PATH
+    try:
+        if model_path is not None:
+            MODEL_PATH = model_path
+        load_bundle(force=True)
+        yield load_bundle()
+    finally:
+        MODEL_PATH = original
+        load_bundle(force=True)
 
 
 def get_model():
