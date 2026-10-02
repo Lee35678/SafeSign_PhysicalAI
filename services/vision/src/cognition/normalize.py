@@ -48,7 +48,7 @@ document/05_모델카드.md §3-5 "정규화 절차"의 구현체다. **학습(C
 """
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import numpy as np
 
@@ -291,10 +291,3 @@ def frame_to_feature_vector(
         handedness=landmark_frame.get("handedness", "Right"),
         mode=mode,
     )
-
-
-def batch_to_feature_matrix(
-    frames: Iterable[dict], mode: str = DEFAULT_FEATURE_MODE
-) -> np.ndarray:
-    """여러 프레임을 (N, D) 행렬로. 학습 데이터 적재용(정규화 실패 프레임은 호출 측에서 걸러낼 것)."""
-    return np.stack([frame_to_feature_vector(f, mode=mode) for f in frames], axis=0)

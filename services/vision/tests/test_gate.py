@@ -28,11 +28,6 @@ from cognition import classify, model_store  # noqa: E402
 from cognition.normalize import FEATURE_DIM  # noqa: E402
 
 
-def _unit(vec) -> np.ndarray:
-    v = np.asarray(vec, dtype=float)
-    return v / np.linalg.norm(v)
-
-
 _ORIGINAL_GET_GATE = model_store.get_open_set_gate
 
 

@@ -7,7 +7,8 @@
 모았다. 어느 쪽이든 `read()`가 **BGR ndarray**를 돌려주므로 호출부는 차이를 몰라도 된다.
 
 위치: 원래 `scripts/camera_source.py` 였다. 서비스(Docker 이미지에는 `src/` 만 들어간다)도 써야
-해서 `src/perception/` 으로 옮겼고, `scripts/camera_source.py` 는 이 모듈을 그대로 다시 내보낸다.
+해서 `src/perception/` 으로 옮겼다. 확인·촬영 도구(`scripts/webcam_check.py`, `record_dataset.py`)도
+`perception.camera_source` 를 직접 import한다(재수출용 `scripts/camera_source.py` 는 2026-10-02 삭제).
 
 왜 CSI는 따로 다뤄야 하는가:
     Camera Module 3는 libcamera 스택이라 `/dev/video0`에 raw Bayer로만 올라온다.

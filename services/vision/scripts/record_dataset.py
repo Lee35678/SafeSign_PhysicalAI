@@ -56,7 +56,7 @@ sys.path.insert(0, str(SERVICE_ROOT / "scripts"))
 from cognition.normalize import NormalizationError, to_feature_vector  # noqa: E402
 
 # 노트북 웹캠(OpenCV)과 RPi5 Camera Module 3(picamera2)을 같은 얼굴로 감싼 캡처 계층
-from camera_source import (  # noqa: E402
+from perception.camera_source import (  # noqa: E402
     add_camera_args,
     has_display,
     list_cameras,
