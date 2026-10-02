@@ -1,0 +1,6 @@
+# 렌더링할 때만 채우는 폴더 (README 1단계)
+*/assets/
+node_modules/
+renders/
+snapshots/
+*.mp4

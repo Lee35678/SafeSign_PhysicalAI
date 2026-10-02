@@ -3,384 +3,413 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SafeSign - 산업 안전 수신호 교육</title>
-  <!-- style.css = Gemini AI Edition 구조 + 산업 안전 팔레트(2026-09-30) · app.css = 회원·라이브 영상 등 추가 요소 + 디자인 방향
-       (Industrial Intelligence · Mission Control · Technical Editorial). 글꼴은 fonts/(SUIT·Inter, OFL) — 교육장 오프라인에서도 쓰인다 -->
-  <link rel="stylesheet" href="style.css?v=20260930-c1" />
-  <link rel="stylesheet" href="app.css?v=20260930-c1" />
+  <title>SafeSign 교육장 키트</title>
+  <!-- station.css = 스테이션 콘솔 리뉴얼(2026-10-02). 예전 style.css(Gemini 원본)·app.css(덧쓰기)를 한 파일로 대체.
+       글꼴은 fonts/(SUIT·Inter, OFL), 아이콘은 Phosphor Icons 2.1.1(MIT, icons/LICENSE.txt) 인라인 SVG. 교육장 오프라인에서도 쓰인다 -->
+  <link rel="stylesheet" href="station.css?v=20261002-r4" />
   <link rel="icon" href="data:," /><!-- 브라우저의 /favicon.ico 404 요청 방지 -->
 </head>
 <body>
-  <!-- 앰비언트 배경 (장식, 스크린 리더는 무시) -->
-  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><b class="aurora"></b><b class="dust"></b><b class="dust dust2"></b></div>
+  <a class="skip-link" href="#app">본문으로 건너뛰기</a>
+  <!-- 앰비언트: 아주 옅은 느린 빛 1겹 (장식, 스크린 리더는 무시) -->
+  <div class="ambient" aria-hidden="true"></div>
 
-  <!-- 상단 표시줄: 브랜드 · 학습자(회원) · 장치 상태 -->
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">SafeSign</span>
-      <span class="brand-sub">산업 안전 수신호 교육</span>
+  <!-- 상태 스트립: 워드마크 / 공정 경로 / 장치 칸 + 시계 + 학습자 -->
+  <header class="strip">
+    <div class="strip-brand">
+      <span class="wordmark">SafeSign</span>
+      <span class="strip-sub">교육장 키트</span>
     </div>
-    <div class="topbar-right">
-      <span class="sys-clock" aria-hidden="true"><i class="sys-live"></i><span id="sys-clock">--:--:--</span></span>
-      <div id="member-chip" class="member-chip hidden">
-        <span id="member-code" class="member-code"></span>
-        <span id="member-name" class="member-name"></span>
-        <button id="logout-btn" class="btn-secondary btn-small" type="button">로그아웃</button>
-      </div>
+    <ol id="route" class="route" aria-label="교육 단계">
+      <li data-route="auth">로그인</li>
+      <li data-route="course">과정</li>
+      <li data-route="train">시범·판정</li>
+      <li data-route="result">결과</li>
+      <li data-route="cert">수료</li>
+    </ol>
+    <div class="strip-right">
       <div id="device-status-bar" class="device-status-bar"></div>
+      <span class="strip-clock" aria-hidden="true"><span id="sys-clock">--:--:--</span></span>
+      <div id="member-chip" class="member-chip hidden">
+        <span class="member-id">
+          <span id="member-code" class="member-code"></span>
+          <span id="member-name" class="member-name"></span>
+        </span>
+        <button id="logout-btn" class="btn-quiet" type="button">로그아웃</button>
+      </div>
     </div>
   </header>
 
   <!-- 09_화면목록.md SC-01~SC-07 (+ 회원 로그인·가입). main.js가 .screen 하나에만 "active"를 붙여 전환한다. -->
-  <div id="app">
+  <main id="app" tabindex="-1">
 
     <!-- SC-07: 중간 이탈 후 재접속 안내 (세션 이어하기 미구현, 2026-09-18 결정) -->
     <section id="screen-reentry" class="screen screen-notice">
-      <div class="notice-card">
-        <div class="notice-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg></div>
-        <h1>이전 학습이 종료되었습니다</h1>
-        <p>처음부터 다시 시작합니다.</p>
-        <p class="notice-sub">이어하기는 지원하지 않아요 — 7종을 처음부터 학습합니다</p>
-        <button id="reentry-confirm-btn" type="button">확인</button>
+      <div class="notice">
+        <div class="notice-main">
+          <span class="notice-icon"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></span>
+          <h1>이전 학습이 종료되었습니다</h1>
+          <p class="notice-lead">수신호 7종을 처음부터 다시 학습합니다.</p>
+          <p class="notice-sub">중간부터 이어서 하는 기능은 없습니다.</p>
+        </div>
+        <div class="notice-side">
+          <button id="reentry-confirm-btn" class="btn-primary btn-xl" type="button">확인</button>
+        </div>
       </div>
     </section>
 
     <!-- SC-01: 랜딩 -->
     <section id="screen-landing" class="screen">
-      <!-- 기술 도면풍 크레인 선화 (장식) — 크레인 작업표준신호지침의 현장 -->
-      <svg class="landing-drawing" viewBox="0 0 600 520" aria-hidden="true">
-        <g class="dw-struct">
-          <path d="M150 500V120M190 500V120M150 120h40"/>
-          <path d="M150 160l40 40M190 160l-40 40M150 240l40 40M190 240l-40 40M150 320l40 40M190 320l-40 40M150 400l40 40M190 400l-40 40"/>
-          <path d="M60 120h520M60 96h130M170 96l-20 24M170 96l20 24M60 96v24M60 120l40-24"/>
-          <path d="M210 120l40-24h330M580 96v24M250 96l30 24M310 96l30 24M370 96l30 24M430 96l30 24M490 96l30 24"/>
-          <path d="M170 96V50M170 50l-110 46M170 50l410 46"/>
-          <path d="M100 500h140"/>
-        </g>
-        <g class="dw-hook">
-          <path d="M440 120v230"/>
-          <path d="M428 350h24v18h-24zM440 368v16a12 12 0 1 1-12 12"/>
-        </g>
-        <g class="dw-dim">
-          <path d="M60 30h520M60 24v12M580 24v12M20 120v380M14 120h12M14 500h12"/>
-          <text x="320" y="22">JIB 40 000</text>
-          <text x="12" y="316" transform="rotate(-90 12 316)">H 32 000</text>
-        </g>
-      </svg>
-
-      <div class="landing-copy">
-        <p class="ss-kicker"><b>Physical AI</b> 산업 안전 수신호 교육 키트</p>
-        <h1>
-          <span class="landing-brand">SafeSign</span>
-          <span class="landing-title">AI Hand와 함께 배우는<br />산업 안전 수신호</span>
-        </h1>
-        <p class="landing-lead">AI Hand가 시범을 보이면 따라 해 보세요. 카메라가 손모양을 판정하고, picar가 신호대로 움직입니다.</p>
-        <button id="start-btn" type="button">시작하기</button>
+      <div class="landing-main">
+        <div class="landing-copy">
+          <h1 class="landing-title">AI Hand와 함께 배우는<br />산업 안전 수신호</h1>
+          <p class="landing-lead">AI Hand의 시범을 따라 하면 카메라가 손 모양을 판정하고, picar가 그 신호대로 움직입니다.</p>
+          <button id="start-btn" class="btn-primary btn-xl" type="button">시작하기</button>
+        </div>
+        <p class="landing-foot">교육 중 확인은 <kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd> 버튼으로 합니다.</p>
       </div>
 
-      <!-- 제품 소개 (2026-09-30 — 예전 7종 손모양 격자 대신) -->
-      <aside class="landing-about" aria-label="SafeSign 제품 소개">
-        <div class="about-head">
-          <span class="ss-kicker">제품 소개</span>
+      <aside class="landing-station" aria-label="스테이션 준비">
+        <header class="panel-head">
+          <h2>스테이션 준비</h2>
           <span id="about-sys" class="about-live"><i></i><span>장치 확인 중</span></span>
+        </header>
+        <!-- 교육 흐름도(AI Hand > 카메라 > picar): main.js renderDeviceStatus가 채운다. 이상인 장치만 경보색 + 사유(표시 전용) -->
+        <div id="station-devices" class="station-devices"></div>
+
+        <div class="hand-strip">
+          <div class="hand-group">
+            <p class="group-label">크레인 작업표준신호</p>
+            <ol>
+              <li><span class="hand-fig" data-hand="정지"></span><b>정지</b></li>
+              <li><span class="hand-fig" data-hand="서행"></span><b>서행</b></li>
+              <li><span class="hand-fig" data-hand="좌회전_유도"></span><b>좌회전 유도</b></li>
+              <li><span class="hand-fig" data-hand="우회전_유도"></span><b>우회전 유도</b></li>
+              <li><span class="hand-fig" data-hand="확인_완료"></span><b>확인 완료</b></li>
+            </ol>
+          </div>
+          <div class="hand-group hand-group-self">
+            <p class="group-label">자체 지정</p>
+            <ol>
+              <li><span class="hand-fig" data-hand="후진"></span><b>후진</b></li>
+              <li><span class="hand-fig" data-hand="주의"></span><b>주의</b></li>
+            </ol>
+          </div>
         </div>
-
-        <!-- 손 인식 애니메이션 (장식): MediaPipe가 찾는 손 관절 21점 -->
-        <div class="hand-scan" aria-hidden="true">
-          <svg viewBox="0 0 200 220">
-            <g class="hs-bones">
-              <path d="M100 196L66 172L46 146L32 124L20 104"/>
-              <path d="M100 196L78 128L74 96L72 72L70 50"/>
-              <path d="M100 196L100 124L100 88L100 62L100 38"/>
-              <path d="M100 196L120 128L124 96L126 74L128 54"/>
-              <path d="M100 196L138 140L150 116L158 98L166 82"/>
-              <path d="M78 128L100 124L120 128L138 140"/>
-            </g>
-            <g class="hs-joints">
-              <circle cx="100" cy="196" r="4"/>
-              <circle cx="66" cy="172" r="3"/><circle cx="46" cy="146" r="3"/><circle cx="32" cy="124" r="3"/><circle cx="20" cy="104" r="3"/>
-              <circle cx="78" cy="128" r="3"/><circle cx="74" cy="96" r="3"/><circle cx="72" cy="72" r="3"/><circle cx="70" cy="50" r="3"/>
-              <circle cx="100" cy="124" r="3"/><circle cx="100" cy="88" r="3"/><circle cx="100" cy="62" r="3"/><circle cx="100" cy="38" r="3"/>
-              <circle cx="120" cy="128" r="3"/><circle cx="124" cy="96" r="3"/><circle cx="126" cy="74" r="3"/><circle cx="128" cy="54" r="3"/>
-              <circle cx="138" cy="140" r="3"/><circle cx="150" cy="116" r="3"/><circle cx="158" cy="98" r="3"/><circle cx="166" cy="82" r="3"/>
-            </g>
-          </svg>
-          <span class="hs-sweep"></span>
-          <span class="hs-corner tl"></span><span class="hs-corner tr"></span><span class="hs-corner bl"></span><span class="hs-corner br"></span>
-          <p class="hs-caption"><span>HAND LANDMARKS</span><b>21</b></p>
-        </div>
-
-        <p class="about-text"><b>SafeSign</b>은 크레인 작업표준신호 7종을 <em>보고 → 따라 하고 → 판정받으며</em> 몸으로 익히는 피지컬 AI 교육 키트입니다.</p>
-
-        <ol class="about-flow">
-          <li><b>01</b><span><strong>AI Hand 시범</strong>로봇 손이 수신호를 먼저 보여 줍니다</span></li>
-          <li><b>02</b><span><strong>AI 비전 판정</strong>Camera Module 3 영상에서 손모양을 실시간 판정합니다</span></li>
-          <li><b>03</b><span><strong>picar 피드백</strong>정답이면 picar가 그 신호대로 움직입니다</span></li>
-        </ol>
-
-        <div class="about-signals">
-          <p>교육 수신호</p>
-          <ul>
-            <li>정지</li><li>서행</li><li>좌회전 유도</li><li>우회전 유도</li><li>확인 완료</li><li>후진</li><li>주의</li>
-          </ul>
-        </div>
-
-        <dl class="about-stats">
-          <div><dt>수신호</dt><dd>7<small>종</small></dd></div>
-          <div><dt>판정 규칙</dt><dd>3<small>프레임 연속</small></dd></div>
-          <div><dt>학습 기록</dt><dd>회원별<small>합격표</small></dd></div>
-        </dl>
+        <p class="hand-caption landing-caption">KPI 촬영 데이터(RPi5 Camera Module 3)에서 추출한 손 관절 21점. 주황색은 펴는 손가락입니다.</p>
       </aside>
     </section>
 
-    <!-- 회원: 로그인 / 회원가입 (2026-09-29, backend/members.py — Supabase) -->
+    <!-- 회원: 로그인 / 회원가입 (2026-09-29, backend/members.py) -->
     <section id="screen-auth" class="screen">
-      <div class="auth-layout">
-        <div class="auth-copy screen-head">
-          <h1 id="auth-title">로그인</h1>
-          <p id="auth-lead">학습 기록은 회원마다 저장됩니다. 처음이면 회원가입을 하세요 — 사원 코드를 드립니다.</p>
-          <p id="auth-store-note" class="auth-note"></p>
+      <div class="auth-copy">
+        <h1 id="auth-title">교육 시작 전 로그인</h1>
+        <p id="auth-lead"><span class="lead-login">학습 기록은 사원마다 저장됩니다. 처음이면 회원가입을 하세요.</span><span class="lead-signup">가입하면 사원 코드를 드립니다. 학습 기록은 이 사원 코드로 저장됩니다.</span></p>
+        <p id="auth-store-note" class="auth-note"></p>
+      </div>
+
+      <div class="auth-side">
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist">
+          <button id="tab-login" class="auth-tab" role="tab" type="button" aria-selected="true" aria-controls="login-form">로그인</button>
+          <button id="tab-signup" class="auth-tab" role="tab" type="button" aria-selected="false" aria-controls="signup-form">회원가입</button>
         </div>
 
-        <div class="auth-card">
-          <div class="auth-tabs" role="tablist">
-            <button id="tab-login" class="auth-tab" role="tab" type="button" aria-selected="true">로그인</button>
-            <button id="tab-signup" class="auth-tab" role="tab" type="button" aria-selected="false">회원가입</button>
+        <form id="login-form" class="auth-form" role="tabpanel" aria-labelledby="tab-login" novalidate>
+          <label for="login-email">이메일</label>
+          <input id="login-email" name="email" type="email" autocomplete="username" maxlength="254" required aria-describedby="login-error" />
+          <label for="login-password">비밀번호</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="72" required aria-describedby="login-error" />
+          <p id="login-error" class="form-error" role="alert"></p>
+          <button id="login-submit" class="btn-primary" type="submit">로그인</button>
+          <p class="auth-links">
+            <button id="goto-find-id" class="link-btn" type="button">아이디 찾기</button>
+            <button id="goto-reset" class="link-btn" type="button">비밀번호 찾기</button>
+          </p>
+        </form>
+
+        <!-- 아이디(이메일) 찾기: 이름 + 사원 코드가 맞으면 가린 이메일만 보여 준다 -->
+        <form id="find-id-form" class="auth-form hidden" novalidate>
+          <p class="auth-sub">이름과 가입할 때 받은 <b>사원 코드</b>를 입력하세요.</p>
+          <label for="find-name">이름</label>
+          <input id="find-name" type="text" autocomplete="name" maxlength="30" required aria-describedby="find-id-error" />
+          <label for="find-code">사원 코드</label>
+          <input id="find-code" type="text" placeholder="SS-00001" maxlength="8" autocomplete="off" required aria-describedby="find-id-error" />
+          <p id="find-id-result" class="form-result" role="status"></p>
+          <p id="find-id-error" class="form-error" role="alert"></p>
+          <button id="find-id-submit" class="btn-primary" type="submit">아이디 찾기</button>
+          <p class="auth-links"><button class="link-btn back-to-login" type="button"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"/></svg>로그인으로</button></p>
+        </form>
+
+        <!-- 비밀번호 찾기: 1단계 이메일로 인증 코드 받기 / 2단계 코드 + 새 비밀번호 -->
+        <form id="reset-request-form" class="auth-form hidden" novalidate>
+          <p class="auth-sub">가입한 이메일로 <b>6자리 인증 코드</b>를 보내 드립니다.</p>
+          <label for="reset-email">이메일</label>
+          <input id="reset-email" type="email" autocomplete="username" maxlength="254" required aria-describedby="reset-request-error" />
+          <p id="reset-request-error" class="form-error" role="alert"></p>
+          <button id="reset-request-submit" class="btn-primary" type="submit">인증 코드 받기</button>
+          <p class="auth-links"><button class="link-btn back-to-login" type="button"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"/></svg>로그인으로</button></p>
+        </form>
+
+        <form id="reset-confirm-form" class="auth-form hidden" novalidate>
+          <p id="reset-sent" class="form-result" role="status"></p>
+          <label for="reset-code">인증 코드</label>
+          <input id="reset-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required aria-describedby="reset-sent reset-confirm-error" />
+          <div class="field-row">
+            <div class="field">
+              <label for="reset-password">새 비밀번호 <small>8자 이상, 영문+숫자</small></label>
+              <input id="reset-password" type="password" autocomplete="new-password" maxlength="72" required aria-describedby="reset-confirm-error" />
+            </div>
+            <div class="field">
+              <label for="reset-password2">새 비밀번호 확인</label>
+              <input id="reset-password2" type="password" autocomplete="new-password" maxlength="72" required aria-describedby="reset-confirm-error" />
+            </div>
           </div>
+          <p id="reset-confirm-error" class="form-error" role="alert"></p>
+          <button id="reset-confirm-submit" class="btn-primary" type="submit">비밀번호 바꾸기</button>
+          <p class="auth-links"><button class="link-btn back-to-login" type="button"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"/></svg>로그인으로</button></p>
+        </form>
 
-          <form id="login-form" class="auth-form" novalidate>
-            <label for="login-email">이메일</label>
-            <input id="login-email" name="email" type="email" autocomplete="username" maxlength="254" required />
-            <label for="login-password">비밀번호</label>
-            <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="72" required />
-            <p id="login-error" class="form-error" role="alert"></p>
-            <button id="login-submit" type="submit">로그인</button>
-            <p class="auth-links">
-              <button id="goto-find-id" class="link-btn" type="button">아이디(이메일) 찾기</button>
-              <span aria-hidden="true">·</span>
-              <button id="goto-reset" class="link-btn" type="button">비밀번호 찾기</button>
-            </p>
-          </form>
-
-          <!-- 아이디(이메일) 찾기 — 이름 + 사원 코드가 맞으면 가린 이메일만 보여 준다 -->
-          <form id="find-id-form" class="auth-form hidden" novalidate>
-            <p class="auth-sub">가입할 때 받은 <b>사원 코드</b>와 이름을 입력하세요.</p>
-            <label for="find-name">이름</label>
-            <input id="find-name" type="text" autocomplete="name" maxlength="30" required />
-            <label for="find-code">사원 코드</label>
-            <input id="find-code" type="text" placeholder="SS-00001" maxlength="8" autocomplete="off" required />
-            <p id="find-id-result" class="form-result" role="status"></p>
-            <p id="find-id-error" class="form-error" role="alert"></p>
-            <button id="find-id-submit" type="submit">이메일 찾기</button>
-            <p class="auth-links"><button class="link-btn back-to-login" type="button">← 로그인으로</button></p>
-          </form>
-
-          <!-- 비밀번호 찾기 — 1단계: 이메일로 인증 코드 받기 / 2단계: 코드 + 새 비밀번호 -->
-          <form id="reset-request-form" class="auth-form hidden" novalidate>
-            <p class="auth-sub">가입한 이메일로 <b>6자리 인증 코드</b>를 보내 드려요.</p>
-            <label for="reset-email">이메일</label>
-            <input id="reset-email" type="email" autocomplete="username" maxlength="254" required />
-            <p id="reset-request-error" class="form-error" role="alert"></p>
-            <button id="reset-request-submit" type="submit">인증 코드 받기</button>
-            <p class="auth-links"><button class="link-btn back-to-login" type="button">← 로그인으로</button></p>
-          </form>
-
-          <form id="reset-confirm-form" class="auth-form hidden" novalidate>
-            <p id="reset-sent" class="form-result" role="status"></p>
-            <label for="reset-code">인증 코드</label>
-            <input id="reset-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required />
-            <div class="field-row">
-              <div class="field">
-                <label for="reset-password">새 비밀번호 <small>(8자 이상, 영문+숫자)</small></label>
-                <input id="reset-password" type="password" autocomplete="new-password" maxlength="72" required />
-              </div>
-              <div class="field">
-                <label for="reset-password2">새 비밀번호 확인</label>
-                <input id="reset-password2" type="password" autocomplete="new-password" maxlength="72" required />
-              </div>
+        <form id="signup-form" class="auth-form hidden" role="tabpanel" aria-labelledby="tab-signup" novalidate>
+          <div class="field-row">
+            <div class="field">
+              <label for="signup-name">이름</label>
+              <input id="signup-name" name="name" type="text" autocomplete="name" maxlength="30" required aria-describedby="signup-error" />
             </div>
-            <p id="reset-confirm-error" class="form-error" role="alert"></p>
-            <button id="reset-confirm-submit" type="submit">비밀번호 바꾸기</button>
-            <p class="auth-links"><button class="link-btn back-to-login" type="button">← 로그인으로</button></p>
-          </form>
-
-          <form id="signup-form" class="auth-form hidden" novalidate>
-            <div class="field-row">
-              <div class="field">
-                <label for="signup-name">이름</label>
-                <input id="signup-name" name="name" type="text" autocomplete="name" maxlength="30" required />
-              </div>
-              <div class="field">
-                <label for="signup-org">소속 <small>(선택)</small></label>
-                <input id="signup-org" name="org" type="text" autocomplete="organization" maxlength="50" />
-              </div>
+            <div class="field">
+              <label for="signup-org">소속 <small>선택</small></label>
+              <input id="signup-org" name="org" type="text" autocomplete="organization" maxlength="50" />
             </div>
-            <label for="signup-email">이메일</label>
-            <input id="signup-email" name="email" type="email" autocomplete="username" maxlength="254" required />
-            <div class="field-row">
-              <div class="field">
-                <label for="signup-password">비밀번호 <small>(8자 이상, 영문+숫자)</small></label>
-                <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required />
-              </div>
-              <div class="field">
-                <label for="signup-password2">비밀번호 확인</label>
-                <input id="signup-password2" name="password2" type="password" autocomplete="new-password" maxlength="72" required />
-              </div>
-            </div>
-            <p id="signup-error" class="form-error" role="alert"></p>
-            <button id="signup-submit" type="submit">가입하고 사원 코드 받기</button>
-          </form>
-
-          <div class="auth-guest">
-            <button id="guest-btn" class="btn-secondary" type="button">게스트로 학습</button>
-            <p>게스트는 학습 기록이 회원 DB에 저장되지 않아요</p>
           </div>
-        </div>
+          <label for="signup-email">이메일</label>
+          <input id="signup-email" name="email" type="email" autocomplete="username" maxlength="254" required aria-describedby="signup-error" />
+          <div class="field-row">
+            <div class="field">
+              <label for="signup-password">비밀번호 <small>8자 이상, 영문+숫자</small></label>
+              <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required aria-describedby="signup-error" />
+            </div>
+            <div class="field">
+              <label for="signup-password2">비밀번호 확인</label>
+              <input id="signup-password2" name="password2" type="password" autocomplete="new-password" maxlength="72" required aria-describedby="signup-error" />
+            </div>
+          </div>
+          <p id="signup-error" class="form-error" role="alert"></p>
+          <button id="signup-submit" class="btn-primary" type="submit">가입하고 사원 코드 받기</button>
+        </form>
+      </div>
+      <div class="auth-guest">
+        <button id="guest-btn" class="btn-secondary" type="button">게스트로 학습</button>
+        <p>게스트 학습 기록은 회원 기록에 저장되지 않습니다.</p>
+      </div>
       </div>
     </section>
 
-    <!-- 가입 완료 — 사원 코드 안내 -->
+    <!-- 가입 완료: 사원 코드 안내 -->
     <section id="screen-welcome" class="screen screen-notice">
-      <div class="notice-card">
-        <div class="notice-icon welcome-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></div>
-        <h1>가입이 완료되었습니다</h1>
-        <p><span id="welcome-name"></span> 님의 사원 코드</p>
-        <p id="welcome-code" class="welcome-code"></p>
-        <p class="notice-sub">다음부터는 이메일과 비밀번호로 로그인하세요. 학습 기록은 이 사원 코드로 저장됩니다.</p>
-        <button id="welcome-continue-btn" type="button">교육으로 이동</button>
+      <div class="notice">
+        <div class="notice-main">
+          <span class="notice-icon is-ok"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg></span>
+          <h1>가입이 완료되었습니다</h1>
+          <p class="notice-lead"><span id="welcome-name"></span> 님의 사원 코드</p>
+          <p id="welcome-code" class="welcome-code"></p>
+          <p class="notice-sub">다음부터는 이메일과 비밀번호로 로그인하세요. 학습 기록은 이 사원 코드로 저장됩니다.</p>
+        </div>
+        <div class="notice-side">
+          <button id="welcome-continue-btn" class="btn-primary btn-xl" type="button">교육으로 이동</button>
+        </div>
       </div>
     </section>
 
-    <!-- SC-02: 교육 시작 확인 -->
+    <!-- SC-02: 교육 과정 (신호 레지스터) -->
     <section id="screen-curriculum" class="screen">
-      <div class="screen-head">
-        <p class="ss-kicker"><b>교육 과정</b> 크레인 작업표준신호 5종 + 자체 지정 2종</p>
-        <h1>배울 수신호 7종</h1>
-        <p>순서대로 시범 → 따라 하기 → 판정을 반복합니다. 정답이면 picar가 그 신호대로 움직여요.</p>
+      <div class="course-main">
+        <header class="screen-head">
+          <h1>배울 수신호 7종</h1>
+          <p>순서대로 시범을 보고, 따라 하고, 판정을 받습니다. 정답이면 picar가 그 신호대로 움직입니다.</p>
+        </header>
+        <div class="register">
+          <div class="register-head" aria-hidden="true">
+            <span>순서</span><span>수신호</span><span>손 관절과 손가락</span><span>AI Hand 시범</span><span>picar 동작</span>
+          </div>
+          <ol id="curriculum-list" class="curriculum-list"></ol>
+        </div>
       </div>
-      <ol id="curriculum-list" class="curriculum-list"></ol>
-      <div class="screen-actions">
-        <button id="curriculum-back-btn" class="btn-secondary" type="button">처음으로</button>
-        <button id="curriculum-start-btn" type="button">교육 시작</button>
-      </div>
+
+      <aside class="course-spec">
+        <h2>과정 사양</h2>
+        <dl class="spec-list">
+          <div><dt>교육 수신호</dt><dd><b id="spec-count">7</b>종</dd></div>
+          <div><dt>수신호당 시도</dt><dd><b id="spec-attempts">3</b>회까지</dd></div>
+          <div><dt>판정 기준</dt><dd><b id="spec-tau">75</b>% 이상</dd></div>
+          <div><dt>확정 조건</dt><dd><b id="spec-frames">3</b>프레임 연속</dd></div>
+        </dl>
+        <p class="hand-caption">손 관절 그림은 KPI 촬영 데이터(RPi5 Camera Module 3)에서 추출한 손 관절 21점입니다.</p>
+        <div class="course-actions">
+          <button id="curriculum-start-btn" class="btn-primary btn-xl" type="button">교육 시작</button>
+          <button id="curriculum-back-btn" class="link-btn" type="button">처음으로</button>
+        </div>
+      </aside>
     </section>
 
     <!-- SC-03 (+ SC-03a/03b 오버레이): 시범 / 판정.
-         예시 사진 대신 Camera Module 3 라이브 영상을 보여 준다(2026-09-29 회의 결정) — 한 <img>가 두 단계에서
-         자리만 옮긴다(app.css). phase-demo: 영상 + 3단계 안내·확인 / phase-judging: 영상 크게 + 손모양·일치율·안내 -->
+         예시 사진 대신 Camera Module 3 라이브 영상(2026-09-29 회의 결정). 카메라 상자는 두 단계 모두 같은 자리·같은 크기(8:4 고정),
+         오른쪽 계기 열의 내용만 phase-demo / phase-judging 클래스로 바뀐다(station.css). <img>는 하나뿐이다 -->
     <section id="screen-training" class="screen">
       <header class="training-header">
-        <div class="badge">
-          <small>수신호</small>
-          <div id="signal-progress"><b>1</b> / 7</div>
-          <div id="progress-steps" class="progress-steps"></div>
-        </div>
         <div class="signal-title">
+          <p class="signal-count"><small>수신호</small><span id="signal-progress"><b>1</b> / 7</span></p>
           <h1 id="signal-name">-</h1>
-          <p id="signal-desc"></p>
+          <p id="signal-desc" class="sr-only"></p>
         </div>
-        <div id="attempt-badge" class="badge">
+        <div id="progress-steps" class="progress-steps" role="group" aria-label="수신호 진행"></div>
+        <div id="attempt-badge" class="attempt-badge">
           <small>시도</small>
-          <span id="attempt-count">0</span><span id="attempt-max"></span>
+          <span class="attempt-value"><span id="attempt-count">0</span><span id="attempt-max"></span></span>
         </div>
       </header>
 
       <div id="training-stage" class="training-stage phase-demo">
-        <div id="camera-preview" class="camera-preview">
-          <img id="camera-img" class="camera-feed hidden" alt="카메라 라이브 영상 (거울처럼 좌우 반전)" />
-          <span class="scanline" aria-hidden="true"></span>
-          <div id="camera-placeholder" class="camera-placeholder">
-            <span>카메라 연결 중…</span>
-            <p id="camera-placeholder-sub">연결이 안 되면 3초마다 다시 시도합니다</p>
+        <div class="cam-col">
+          <div id="camera-preview" class="camera-preview">
+            <div class="camera-view">
+              <img id="camera-img" class="camera-feed hidden" alt="카메라 라이브 영상 (거울처럼 좌우 반전)" />
+              <div id="camera-placeholder" class="camera-placeholder">
+                <span>카메라 연결 중…</span>
+                <p id="camera-placeholder-sub">연결이 안 되면 3초마다 다시 시도합니다</p>
+              </div>
+              <span class="camera-tag">LIVE</span>
+              <span class="vf-corner tl" aria-hidden="true"></span><span class="vf-corner tr" aria-hidden="true"></span>
+              <span class="vf-corner bl" aria-hidden="true"></span><span class="vf-corner br" aria-hidden="true"></span>
+            </div>
           </div>
-          <span class="camera-tag">LIVE</span>
-          <span class="vf-corner tl" aria-hidden="true"></span><span class="vf-corner tr" aria-hidden="true"></span>
-          <span class="vf-corner bl" aria-hidden="true"></span><span class="vf-corner br" aria-hidden="true"></span>
+        </div>
+
+        <!-- 계기 열: 시범 = 정답 손 모양(대)·지시·picar·확인 / 판정 = 정답 손 모양(소)·일치율·실시간 판정값·보류 안내 자리 -->
+        <aside class="instrument" aria-label="판정 계기">
+          <p id="judging-hint" class="judging-hint hidden">판정 중입니다. 손을 카메라에 보여 주세요.</p>
+
+          <div id="sign-guide" class="sign-guide">
+            <p class="inst-label">정답 손 모양</p>
+            <div class="sign-guide-body">
+              <figure class="guide-hand-box">
+                <span id="guide-hand" class="hand-fig guide-hand"></span>
+                <figcaption>실측 손 관절 21점</figcaption>
+              </figure>
+              <div class="sign-guide-glyph">
+                <div id="guide-fingers" class="guide-fingers"></div>
+                <p id="guide-text" class="sign-guide-text"></p>
+              </div>
+            </div>
+          </div>
+
+          <div id="match-score-row" class="match-score-row hidden">
+            <div class="match-head">
+              <span class="match-label">일치율</span>
+              <small id="match-score-state" class="match-state"></small>
+            </div>
+            <span id="match-score-value" class="match-value">0%</span>
+            <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div><span class="match-tick" aria-hidden="true"><b>판정 기준 75%</b></span></div>
+          </div>
+
           <!-- 판정 중 실시간 판정값 (vision → web live_judgment) -->
           <dl id="camera-hud" class="camera-hud" aria-label="실시간 판정값">
-            <div><dt>HAND</dt><dd id="hud-hand">-</dd></div>
+            <div><dt>손 검출</dt><dd id="hud-hand">-</dd></div>
             <div><dt>인식</dt><dd id="hud-pred">-</dd></div>
             <div><dt>신뢰도</dt><dd id="hud-conf">-</dd></div>
-            <div><dt>규칙</dt><dd id="hud-rule">3프레임 연속 · τ 0.75</dd></div>
+            <div><dt>판정 규칙</dt><dd id="hud-rule">3프레임 연속, 75% 이상</dd></div>
           </dl>
-        </div>
 
-        <div id="sign-guide" class="sign-guide">
-          <p class="sign-guide-label">정답 손모양</p>
-          <div id="guide-fingers" class="finger-pattern"></div>
-          <p id="guide-text" class="sign-guide-text"></p>
-        </div>
-
-        <div id="confirm-panel" class="confirm-panel hidden">
-          <ol class="demo-steps">
-            <li>AI Hand의 <b>시범</b>을 보세요</li>
-            <li>화면 속 내 손으로 <b>같은 손모양</b>을 만드세요</li>
-            <li>준비되면 <b>확인</b>을 누르세요</li>
-          </ol>
-          <div class="confirm-row">
-            <button id="confirm-btn" class="confirm-btn" type="button">확인</button>
-            <p id="confirm-keys" class="confirm-keys"><kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd> 버튼으로도 확인할 수 있어요</p>
+          <!-- below_tau / out_of_distribution: 판정은 계속되므로 화면을 덮지 않고 문구만 띄운다 (스펙 §5 결정). 자리는 미리 잡아 둔다 -->
+          <div class="hold-slot">
+            <div id="hold-hint" class="hold-hint hidden" role="status">
+              <span class="hold-icon" aria-hidden="true"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span>
+              <div class="hold-text"><strong id="hold-title"></strong><small id="hold-sub"></small></div>
+            </div>
           </div>
-          <p class="signal-picar"><span class="chip">picar</span><span id="signal-picar-text"></span></p>
-        </div>
 
-        <p id="judging-hint" class="judging-hint hidden">손을 카메라에 보여주세요 — 판정 중</p>
-
-        <div id="match-score-row" class="match-score-row hidden">
-          <label for="match-score-value">일치율 <small id="match-score-state" class="match-state"></small></label>
-          <span id="match-score-value">0%</span>
-          <div class="match-score-bar"><div id="match-score-fill" class="match-score-fill"></div><span class="match-tick" aria-hidden="true"><b>판정 기준 75%</b></span></div>
-        </div>
-
-        <!-- below_tau / out_of_distribution — 판정은 계속되므로 화면을 덮지 않고 문구만 띄운다 (스펙 §5 결정) -->
-        <div id="hold-hint" class="hold-hint hidden" role="status">
-          <span class="hold-icon" aria-hidden="true">!</span>
-          <div class="hold-text"><strong id="hold-title"></strong><small id="hold-sub"></small></div>
-        </div>
+          <div id="confirm-panel" class="confirm-panel hidden">
+            <p class="confirm-lead">시범을 따라 한 뒤 확인을 누르세요.</p>
+            <dl class="spec-rows">
+              <div><dt>picar 동작</dt><dd id="signal-picar-text"></dd></div>
+              <div><dt>확인 입력</dt><dd id="confirm-keys" class="confirm-keys"><kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd> 버튼</dd></div>
+            </dl>
+            <button id="confirm-btn" class="confirm-btn btn-primary" type="button">확인</button>
+          </div>
+        </aside>
       </div>
 
-      <div id="training-overlay" class="overlay hidden"></div>
+      <div id="training-overlay" class="overlay hidden" aria-live="assertive" aria-atomic="true"></div>
     </section>
 
     <!-- SC-04: 카메라 인식 실패 -->
-    <section id="screen-camera-fail" class="screen screen-notice">
-      <div class="notice-card">
-        <div class="notice-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5"/><path d="M12 17.5v.01"/></svg></div>
-        <h1>카메라 위치를 조정해주세요</h1>
-        <p>손이 잘 보이지 않습니다. 카메라 앞으로 손을 옮겨 다시 시도해주세요.</p>
-        <p class="notice-sub">재시도 버튼, <kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd>를 누르면 시범부터 다시 봅니다</p>
-        <button id="camera-retry-btn" type="button">재시도</button>
+    <section id="screen-camera-fail" class="screen screen-notice screen-alarm">
+      <div class="hazard" aria-hidden="true"></div>
+      <div class="notice">
+        <div class="notice-main">
+          <span class="notice-icon is-warn"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span>
+          <h1>카메라 위치를 조정해 주세요</h1>
+          <p class="notice-lead">손이 잘 보이지 않습니다. 카메라 앞으로 손을 옮겨 다시 시도해 주세요.</p>
+          <ul class="checklist">
+            <li>손이 화면 가운데에 오게 하세요</li>
+            <li>손 전체가 화면 안에 들어오게 하세요</li>
+            <li>손에 빛이 충분히 드는지 확인하세요</li>
+          </ul>
+        </div>
+        <div class="notice-side">
+          <button id="camera-retry-btn" class="btn-primary btn-xl" type="button">재시도</button>
+          <p class="notice-sub">재시도 버튼, <kbd>Space</kbd> 키 또는 micro:bit <kbd>A</kbd>를 누르면 시범부터 다시 봅니다</p>
+        </div>
       </div>
     </section>
 
-    <!-- SC-05: 학습 완료 — 결과는 회원 기록(Supabase)에 자동 저장된다 (예전 CSV 내려받기를 대신한다) -->
+    <!-- SC-05: 학습 완료 (검사 성적서). 결과는 회원 기록에 자동 저장된다 -->
     <section id="screen-summary" class="screen">
-      <h1 class="summary-title"><small>학습 완료</small>수고하셨습니다<span id="summary-sub"></span></h1>
-      <div class="summary-actions">
-        <div id="save-status" class="save-status" role="status"></div>
-        <button id="save-retry-btn" class="btn-secondary hidden" type="button">지금 다시 저장</button>
-        <button id="certificate-btn" type="button">수료증 발급받기</button>
-      </div>
+      <header class="report-head">
+        <h1 class="summary-title">학습 결과</h1>
+        <p class="report-lead">수고하셨습니다. 수신호별 판정 결과입니다.</p>
+        <p id="summary-sub" class="sr-only"></p>
+      </header>
+      <dl class="kpi-band">
+        <div><dt>합격</dt><dd><b id="kpi-pass">-</b><small id="kpi-of">/ 7종</small></dd></div>
+        <div><dt>첫 시도 정답</dt><dd><b id="kpi-first">-</b><small>종</small></dd></div>
+        <div><dt>총 시도</dt><dd><b id="kpi-attempts">-</b><small>회</small></dd></div>
+        <div><dt>판정 기준</dt><dd><b id="kpi-tau">75</b><small>% 이상</small></dd></div>
+      </dl>
       <table class="summary-table">
-        <thead><tr><th>수신호</th><th>결과</th><th>시도 횟수</th><th>일치율</th></tr></thead>
+        <thead><tr><th>수신호</th><th>결과</th><th>시도 횟수 <small class="th-note"><span class="first-mark" aria-hidden="true"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>첫 시도 정답</small></th><th class="col-score">일치율 <small class="th-note">기준 <span id="th-tau">75</span>% 대비</small></th></tr></thead>
         <tbody id="summary-tbody"></tbody>
       </table>
+      <footer class="report-foot">
+        <div id="save-status" class="save-status" role="status"></div>
+        <div class="report-actions">
+          <button id="save-retry-btn" class="btn-secondary hidden" type="button">지금 다시 저장</button>
+          <button id="certificate-btn" class="btn-primary btn-xl" type="button">수료증 발급받기</button>
+        </div>
+      </footer>
     </section>
 
     <!-- SC-06: 수료증 -->
     <section id="screen-certificate" class="screen">
-      <canvas id="certificate-canvas" width="2246" height="1588" aria-label="수료증"></canvas>
-      <h1>수료증이 발급되었습니다</h1>
-      <div class="certificate-actions">
-        <button id="certificate-download-btn" type="button">이미지로 저장</button>
-        <button id="certificate-print-btn" class="btn-secondary" type="button">인쇄 / PDF로 저장</button>
-        <button id="restart-btn" class="btn-secondary" type="button">다시 학습하기</button>
-        <button id="finish-btn" class="btn-secondary" type="button">끝내기 (로그아웃)</button>
+      <div class="cert-stage">
+        <canvas id="certificate-canvas" width="2246" height="1588" role="img" aria-label="수료증"></canvas>
       </div>
+      <aside class="cert-side">
+        <h1>수료증이 발급되었습니다</h1>
+        <p class="cert-lead">이미지로 저장하거나 인쇄해 보관하세요.</p>
+        <div class="certificate-actions">
+          <button id="certificate-download-btn" class="btn-primary" type="button"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/></svg>이미지로 저장</button>
+          <button id="certificate-print-btn" class="btn-secondary" type="button"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M214.67,72H200V40a8,8,0,0,0-8-8H64a8,8,0,0,0-8,8V72H41.33C27.36,72,16,82.77,16,96v80a8,8,0,0,0,8,8H56v32a8,8,0,0,0,8,8H192a8,8,0,0,0,8-8V184h32a8,8,0,0,0,8-8V96C240,82.77,228.64,72,214.67,72ZM72,48H184V72H72ZM184,208H72V160H184Zm40-40H200V152a8,8,0,0,0-8-8H64a8,8,0,0,0-8,8v16H32V96c0-4.41,4.19-8,9.33-8H214.67c5.14,0,9.33,3.59,9.33,8Zm-24-52a12,12,0,1,1-12-12A12,12,0,0,1,200,116Z"/></svg>인쇄 / PDF로 저장</button>
+        </div>
+        <div class="cert-links">
+          <button id="restart-btn" class="btn-secondary" type="button">다시 학습하기</button>
+          <button id="finish-btn" class="btn-secondary" type="button"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z"/></svg>끝내기 (로그아웃)</button>
+        </div>
+      </aside>
     </section>
 
-  </div>
+  </main>
 
-  <script src="main.js?v=20260930-c1"></script>
+  <script src="hand-data.js?v=20261002-r4"></script>
+  <script src="main.js?v=20261002-r4"></script>
 </body>
 </html>

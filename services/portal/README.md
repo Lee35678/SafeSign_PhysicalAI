@@ -15,6 +15,12 @@
 
 **카메라 영상은 받지 않는다.** 교육(시범·판정)은 교육장 키트에서만 한다.
 
+## 화면 (2026-10-02)
+
+- 팔레트: UI UX Pro Max "Industrial grey + safety orange"(slate 회색 + 주황 `#F97316`)를 다크 바탕에 맞춘 값, 교육장 키트와 같다. 글꼴 SUIT + JetBrains Mono(번호·코드, OFL 동봉).
+- 첫 화면 영상 2개(`frontend/media/`, 각 0.5MB)는 Hyperframes로 렌더링한 MP4 — 원본과 다시 만드는 법은 [motion/README.md](motion/README.md).
+  자동 재생은 소리 없이, 화면에 보일 때만. 운영체제가 **동작 줄이기**(Windows: 설정 > 접근성 > 시각 효과 > 애니메이션 효과 끔)면 자동 재생하지 않고 정지 화면 + 재생 버튼을 보인다.
+
 ## DB — 기존 스키마를 바꾸지 않는다
 
 - `services/web/supabase/schema.sql`은 **그대로**다. 이 사이트가 하는 쓰기는 회원가입(교육장과 같은 경로: Auth 계정 + `members` 행)뿐이고,

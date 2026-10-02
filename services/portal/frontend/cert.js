@@ -1,11 +1,11 @@
-// SafeSign 수료증 — 교육장 키트(services/web/frontend/main.js drawCertificate)와 같은 디자인을 회사 사이트용으로 옮긴 것.
+// SafeSign 수료증: 교육장 키트(services/web/frontend/main.js drawCertificate)와 같은 디자인을 회사 사이트용으로 옮긴 것.
 // 두 곳의 모양을 맞춰 두기 위해, 한쪽을 고치면 다른 쪽도 같이 고친다(차이: 이 파일은 사람·회차를 인자로 받는다).
 "use strict";
 
 const CERT = { w: 1123, h: 794, scale: 2 };
 const CERT_C = {
-  paper: "#F4F6F8", ink: "#111820", ink2: "#2A3440", steel: "#687582", steelLight: "#9AA5B1",
-  line: "#D5DAE0", orange: "#F28C28", green: "#15803D", greenBg: "#E3F4E8", red: "#C62828", redBg: "#FBE7E7",
+  paper: "#F8FAFC", ink: "#0F172A", ink2: "#334155", steel: "#64748B", steelLight: "#94A3B8",
+  line: "#E2E8F0", orange: "#EA580C", green: "#15803D", greenBg: "#E3F4E8", red: "#C62828", redBg: "#FBE7E7",
   seal: "#C62828",
 };
 const CERT_SANS = '"Inter Variable", "SUIT Variable", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif';
@@ -53,7 +53,7 @@ function hazardBand(ctx, x, y, w, h) {
   ctx.restore();
 }
 
-// 직인 — 붉은 정사각 도장. 찍힌 느낌을 위해 살짝 기울이고, 종이색 점으로 인주가 덜 묻은 자리를 만든다(회원코드로 정해진 무늬).
+// 직인: 붉은 정사각 도장. 찍힌 느낌을 위해 살짝 기울이고, 종이색 점으로 인주가 덜 묻은 자리를 만든다(사원 코드로 정해진 무늬).
 function drawSeal(ctx, cx, cy, size, seedText) {
   let seed = [...(seedText || "SAFESIGN")].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
   const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -152,8 +152,8 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
   const when = stamp(done);
   const rows = [
     ["성명", guest ? "게스트 학습자" : person.name],
-    ["사원 코드", guest ? "— (게스트)" : code],
-    ["소속", (!guest && person.org) ? person.org : "—"],
+    ["사원 코드", guest ? "게스트" : code],
+    ["소속", (!guest && person.org) ? person.org : "없음"],
     ["수료 일시", when],
   ];
   let y = 292;
@@ -162,7 +162,7 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
     ctx.font = `600 12.5px ${CERT_KR}`;
     ctx.fillText(label, L, y);
     ctx.fillStyle = CERT_C.ink;
-    ctx.font = label === "사원 코드" ? `700 21px ${CERT_MONO}` : `700 22px ${CERT_SANS}`;
+    ctx.font = label === "사원 코드" && !guest ? `700 21px ${CERT_MONO}` : `700 22px ${CERT_SANS}`;   // 게스트는 한글이라 고정폭(라틴) 글꼴 대신 본문 글꼴
     ctx.fillText(value, L + 108, y + 1);
     ctx.fillStyle = CERT_C.line;
     ctx.fillRect(L, y + 18, 480, 1);
@@ -175,7 +175,7 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
   wrapLines(ctx, statement, 480).forEach((line, i) => ctx.fillText(line, L, 540 + i * 27));
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `500 12px ${CERT_KR}`;
-  ctx.fillText("이수 기준: 수신호 7종 전 과정 · 합격 = 수신호마다 시도 3회 안에 정답", L, 624);
+  ctx.fillText("이수 기준: 수신호 7종 전 과정. 합격은 수신호마다 시도 3회 안에 정답", L, 624);
 
   // ── 오른쪽: 교육 결과표
   const TX = 620, TR = R;
@@ -185,7 +185,7 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
   ctx.textAlign = "right";
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `600 13px ${CERT_KR}`;
-  ctx.fillText(`합격 ${passed} / ${completed.length}종 · 첫 시도 정답 ${first}종`, TR, 164);
+  ctx.fillText(`합격 ${passed} / ${completed.length}종, 첫 시도 정답 ${first}종`, TR, 164);
 
   const col = { sign: TX, result: TX + 178, tries: TX + 258, meter: TX + 316 };
   ctx.textAlign = "left";
@@ -203,7 +203,7 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
     ctx.font = `700 16px ${CERT_KR}`;
     ctx.fillText(String(item.signal).replace(/_/g, " "), col.sign, y);
 
-    // 결과 칩 — 색과 글자를 함께
+    // 결과 칩: 색과 글자를 함께
     const label = fail ? "불합격" : "합격";
     ctx.font = `700 12px ${CERT_KR}`;
     const cw = ctx.measureText(label).width + 16;
@@ -219,7 +219,7 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
     ctx.font = `600 15px ${CERT_SANS}`;
     ctx.fillText(`${item.attempts}회`, col.tries, y);
 
-    // 일치율 막대 — 웹과 같이 한 색 채움 + 옅은 트랙, 판정 기준 75% 눈금
+    // 일치율 막대: 웹과 같이 한 색 채움 + 옅은 트랙, 판정 기준 75% 눈금
     const score = Math.max(0, Math.min(100, item.match_score || 0));
     const mw = 80, mx = col.meter;
     ctx.fillStyle = "rgba(242, 140, 40, 0.18)";
@@ -239,7 +239,7 @@ async function drawCertificate(canvas, person, completed, completedAt, issuedAt)
   ctx.textAlign = "left";
   ctx.fillStyle = CERT_C.steel;
   ctx.font = `500 11.5px ${CERT_KR}`;
-  ctx.fillText("판정: 카메라 AI 비전 · 3프레임 연속 확정 · 막대의 눈금 = 판정 기준 75%", TX, y + 8);
+  ctx.fillText("판정: 카메라 AI 비전, 3프레임 연속 확정. 막대의 눈금 = 판정 기준 75%", TX, y + 8);
 
   // ── 하단: 발급일 · 발급 기관 · 직인
   ctx.fillStyle = CERT_C.ink;

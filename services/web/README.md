@@ -9,7 +9,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 진행합니다 (03_인터페이스계약서 §5-2·§7 — picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에
 보드를 분리했습니다, 02_설계문서 §1-1).
 
-> **2026-09-29 갱신 (이동혁)**: 화면을 **Gemini AI Edition 디자인**(`stitch_safesign_design_system_final/`)으로 새로 만들었다.
+> **2026-09-29 갱신 (이동혁)**: 화면을 **Gemini AI Edition 디자인**(`stitch_safesign_design_system_final/` — 예시 코드, 2026-10-02 리뉴얼 뒤 삭제·git 기록에 남음)으로 새로 만들었다.
 > **회원가입·로그인**(회원코드 SS-00001 자동 부여)과 **회원별 학습 결과 저장(Supabase)** 을 추가하고, SC-05의 CSV 내려받기를
 > 회원 기록 자동 저장으로 바꿨다. 회의 결정대로 **수신호 예시 사진을 빼고 Camera Module 3 라이브 영상**을 보여 준다.
 > 설정은 [supabase/README.md](supabase/README.md).
@@ -68,16 +68,20 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
     공용 PC 5분 무입력 자동 로그아웃. 결과에는 수신호별 **합격/불합격**(`passed`)이 함께 저장된다 — [18_DB설계서](../../document/18_DB설계서.md)
 - `backend/camera.py` — `GET /api/camera/stream`: vision `GET /stream`(MJPEG)을 그대로 중계한다. 브라우저는 교육장 PC에서
   열리는데 `VISION_URL`은 RPi5 기준 주소라, web을 거쳐야 주소·포트가 맞는다.
-- `frontend/` — `index.html`(화면 마크업) + `style.css`(Gemini 테마 구조 그대로, **색만 산업 안전 팔레트** — 2026-09-30) + `app.css`(회원·라이브 영상·손가락 패턴 등
-  원본에 없는 요소 + 디자인 방향 절) + `main.js`(폴링·전환) + `fonts/`(SUIT·Inter, OFL — 오프라인용 동봉).
+- `frontend/` — `index.html`(화면 마크업) + `station.css`(화면 전체 스타일 하나, 2026-10-02) + `main.js`(폴링·전환) + `hand-data.js`(KPI 촬영 실측 손 관절 21점)
+  + `icons/`(Phosphor Icons, MIT) + `fonts/`(SUIT·Inter·JetBrains Mono, OFL — 오프라인용 동봉).
+  - **모션·팔레트 (2026-10-02 오후, 이동혁)** — UI UX Pro Max("Industrial grey + safety orange")로 팔레트를 slate 회색 + 주황 `#F97316`(누름 `#EA580C`)로 정리,
+    회사 사이트와 같은 값. 본문 SUIT, 번호·코드 JetBrains Mono. 손 관절 모션(표시 전용): 신호가 바뀌면 안내 손그림이 이전 손모양에서 관절 순서대로 옮겨 그려지고(0.6초),
+    첫 화면 7종 띠는 들어올 때 한 번 그려진 뒤 2.4초마다 한 신호씩 밝아진다. 동작 줄이기 설정이면 모두 끈다. 수료증은 같은 팔레트의 밝은 변형(종이 `#F8FAFC`, 주황 `#EA580C`).
+  - **리뉴얼 (2026-10-02, 이동혁)** — Industrial Intelligence + Premium Technical Design. Taste Skill(design-taste-frontend · redesign-existing-projects) 진단 후 전면 재배치: 상단 상태 스트립(장치 정상 = 회색, 이상 = 빨간 칸), SC-02 신호 레지스터, SC-03 8:4 고정 카메라 + 오른쪽 계기 열(판정값 HUD를 영상 밖으로), 안돈 판 7:5, SC-05 성적서형, Phosphor 아이콘(MIT), **KPI 촬영 실측 손 관절 21점**(hand-data.js)으로 손그림 SVG 대체, 무한 장식 정리(판정 중 테두리·옅은 앰비언트만), 화면 문구 em-dash 0. CSS는 `station.css` 하나(옛 style.css·app.css 삭제). 기능 계약(id·클래스·JS 흐름) 유지, DB·백엔드 무수정.
   - 디자인 (2026-09-30): Industrial Intelligence · Mission Control · Technical Editorial → **산업 제어실(HMI, ISA-101) 기준으로 정리** — 무채색 불투명 패널,
     색은 상태·핵심 조작에만, 일치율 계기에 판정 기준 75% 눈금, 안돈식 정답 화면(14 §11). 수료증 = 성명·사원 코드·수료 일시·번호 + 가상 기관 직인.
-    회사 사이트(같은 회원 DB)는 `services/portal` — [19_회사웹사이트](../../document/19_회사웹사이트.md). 팔레트 Industrial Black `#111820`(배경) ·
+    회사 사이트(같은 회원 DB)는 `services/portal` — [19_회사웹사이트](../../document/19_회사웹사이트.md). 팔레트(09-30 당시) Industrial Black `#111820`(배경) ·
     Safety Orange `#F28C28`(핵심 강조, 주 버튼은 검정 글자) · Steel Gray `#687582`(보조 정보) · Signal White `#F4F6F8`(주요 텍스트) ·
-    Safe Green `#22C55E`(정상) · Alert Red `#EF4444`(위험 경고). SC-01 오른쪽은 제품 소개(손 관절 21점 인식 애니메이션),
+    Safe Green `#22C55E`(정상) · Alert Red `#EF4444`(위험 경고). 10-02 오후 slate 계열로 갱신(위 항목). SC-01 오른쪽은 제품 소개(손 관절 21점 인식 애니메이션),
     판정 중 카메라에는 실시간 판정값 계기판(`live_judgment`: 손 검출 · 인식 수신호 · 신뢰도).
   - 화면 기준 (2026-09-30): 시연 PC **1920×1080 전체 화면**. 노트북 1366×768(전체 화면)·1366×657(창 모드)도 전 화면이
-    스크롤·잘림 없이 들어간다 — 세로 820px·700px 이하에서 간격·글자만 줄인다(`app.css` "노트북 화면 맞춤"). 프레임워크 없이 바닐라 JS. 수료증(SC-06)은 `<canvas>`(성명·회원코드 포함).
+    스크롤·잘림 없이 들어간다 — 세로가 짧으면 간격·글자만 줄인다(`station.css`). 프레임워크 없이 바닐라 JS. 수료증(SC-06)은 `<canvas>`(성명·회원코드 포함).
   - 흐름: SC-01 → **로그인/회원가입**(가입 완료 시 회원코드 안내, 게스트 가능) → SC-02 → SC-03 → … → SC-06 → 다시 학습 / 끝내기(로그아웃)
   - **SC-03 시범/판정 단계**: 두 단계 모두 **라이브 영상**(한 `<img>`가 자리만 옮긴다). 정답 손모양은 사진 대신 **손가락 패턴**
     (엄지~소지 폄/접음)으로 보여 준다 — AI Hand가 구별하지 못하는 G3≈G6·G4≈G7(설계서 §4.7)도 이 패턴으로 구분된다.
