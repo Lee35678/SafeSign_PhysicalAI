@@ -33,7 +33,7 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
 - `src/app.py` — FastAPI 진입점 (`/health`, `/command`, `/result`, `/progress`, `/button`). 앞의 셋은
   `ble_bridge`를 통해 실제 BLE 전송까지 연동되어 있음(`/progress`는 LED 표시 없이 수신 확인만).
   `/button`은 micro:bit가 올린 버튼 입력 누적값(seq)을 돌려준다
-- `tests/vision_to_command_integration_test.py` — vision의 JudgmentResult 형태 값을
+- `scripts/vision_to_command_integration_test.py` — vision의 JudgmentResult 형태 값을
   `/command`로 흘려보내 target_signal↔G{n} 매핑이 실제로 동작하는지 확인하는 통합 테스트
   (MediaPipe 연동 전 단계 검증용, "다음 단계" 참고)
 
@@ -193,7 +193,7 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 
 **이동 방식**: 손가락 간 텀 150ms 순차 출발 — 인접 2개 50ms 겹침 (초기화 시 주먹 자세 포함) — 두 모드 공통. 제스처 1회 실측 약 0.80초.
 
-**PC 쪽 (`tests/aihand_control_pc.py`)**: micro:bit 쪽과 동일하게 최상단 `TEST_MODE` 한 줄로 운영
+**PC 쪽 (`scripts/aihand_control_pc.py`)**: micro:bit 쪽과 동일하게 최상단 `TEST_MODE` 한 줄로 운영
 (숫자 입력 → `G1`~`G7`, `loop` 내구성 테스트, `progress <current> <total>`)/테스트(`idx`/`g`/`hand`
 명령 → `IDX:`/`G:`/`HAND:`) 모드를 전환합니다. micro:bit 펌웨어의 `TEST_MODE` 값과 반드시 맞춰서
 실행하세요. 두 모드 모두 `correct`/`incorrect`(LED O/X, 부저 없음), `progress`(수신
@@ -232,7 +232,7 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
 ## 다음 단계
 
 1. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
-   검증 (`tests/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
+   검증 (`scripts/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
 2. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
    연동~~ → `state_machine.py`에 구현 완료(2026-09-21, `services/web/README.md` 참고)
 3. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현

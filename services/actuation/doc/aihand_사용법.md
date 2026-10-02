@@ -142,7 +142,7 @@ Windows 설정 → Bluetooth 및 장치 → **켜기**.
 
 ### 2-2. 스크립트 실행
 ```powershell
-cd services\actuation\tests
+cd services\actuation\scripts
 python aihand_control_pc.py
 ```
 
@@ -232,7 +232,7 @@ micro:bit 스캔 중... (5초)
 | --- | --- |
 | `micro:bit를 찾지 못했습니다.` | ① micro:bit 전원 확인(LED에 ◆ 표시) ② PC 블루투스 ON ③ MakeCode 탭 닫기 ④ 다른 프로그램/휴대폰 앱이 이미 연결 중이면 해제 ⑤ micro:bit 뒷면 리셋 버튼 한 번 |
 | 스캔은 되는데 **연결/전송 실패** | 1-5의 **No Pairing Required**가 꺼진 채 올라갔을 가능성이 큼 → 설정 켜고 **다시 다운로드**. Windows에 페어링된 micro:bit 항목이 있으면 제거 |
-| `characteristic does not support notifications` | 보드/펌웨어가 바뀌어 UUID가 다를 수 있음 → `python tests/ble_debug_services.py`로 실제 UUID 확인 후 상수 갱신 |
+| `characteristic does not support notifications` | 보드/펌웨어가 바뀌어 UUID가 다를 수 있음 → `python scripts/ble_debug_services.py`로 실제 UUID 확인 후 상수 갱신 |
 | 명령을 보내도 **아무 반응 없음**(에러도 없음) | PC와 micro:bit의 **`TEST_MODE` 값 불일치**가 1순위. 운영 모드 펌웨어는 `G1` 형식만, 테스트 모드는 `G:1` 형식을 받습니다 |
 | 슬픈 얼굴 + **070** | BLE 동작 중 `music.*` 호출 (SD_ASSERT). 소리 코드를 모두 제거하고 LED로 대체 |
 | 슬픈 얼굴 + **020** | 메모리 부족 — 불필요한 확장/코드를 줄이세요 |

@@ -54,18 +54,15 @@ KPI "물리 피드백 지연 P95 ≤ 2.0초"를 **어느 시점으로 재느냐*
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime
+from pathlib import Path
 
-# aihand_command.schema.json은 servo_angles를 필수로 요구하지만, actuation은 target_signal만으로
-# G{n}을 결정하고 각도는 쓰지 않는다(controller.py 주석 참고). 계약을 지키되 값은 중립값으로 채운다.
-_NEUTRAL_ANGLES = {"thumb": 90, "index": 90, "middle": 90,
-                   "ring": 90, "pinky": 90, "wrist_rotation": 90}
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+# 통신 헬퍼·중립 각도는 aihand_picar_demo와 공유한다(aihand_vision_picar_demo와 같은 방식).
+from aihand_picar_demo import _NEUTRAL_ANGLES, _get, _post  # noqa: E402
 
 # (라벨, 엔드포인트, 페이로드, 관찰 안내)
 GESTURES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확인_완료", "후진", "주의"]
@@ -77,34 +74,6 @@ VERDICTS = {"1": "정상", "2": "기지 제약(감수)", "3": "🔴 실패"}
 # - /result·/progress: 즉시 회신이라 26~42ms. 1424ms가 나오면 앞 명령의 LED 표시에 핸들러가
 #   묶여 있다는 뜻이다(자동 연속 모드에서 result correct → incorrect 순서로 보내므로 드러난다).
 SLOW_MS = {"/command": 1200, "/result": 300, "/progress": 300}
-
-
-def _post(base: str, path: str, payload: dict, timeout: float) -> tuple[float, dict | None, str]:
-    """(왕복 초, 응답 본문, 오류사유). 본문이 없으면 dict는 None."""
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(f"{base}{path}", data=body,
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    t0 = time.perf_counter()
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read()
-    except urllib.error.HTTPError as e:
-        return time.perf_counter() - t0, None, f"http_{e.code}"
-    except Exception as e:  # noqa: BLE001 — 타임아웃·연결 끊김
-        return time.perf_counter() - t0, None, type(e).__name__
-    dt = time.perf_counter() - t0
-    try:
-        return dt, json.loads(raw), ""
-    except ValueError:
-        return dt, None, "bad_json"
-
-
-def _health(base: str) -> dict:
-    try:
-        with urllib.request.urlopen(f"{base}/health", timeout=3.0) as r:
-            return json.loads(r.read())
-    except Exception as e:  # noqa: BLE001
-        return {"status": f"unreachable ({type(e).__name__})"}
 
 
 def _steps(args) -> list[tuple[str, str, dict, str]]:
@@ -176,7 +145,7 @@ def main() -> int:
         if _ask("계속하려면 yes: ") != "yes":
             return 1
 
-    before = _health(base)
+    before = _get(f"{base}/health")
     print(f"\n대상 {base}   /health → {before}")
     if before.get("mock_hardware") is True:
         print("⚠️  **MOCK_HARDWARE=true 입니다.** 서보가 실제로 움직이지 않습니다.")
@@ -208,7 +177,7 @@ def main() -> int:
                 box: dict = {}
                 t_send = time.perf_counter()
                 worker = threading.Thread(
-                    target=lambda: box.update(v=_post(base, path, payload, args.timeout)),
+                    target=lambda: box.update(v=_post(f"{base}{path}", payload, args.timeout)),
                     daemon=True)
                 worker.start()
 
@@ -252,7 +221,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 — 어떤 오류든 **기록은 반드시 남긴다**
         print(f"\n🔴 스크립트 오류: {type(exc).__name__}: {exc}\n   여기까지의 기록을 저장합니다.")
 
-    after = _health(base)
+    after = _get(f"{base}/health")
 
     # ── 로그 파일 작성 ──────────────────────────────────────────────────────
     lines = [

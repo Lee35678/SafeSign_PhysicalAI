@@ -143,7 +143,7 @@ def test_progress_is_two_digits_without_separator():
 def test_uart_uuids_are_the_reversed_pair_measured_on_this_board():
     """이 보드는 표준 NUS와 RX/TX가 반대다 — 표준값으로 되돌리면 통신이 죽는다.
 
-    2026-09-21 `tests/ble_debug_services.py` 실측: 6e400003=write, 6e400002=indicate.
+    2026-09-21 `scripts/ble_debug_services.py` 실측: 6e400003=write, 6e400002=indicate.
     """
     assert ble_bridge.UART_RX_UUID.startswith("6e400003")
     assert ble_bridge.UART_TX_UUID.startswith("6e400002")

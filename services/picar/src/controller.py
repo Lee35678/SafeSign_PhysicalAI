@@ -4,7 +4,7 @@ document/02_설계문서 §1-1, §3-2 참고 — picar가 주행하면 카메라
 picar 전용 컴퓨트 보드(RPi4B)로 분리했다(2026-09-18). RPi5의 교육 상태머신이 Wi-Fi(HTTP)로 이 서비스의
 `/picar` 엔드포인트를 호출한다 — document/03_인터페이스계약서 §5-2 참고.
 
-핀 배정 근거: document/hardware_pinmap.md "Raspbot_pinmap" 표(2026-09-21 확인).
+핀 배정 근거: document/11_하드웨어설계서.md 부록 A "Raspbot 전체 핀맵" 표(2026-09-21 확인).
 
 ## 모터/서보 — I2C 코프로세서 경유 (2026-09-21 프로토콜 확보)
 
@@ -20,7 +20,7 @@ SDA=BCM2)로 그 코프로세서에 명령만 보낸다. 그 명령 프로토콜
 
 슬레이브 주소는 **`0x16`**(Raspbot 오리지널 기준). ⚠️ Raspbot **V2**는 `0x2B`를 쓰므로 보드가 다르면
 값이 달라진다 — 실물에서 `i2cdetect -y 1`로 먼저 확인하고, 다르면 `RASPBOT_I2C_ADDR` 환경변수로
-덮어쓸 것(README "실물 검증 절차" 참고). 우리 보드가 오리지널로 추정되는 근거: hardware_pinmap.md의
+덮어쓸 것(README "실물 검증 절차" 참고). 우리 보드가 오리지널로 추정되는 근거: 11_하드웨어설계서 부록 A의
 초음파·부저·LED·트래킹이 전부 Pi GPIO 직결인데, V2는 이 주변장치들까지 MCU가 I2C로 관장한다.
 
 ## 주행 지속 시간 (2026-09-27 결정: 스키마 필드 없이 이 자동 정지로 운용)
@@ -74,7 +74,7 @@ from __future__ import annotations
 import os
 import threading
 
-# Raspbot 차체가 이미 점유한 BCM 핀 (hardware_pinmap.md 기준) — 외부 황색 LED 배선 시 피할 것.
+# Raspbot 차체가 이미 점유한 BCM 핀 (11_하드웨어설계서 부록 A-1 기준) — 외부 황색 LED 배선 시 피할 것.
 USED_BCM_PINS = {
     27: "트래킹 Left1", 22: "트래킹 Left2", 17: "트래킹 Right1", 4: "트래킹 Right2",
     9: "적외선 회피 Left(MISO)", 10: "적외선 회피 Right(MOSI)", 25: "적외선 회피 스위치",
@@ -82,7 +82,7 @@ USED_BCM_PINS = {
     21: "LED1(적색)", 20: "LED2(청색)", 3: "I2C SCL(모터·서보 코프로세서)", 2: "I2C SDA(모터·서보 코프로세서)",
 }
 
-# ── 모터/서보 코프로세서 I2C (hardware_pinmap.md "MCU 코프로세서" 행) ──────────────
+# ── 모터/서보 코프로세서 I2C (11_하드웨어설계서 부록 A-1 "MCU 코프로세서" 행) ─────
 I2C_BUS = 1  # SCL=BCM3 / SDA=BCM2 => Pi의 I2C 버스 1
 I2C_ADDR = int(os.getenv("RASPBOT_I2C_ADDR", "0x16"), 16)
 
