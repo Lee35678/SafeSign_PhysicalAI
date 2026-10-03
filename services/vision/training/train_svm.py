@@ -88,6 +88,10 @@ SIGN_CLASSES = ["정지", "서행", "좌회전_유도", "우회전_유도", "확
 CRITICAL_CLASS = "정지"          # 이 클래스의 오분류는 치명 오분류 (KPI 0건)
 TAU_GRID = [round(float(x), 2) for x in np.arange(0.50, 0.96, 0.05)]
 KPI = {"accuracy": 0.92, "misclass": 0.03, "reject": 0.05, "macro_f1": 0.90}
+# KPI를 만족하는 τ가 없을 때 쓰는 기본 τ, 번들에 기록하는 N — classify._DEFAULT_TAU·smoothing.DEFAULT_N_FRAMES와
+# 같아야 한다(tests/test_constants_sync.py). 그쪽을 import하면 번들 로드가 따라와서 여기 따로 둔다.
+DEFAULT_TAU = 0.75
+N_FRAMES = 3
 
 
 # ---------------------------------------------------------------- 데이터 적재
@@ -418,7 +422,7 @@ def main() -> int:
         tau = res["chosen"]["tau"]
         print(f"      -> τ = {tau} 채택 (KPI 전부 만족하는 후보 중 미판정률 최소)")
     else:
-        tau = 0.75
+        tau = DEFAULT_TAU
         print(f"      -> KPI를 모두 만족하는 τ가 없습니다. 기본값 {tau} 사용.")
         print("         자체 촬영 데이터로 재측정 후 재결정할 것 (회의안건 안건 4).")
 
@@ -480,7 +484,7 @@ def main() -> int:
         "model": model,
         "classes": [str(c) for c in classes],
         "tau": tau,
-        "n_frames": 3,
+        "n_frames": N_FRAMES,
         "match_score_calibration": calib,
         "open_set_gate": gate,
         "metadata": {

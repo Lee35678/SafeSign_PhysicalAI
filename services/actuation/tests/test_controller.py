@@ -17,6 +17,7 @@ document/03_인터페이스계약서.md §5-3 · 펌웨어 src/firmware/aihand_c
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib.util
 import json
@@ -36,6 +37,14 @@ from microbit import ble_bridge  # noqa: E402
 _spec = importlib.util.spec_from_file_location("actuation_app", _SRC / "app.py")
 actuation_app = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(actuation_app)
+
+
+def _load_script(name: str):
+    """scripts/는 패키지가 아니다 — 경로로 적재하고 고유 이름을 준다."""
+    spec = importlib.util.spec_from_file_location(f"actuation_{name}", _SRC.parent / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCHEMA = _REPO_ROOT / "shared" / "schemas" / "aihand_command.schema.json"
@@ -73,10 +82,7 @@ def test_gesture_map_order_matches_prd_table():
 def test_demo_signal_order_matches_gesture_numbers():
     """aihand_test는 aihand_picar_demo.SIGNALS 순서를 G1~G7 라벨로 쓴다(KPI 물리 지연 로그).
     picar 메뉴 순서가 밀리면 로그에 엉뚱한 G 번호가 경고 없이 찍힌다."""
-    spec = importlib.util.spec_from_file_location(
-        "aihand_picar_demo", _SRC.parent / "scripts" / "aihand_picar_demo.py")
-    demo = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(demo)
+    demo = _load_script("aihand_picar_demo")
     assert demo.SIGNALS == sorted(controller.GESTURE_MAP, key=controller.GESTURE_MAP.get)
 
 
@@ -508,3 +514,32 @@ def test_reconnect_releases_the_previous_client(monkeypatch):
     assert asyncio.run(ble_bridge.connect(mock=False)) is True
     assert old.disconnected
     assert ble_bridge._client is not old
+
+
+# ── 다른 곳에 따로 적힌 값과 일치 (2026-10-03 tech-debt 2단계) ─────────────────
+def _py_literal(rel: str, name: str):
+    """다른 서비스 파일의 모듈 수준 리터럴 상수를 import 없이 읽는다(그쪽 의존성이 이 환경에 없다)."""
+    tree = ast.parse((_REPO_ROOT / rel).read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"{rel}에 {name}이 없다")
+
+
+def test_demo_picar_commands_match_the_station():
+    """시연 스크립트가 web 상태머신과 다른 picar 동작을 보내면 시연과 교육 화면이 어긋난다."""
+    demo = _load_script("aihand_picar_demo")
+    assert demo.PICAR_COMMANDS == _py_literal("services/web/backend/state_machine.py", "PICAR_COMMANDS")
+
+
+def test_demo_speed_cap_matches_the_schema():
+    schema = json.loads((_REPO_ROOT / "shared/schemas/picar_command.schema.json").read_text(encoding="utf-8"))
+    assert _load_script("aihand_picar_demo").MAX_SPEED_PCT == \
+        schema["properties"]["motor"]["properties"]["speed"]["maximum"]
+
+
+def test_pc_control_script_uses_the_same_uart_uuids():
+    """이 펌웨어는 RX/TX UUID가 표준과 반대다 — PC 스크립트가 다른 값을 쓰면 쓰기가 조용히 실패한다."""
+    rel = "services/actuation/scripts/aihand_control_pc.py"
+    assert _py_literal(rel, "UART_RX_UUID") == ble_bridge.UART_RX_UUID
+    assert _py_literal(rel, "UART_TX_UUID") == ble_bridge.UART_TX_UUID

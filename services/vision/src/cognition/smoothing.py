@@ -15,6 +15,9 @@ from typing import Optional
 
 from cognition import model_store
 
+# 기본 N(연속 프레임 수). train_svm.N_FRAMES·evaluate_kpi.N_CONSECUTIVE와 같아야 한다(tests/test_constants_sync.py)
+DEFAULT_N_FRAMES = 3
+
 
 def _resolve_n_frames() -> int:
     """N 결정 우선순위: 환경변수 N_FRAMES > 학습 번들에 기록된 값 > 기본값 3.
@@ -28,7 +31,7 @@ def _resolve_n_frames() -> int:
     bundle = model_store.load_bundle()
     if bundle and bundle.get("n_frames"):
         return int(bundle["n_frames"])
-    return 3
+    return DEFAULT_N_FRAMES
 
 
 N_FRAMES = _resolve_n_frames()
