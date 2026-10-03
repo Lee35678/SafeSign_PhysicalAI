@@ -422,3 +422,22 @@ def test_simulate_increments_seq_without_touching_ble(fresh_bridge):
     assert body["seq"] == 2
     assert actuation_app.button()["seq"] == 2
     assert ble_bridge._client is None
+
+
+# ── /result·/progress 입력 검증 ───────────────────────────────────────────────
+@pytest.mark.parametrize("value", ["false", "true", 1, None])
+def test_result_counts_only_json_true_as_correct(value):
+    """문자열 "false"가 참으로 평가돼 O가 뜨던 결함 — JSON true만 정답이다."""
+    assert asyncio.run(actuation_app.result({"is_correct": value}))["sent"] == "incorrect"
+    assert asyncio.run(actuation_app.result({"is_correct": True}))["sent"] == "correct"
+
+
+@pytest.mark.parametrize("payload", [{"current": 10, "total": 7}, {"current": -1}, {"current": "3"},
+                                     {"current": True}, {"total": 3.5}])
+def test_progress_rejects_values_the_protocol_cannot_carry(payload):
+    """프로토콜은 P<한 자리><한 자리> — P107(10/7)은 펌웨어가 1/07인지 10/7인지 모른다."""
+    assert asyncio.run(actuation_app.progress(payload))["reason"] == "invalid_progress"
+
+
+def test_progress_sends_single_digits():
+    assert asyncio.run(actuation_app.progress({"current": 3, "total": 7}))["sent"] == "P37"

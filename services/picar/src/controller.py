@@ -120,6 +120,13 @@ _i2c_lock = threading.Lock()
 _bus = None
 _auto_stop_timer: "threading.Timer | None" = None
 
+# 주행·정지 쓰기와 자동 정지 타이머 교체를 한 덩어리로 묶는다. `/picar`는 동기 엔드포인트라
+# 요청이 스레드풀에서 병렬로 돈다 — 묶지 않으면 정지 요청의 "쓰기→취소" 사이에 주행 요청이
+# 끼어들어 **새 주행의 타이머가 취소되고 차가 멈추지 않는다.** 세대 번호는 이미 대체된 타이머가
+# 늦게 깨어나 새 주행을 끊지 않게 한다. 잠금 순서는 항상 _motion_lock → _i2c_lock.
+_motion_lock = threading.Lock()
+_motion_gen = 0
+
 # gpiozero LED 객체는 가비지 컬렉션되면 핀이 해제되므로 모듈 전역에 붙들어 둔다.
 _leds: dict = {}
 
@@ -180,31 +187,61 @@ def _write_stop_retrying() -> None:
 
 # ── 모터 ──────────────────────────────────────────────────────────────────────
 def _cancel_auto_stop() -> None:
-    global _auto_stop_timer
+    """_motion_lock을 쥔 채로 호출한다."""
+    global _auto_stop_timer, _motion_gen
+    _motion_gen += 1
     if _auto_stop_timer is not None:
         _auto_stop_timer.cancel()
         _auto_stop_timer = None
 
 
 def _schedule_auto_stop() -> None:
-    """MOTION_DURATION_S 후 자동 정지 (다음 주행 명령이 오면 취소하고 새로 건다)."""
+    """MOTION_DURATION_S 후 자동 정지 (다음 주행 명령이 오면 취소하고 새로 건다). _motion_lock을 쥔 채로 호출한다."""
     global _auto_stop_timer
     _cancel_auto_stop()
-    _auto_stop_timer = threading.Timer(MOTION_DURATION_S, _safe_stop)
+    _auto_stop_timer = threading.Timer(MOTION_DURATION_S, _safe_stop, args=(_motion_gen,))
     _auto_stop_timer.daemon = True
     _auto_stop_timer.start()
 
 
-def _safe_stop() -> None:
+def _safe_stop(gen: "int | None" = None) -> None:
     """타이머 스레드에서 호출 — 실패해도 서비스를 죽이지 않는다.
 
     예외를 삼키지만 **조용히 삼키지는 않는다** — 사유를 `_last_stop_error`에 남겨
     `/health`로 드러낸다. 여기서 실패하면 차가 계속 달리므로 반드시 눈에 띄어야 한다.
+    `gen`이 주어지면 그 사이 다른 주행·정지가 타이머를 대체했을 때 아무것도 하지 않는다.
     """
-    try:
-        _write_stop_retrying()
-    except Exception:  # noqa: BLE001 — 타이머 스레드가 죽지 않게만 한다(사유는 위에서 기록됨)
-        pass
+    with _motion_lock:
+        if gen is not None and gen != _motion_gen:
+            return
+        try:
+            _write_stop_retrying()
+        except Exception:  # noqa: BLE001 — 타이머 스레드가 죽지 않게만 한다(사유는 위에서 기록됨)
+            pass
+
+
+def shutdown(mock: bool = True) -> None:
+    """프로세스 종료 시 호출 — 차를 세우고 LED를 끈다.
+
+    자동 정지 타이머는 데몬 스레드라 프로세스와 함께 사라진다. 주행 중에 서비스가 꺼지면
+    모터가 마지막 명령을 유지하므로 여기서 직접 정지를 쓴다. 실패해도 종료는 막지 않는다.
+    """
+    if mock:
+        return
+    with _motion_lock:
+        _cancel_auto_stop()
+        try:
+            _write_stop_retrying()
+        except Exception:  # noqa: BLE001 — 사유는 _last_stop_error에 남는다
+            pass
+    with _led_lock:
+        if _led_off_timer is not None:
+            _led_off_timer.cancel()
+        for led in _leds.values():
+            try:
+                led.off()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
@@ -258,12 +295,14 @@ def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
         # 2026-09-23 부하 테스트 #10(speed 50)에서 "끝날 때 정지 안 됨"으로 실제 관측됐다.
         # 실패하면 예외가 execute()로 올라가 i2c_failed로 응답되고, 타이머는 살아 있어
         # 늦어도 MOTION_DURATION_S 안에 차가 멈춘다.
-        _write_stop_retrying()
-        _cancel_auto_stop()
+        with _motion_lock:
+            _write_stop_retrying()
+            _cancel_auto_stop()
         return {"status": "ok", "action": "stop"}
 
-    _write_motor(*payload)
-    _schedule_auto_stop()
+    with _motion_lock:
+        _write_motor(*payload)
+        _schedule_auto_stop()
     return {"status": "ok", "action": action, "speed_pct": speed_pct,
             "auto_stop_s": MOTION_DURATION_S, **capped}
 
@@ -392,8 +431,11 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
     (03_인터페이스계약서 §7).
     """
     global _led_gen
-    led = picar_command.get("led", {})
-    motor = picar_command.get("motor", {})
+    # null·비객체는 "없음"과 같이 취급한다 — LED는 전부 off, 모터는 stop(안전한 쪽)
+    led = picar_command.get("led")
+    led = led if isinstance(led, dict) else {}
+    motor = picar_command.get("motor")
+    motor = motor if isinstance(motor, dict) else {}
 
     states = {ch: led.get(ch, "off") for ch in ("red", "yellow_left", "yellow_right")}
     lit = any(s != "off" for s in states.values())

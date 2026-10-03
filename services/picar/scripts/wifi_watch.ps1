@@ -9,8 +9,9 @@
     ⚠️ 요청 경로는 `PC → AP → picar` 두 구간이다. 이 스크립트는 **앞 구간만** 잰다.
        정작 움직이는 쪽은 picar이므로, **picar 구간을 같이 봐야 한다** — 아래 참고.
 
-    picar 구간(권장, 별도 창):
-        ssh pi@192.168.0.42 "while true; do L=`$(iw dev wlan0 link); echo `"`$(date +%T) `$(echo `"`$L`" | grep -oP 'signal:\s*\K-?\d+') dBm`"; sleep 1; done" | Tee-Object picar_wifi.log
+    picar 구간(권장, 별도 창). picar(192.168.50.10)는 RPi5 AP 안쪽이라 PC에서 직접 SSH할 수 없다 —
+    RPi5를 거친다(-J, <RPi5>는 PC에서 RPi5에 접속하는 user@host):
+        ssh -J <RPi5> pi@192.168.50.10 "while true; do L=`$(iw dev wlan0 link); echo `"`$(date +%T) `$(echo `"`$L`" | grep -oP 'signal:\s*\K-?\d+') dBm`"; sleep 1; done" | Tee-Object picar_wifi.log
 
     Windows는 신호를 **품질 백분율(0~100%)** 로 보고한다. dBm 환산은 근사식
         dBm ≈ (품질 / 2) - 100

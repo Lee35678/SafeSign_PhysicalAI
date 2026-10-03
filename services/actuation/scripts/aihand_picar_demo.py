@@ -274,7 +274,7 @@ def main() -> int:
 
     ap = argparse.ArgumentParser(description="AI Hand + picar 연동 데모 (RPi5)")
     ap.add_argument("--aihand", default="http://localhost:8002", help="actuation 서비스 URL")
-    ap.add_argument("--picar", required=True, help="picar 서비스 URL (RPi4B), 예: http://192.168.0.42:8000")
+    ap.add_argument("--picar", required=True, help="picar 서비스 URL (RPi4B), 예: http://192.168.50.10:8000")
     ap.add_argument("--cruise-speed", type=int, default=40, help=f"① 순항 전진 속도 0~{MAX_SPEED_PCT}%% (기본 40 = 일반 주행)")
     args = ap.parse_args()
 

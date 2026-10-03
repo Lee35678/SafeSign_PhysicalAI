@@ -9,6 +9,7 @@ document/02_설계문서 §1-1: picar가 주행하면 카메라도 함께 이동
 통신 정책(타임아웃/재시도/폴백)은 호출하는 쪽(services/web)이 관리한다 — 03_인터페이스계약서 §5-2, §7.
 """
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -16,7 +17,15 @@ import controller
 
 MOCK_HARDWARE = os.getenv("MOCK_HARDWARE", "true").lower() == "true"
 
-app = FastAPI(title="SafeSign Picar Service")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # 주행 중에 프로세스가 꺼지면 모터가 마지막 명령을 유지한다 — 종료 시 직접 세운다
+    controller.shutdown(mock=MOCK_HARDWARE)
+
+
+app = FastAPI(title="SafeSign Picar Service", lifespan=lifespan)
 
 
 @app.get("/health")

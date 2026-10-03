@@ -329,6 +329,46 @@ def test_stop_failure_is_recorded_for_health(monkeypatch):
     controller._last_stop_error = None   # 다른 테스트에 새지 않게 되돌린다
 
 
+def test_superseded_auto_stop_does_not_cut_a_newer_drive(monkeypatch):
+    """늦게 깨어난 옛 타이머가 그 사이 들어온 새 주행을 끊으면 안 된다(세대 번호 확인)."""
+    writes = []
+    monkeypatch.setattr(controller, "_write_stop_retrying", lambda: writes.append("stop"))
+    monkeypatch.setattr(controller, "_write_motor", lambda *a: writes.append("drive"))
+
+    controller._apply_motor("forward", 30, mock=False)
+    old_gen = controller._motion_gen
+    controller._apply_motor("forward", 30, mock=False)     # 새 주행이 타이머를 대체
+    controller._safe_stop(old_gen)                          # 옛 타이머가 늦게 실행된 상황
+    assert writes == ["drive", "drive"]
+
+    controller._safe_stop(controller._motion_gen)           # 현재 타이머는 정지를 쓴다
+    assert writes[-1] == "stop"
+    with controller._motion_lock:
+        controller._cancel_auto_stop()
+
+
+def test_shutdown_stops_the_car(monkeypatch):
+    """주행 중 프로세스가 꺼지면 모터가 마지막 명령을 유지한다 — 종료 시 정지를 써야 한다."""
+    writes = []
+    monkeypatch.setattr(controller, "_write_stop_retrying", lambda: writes.append("stop"))
+    monkeypatch.setattr(controller, "_write_motor", lambda *a: writes.append("drive"))
+
+    controller._apply_motor("forward", 30, mock=False)
+    controller.shutdown(mock=False)
+
+    assert writes == ["drive", "stop"]
+    assert controller._auto_stop_timer is None
+
+
+def test_null_led_and_motor_are_treated_as_absent():
+    """`{"led": null}`이 500으로, `{"motor": null}`이 i2c_failed로 오보되던 결함."""
+    result = controller.execute({"command": "C_STOP", "led": None, "motor": None}, mock=True)
+
+    assert result["status"] == "ok"
+    assert result["motor"]["action"] == "stop"
+    assert all(r["state"] == "off" for r in result["led"].values())
+
+
 def test_gpio_failure_does_not_block_the_motor(monkeypatch):
     """LED(GPIO)가 죽어도 모터 명령 — 특히 정지 — 는 실행돼야 한다 (Docker에 gpiochip 미매핑 등)."""
     def _no_gpio(name, pins):

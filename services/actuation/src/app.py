@@ -63,7 +63,8 @@ async def result(payload: dict):
     match_score는 펌웨어가 쓰지 않는다(LED 표시는 정오답 여부만 반영) — 응답 로그·화면 표시용으로는
     web 쪽에서 별도로 활용한다.
     """
-    return await ble_bridge.send_result(payload.get("is_correct", False), mock=MOCK_HARDWARE)
+    # JSON true일 때만 정답 — 문자열 "false"처럼 참으로 평가되는 값이 O를 띄우지 않게
+    return await ble_bridge.send_result(payload.get("is_correct") is True, mock=MOCK_HARDWARE)
 
 
 @app.post("/progress")
@@ -73,9 +74,11 @@ async def progress(payload: dict):
 
     payload 예: {"current": 3, "total": 7}
     """
-    return await ble_bridge.send_progress(
-        payload.get("current", 0), payload.get("total", 7), mock=MOCK_HARDWARE
-    )
+    current, total = payload.get("current", 0), payload.get("total", 7)
+    # 프로토콜은 "P<한 자리><한 자리>"다 — 두 자리 값(P107 등)은 펌웨어가 구분할 수 없어 보내지 않는다
+    if not all(type(v) is int and 0 <= v <= 9 for v in (current, total)):
+        return {"status": "error", "reason": "invalid_progress", "current": current, "total": total}
+    return await ble_bridge.send_progress(current, total, mock=MOCK_HARDWARE)
 
 
 @app.get("/button")
