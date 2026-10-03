@@ -71,7 +71,7 @@ vision `/latest`를 100ms마다 읽어 판정을 주행 명령으로 바꿔 `/dr
 
 **선례가 이미 있다.** `aihand_picar_demo.py`·`aihand_vision_picar_demo.py`의 `PicarDriver`는 주행 상태를
 `HEARTBEAT_S`(1초)마다 다시 보내 2초 자동 정지와 맞물려 연속 주행을 만든다 — 창이 긴 워치독이다.
-`load_test.py`도 같은 방식이며 13 §4.1에서 653회 요청 실패 0건으로 검증됐다. 조종 모드는 이 구조를
+`load_test.py`도 같은 방식이며 13 §4.1에서 648회(#1~#9) 요청 실패 0건으로 검증됐다. 조종 모드는 이 구조를
 **주기 1초 → 0.1초, 창 2초 → 0.5초로 줄이고, 보낼 상태를 진행자 대신 vision 판정이 정하게** 바꾼 것이다.
 그래서 RPi5용 데모 스크립트가 모인 `services/actuation/scripts/`에 두고 다음을 재사용한다:
 
