@@ -319,7 +319,7 @@ def test_concurrent_sends_each_get_their_own_reply(monkeypatch):
 
 
 # ── 버튼 입력 (BTN, 2026-09-28) ──────────────────────────────────────────────
-# 펌웨어는 버튼 A를 누르면 **요청 없이** "BTN:A\n"을 알림으로 올린다. 회신 칸(_last_reply/_reply_event)이
+# 펌웨어는 버튼 A를 누르면 **요청 없이** "BTN:A\n"을 알림으로 올린다. 회신 대기(_replies/_reply_event)가
 # 하나뿐이라 이 줄을 회신으로 받으면 대기 중인 G 명령이 엉뚱한 줄로 "ok" 처리되고(AI Hand가 아직
 # 움직이는 중인데 /command가 돌아감) 버튼 입력은 사라진다. BTN 줄이 회신과 섞이지 않고 seq로만
 # 쌓이는지 고정한다.
@@ -327,7 +327,7 @@ def test_concurrent_sends_each_get_their_own_reply(monkeypatch):
 def fresh_bridge(monkeypatch):
     """모듈 전역 상태가 테스트 사이로 새지 않게 매번 새로 깐다."""
     monkeypatch.setattr(ble_bridge, "_button", {"seq": 0, "last_button": None, "last_at": None})
-    monkeypatch.setattr(ble_bridge, "_last_reply", None)
+    monkeypatch.setattr(ble_bridge, "_replies", [])
     monkeypatch.setattr(ble_bridge, "_reply_event", None)
     monkeypatch.setattr(ble_bridge, "_send_lock", None)
     monkeypatch.setattr(ble_bridge, "_client", None)
@@ -337,7 +337,7 @@ def test_button_line_is_not_taken_as_a_reply(fresh_bridge):
     ble_bridge._reply_event = asyncio.Event()
     ble_bridge._on_notify(None, b"BTN:A\n")
     assert not ble_bridge._reply_event.is_set(), "버튼 알림이 회신 대기를 깨웠다"
-    assert ble_bridge._last_reply is None
+    assert ble_bridge._replies == []
     assert ble_bridge.button_state()["seq"] == 1
     assert ble_bridge.button_state()["last_button"] == "A"
 
@@ -346,7 +346,7 @@ def test_reply_and_button_in_one_notify_are_split(fresh_bridge):
     """두 줄이 알림 한 번에 붙어 와도 회신은 회신대로, 버튼은 버튼대로 처리한다."""
     ble_bridge._reply_event = asyncio.Event()
     ble_bridge._on_notify(None, b"OK3\nBTN:A\n")
-    assert ble_bridge._last_reply == "OK3"
+    assert ble_bridge._replies == ["OK3"]
     assert ble_bridge._reply_event.is_set()
     assert ble_bridge.button_state()["seq"] == 1
 
@@ -354,7 +354,7 @@ def test_reply_and_button_in_one_notify_are_split(fresh_bridge):
 def test_button_before_reply_does_not_shadow_it(fresh_bridge):
     ble_bridge._reply_event = asyncio.Event()
     ble_bridge._on_notify(None, b"BTN:A\nOK:CORRECT\n")
-    assert ble_bridge._last_reply == "OK:CORRECT"
+    assert ble_bridge._replies == ["OK:CORRECT"]
     assert ble_bridge.button_state()["seq"] == 1
 
 
@@ -362,7 +362,7 @@ def test_reply_without_newline_still_counts(fresh_bridge):
     """기존 동작 유지 — 줄바꿈 없이 온 회신도 한 줄로 받는다."""
     ble_bridge._reply_event = asyncio.Event()
     ble_bridge._on_notify(None, b"OK5")
-    assert ble_bridge._last_reply == "OK5"
+    assert ble_bridge._replies == ["OK5"]
 
 
 def test_each_press_increments_seq_and_stamps_time(fresh_bridge):
@@ -441,3 +441,70 @@ def test_progress_rejects_values_the_protocol_cannot_carry(payload):
 
 def test_progress_sends_single_digits():
     assert asyncio.run(actuation_app.progress({"current": 3, "total": 7}))["sent"] == "P37"
+
+
+# ── 회신 대조 (늦게 온 앞 명령의 회신을 ACK로 받지 않기) ──────────────────────
+@pytest.mark.parametrize("line,expected", [("G4\n", "OK4"), ("correct\n", "OK:CORRECT"),
+                                           ("incorrect\n", "OK:INCORRECT"), ("P37\n", "OKP37")])
+def test_expected_reply_matches_firmware(line, expected):
+    """펌웨어 aihand_control.ts의 uartWriteString 회신과 같아야 한다."""
+    assert ble_bridge._expected_reply(line) == expected
+
+
+class _StaleThenRealClient:
+    """앞 명령(G3)의 늦은 회신이 먼저 오고, 이번 명령의 회신이 뒤에 온다."""
+    is_connected = True
+
+    async def write_gatt_char(self, _uuid, data):
+        n = data.decode().strip()[1:]
+
+        async def _events():
+            await asyncio.sleep(0.01)
+            ble_bridge._on_notify(None, b"OK3\n")
+            await asyncio.sleep(0.02)
+            ble_bridge._on_notify(None, f"OK{n}\n".encode())
+
+        asyncio.get_running_loop().create_task(_events())
+
+
+def test_late_reply_of_a_previous_command_is_not_taken_as_ack(fresh_bridge, monkeypatch):
+    monkeypatch.setattr(ble_bridge, "_client", _StaleThenRealClient())
+
+    async def _run():
+        ble_bridge._reply_event = asyncio.Event()
+        return await ble_bridge.send_gesture(5, mock=False)
+
+    result = asyncio.run(_run())
+    assert result["status"] == "ok"
+    assert result["reply"] == "OK5"
+    assert result["ignored"] == ["OK3"]
+
+
+def test_only_wrong_replies_end_in_timeout(fresh_bridge, monkeypatch):
+    """맞는 회신이 끝내 안 오면 엉뚱한 줄을 ok로 넘기지 않고 timeout이다."""
+    class _WrongOnly:
+        is_connected = True
+
+        async def write_gatt_char(self, _uuid, _data):
+            asyncio.get_running_loop().call_soon(ble_bridge._on_notify, None, b"OK3\n")
+
+    monkeypatch.setattr(ble_bridge, "_client", _WrongOnly())
+    monkeypatch.setattr(ble_bridge, "ACK_TIMEOUT_S", 0.1)
+
+    async def _run():
+        ble_bridge._reply_event = asyncio.Event()
+        return await ble_bridge.send_gesture(5, mock=False)
+
+    result = asyncio.run(_run())
+    assert result == {"status": "timeout", "sent": "G5", "ignored": ["OK3"]}
+
+
+def test_reconnect_releases_the_previous_client(monkeypatch):
+    """재연결 때 이전 BleakClient를 끊지 않고 덮어쓰면 BlueZ에 연결이 남을 수 있다."""
+    _patch_ble(monkeypatch, [_Dev("BBC micro:bit")])
+    old = _ScriptedClient(_Dev("BBC micro:bit"), None, None)
+    monkeypatch.setattr(ble_bridge, "_client", old)
+
+    assert asyncio.run(ble_bridge.connect(mock=False)) is True
+    assert old.disconnected
+    assert ble_bridge._client is not old

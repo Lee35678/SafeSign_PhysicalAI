@@ -10,9 +10,11 @@
   "P<current><total>"(진행 표시, 둘 다 한 자리 숫자, LED 표시 없이 "OKP<current><total>\n"만 회신 —
   진행 표시는 web 화면 쪽 담당)을 처리한다.
 - 버튼 A를 누르면 펌웨어가 **요청 없이** "BTN:A\n"을 알림으로 올린다(web 확인 버튼 대용, 2026-09-28).
-  회신 칸이 하나뿐이라 이걸 회신으로 받으면 대기 중인 명령이 엉뚱한 줄로 "ok" 처리되고 버튼 입력은
-  사라진다 — `_on_notify`가 BTN 줄을 회신에서 빼내 `_button`의 seq만 올린다. web은 `GET /button`으로
-  seq를 폴링한다(누른 횟수를 세는 방식이라 한 번 못 읽어도 다음 폴링에 잡힌다).
+  `_on_notify`가 BTN 줄을 회신 목록에 넣지 않고 `_button`의 seq만 올린다 — 회신으로 섞이면 버튼
+  입력이 사라진다. web은 `GET /button`으로 seq를 폴링한다(누른 횟수를 세는 방식이라 한 번 못 읽어도
+  다음 폴링에 잡힌다).
+- 회신은 보낸 명령에 맞는 줄(`_expected_reply`)만 ACK로 인정한다(2026-10-03). 시간 초과로 버려진
+  앞 명령의 늦은 회신(예: OK3)이 다음 명령의 ACK로 잡히지 않게 — 맞지 않는 줄은 응답의 `ignored`에 남긴다.
 - 손가락 서보 동시 구동 시 전류 급증으로 BLE 연결이 끊길 수 있어(세션 6), 쓰기 실패 시 재연결 후
   1회 재시도한다 (03_인터페이스계약서 §7의 "타임아웃+1회 재시도" 정책과 동일 기조).
   이 현상은 전원 구조로 설명된다(document/11_하드웨어설계서.md §4.4) — 7.5V 3A 어댑터 하나가
@@ -45,8 +47,10 @@ ACK_TIMEOUT_S = 2.0  # 물리 피드백 지연 KPI(P95<=2.0초, 10_PRD §3 참�
 
 _client: "BleakClient | None" = None
 _reply_event: "asyncio.Event | None" = None
-_last_reply: "str | None" = None
-# 회신 칸(_last_reply/_reply_event)이 하나뿐이라 전송은 **한 번에 하나만** 한다. 잠금이 없으면 동시 요청
+# 받은 회신 줄(BTN 제외). 전송마다 비우고, 보낸 명령에 맞는 줄(_expected_reply)만 ACK로 인정한다 —
+# 시간 초과로 버려진 앞 명령의 늦은 회신(예: OK3)이 다음 명령의 ACK로 잡히지 않게.
+_replies: list = []
+# 회신 대기(_replies/_reply_event)가 하나뿐이라 전송은 **한 번에 하나만** 한다. 잠금이 없으면 동시 요청
 # (예: web이 /command와 /result를 병렬로 보냄)이 서로의 대기 이벤트를 지우고 회신을 가로챈다.
 _send_lock: "asyncio.Lock | None" = None
 
@@ -76,7 +80,6 @@ def _on_notify(_sender, data: bytearray) -> None:
 
     알림 사이에 걸친 줄은 이어 붙이지 않는다 — 펌웨어가 보내는 줄은 모두 20바이트(알림 한 번 크기)
     미만이라 잘려 올 일이 없고, 줄바꿈 없이 오는 회신도 그대로 한 줄로 받는다."""
-    global _last_reply
     for line in data.decode("utf-8", errors="replace").split("\n"):
         line = line.strip()
         if not line:
@@ -84,13 +87,18 @@ def _on_notify(_sender, data: bytearray) -> None:
         if line.startswith("BTN:"):
             _record_button(line[4:])
             continue
-        _last_reply = line
+        _replies.append(line)
         if _reply_event is not None:
             _reply_event.set()
 
 
 async def _connect_once() -> bool:
     global _client
+    if _client is not None:
+        # 재연결 전에 끊어진(또는 반쯤 살아 있는) 이전 연결을 놓아 준다 — 덮어쓰기만 하면 BlueZ에 남을 수 있다
+        with contextlib.suppress(Exception):
+            await _client.disconnect()
+        _client = None
     devices = await BleakScanner.discover(timeout=SCAN_TIMEOUT_S)
     target = next((d for d in devices if d.name and DEVICE_NAME in d.name), None)
     if target is None:
@@ -158,6 +166,18 @@ def is_connected(mock: bool = True) -> bool:
     return _client is not None and bool(_client.is_connected)
 
 
+def _expected_reply(line: str) -> str:
+    """펌웨어(aihand_control.ts)가 이 명령에 돌려주는 회신 줄."""
+    cmd = line.strip()
+    if cmd == "correct":
+        return "OK:CORRECT"
+    if cmd == "incorrect":
+        return "OK:INCORRECT"
+    if cmd.startswith("P"):
+        return f"OK{cmd}"          # P37 -> OKP37
+    return f"OK{cmd[1:]}"          # G4 -> OK4
+
+
 async def _send_line(line: str) -> dict:
     """실물 연결 상태에서 한 줄을 전송하고 응답을 ACK_TIMEOUT_S 동안 대기 (mock 처리는 호출부 담당).
 
@@ -181,8 +201,7 @@ async def _send_line_locked(line: str) -> dict:
         except BleakError:
             return False
 
-    global _last_reply
-    _last_reply = None
+    _replies.clear()
     _reply_event.clear()
 
     if not await _write():
@@ -190,11 +209,28 @@ async def _send_line_locked(line: str) -> dict:
         if not await connect(mock=False) or not await _write():
             return {"status": "error", "reason": "write_failed"}
 
-    try:
-        await asyncio.wait_for(_reply_event.wait(), timeout=ACK_TIMEOUT_S)
-        return {"status": "ok", "sent": line.strip(), "reply": _last_reply}
-    except asyncio.TimeoutError:
-        return {"status": "timeout", "sent": line.strip()}
+    expected = _expected_reply(line)
+    result = {"status": "timeout", "sent": line.strip()}
+    ignored = []                   # 맞지 않아 버린 줄 — 진단용으로 응답에 붙인다
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + ACK_TIMEOUT_S
+    while result["status"] == "timeout":
+        while _replies:
+            reply = _replies.pop(0)
+            if reply == expected:
+                result.update(status="ok", reply=reply)
+                break
+            ignored.append(reply)
+            log.warning("micro:bit 회신 %r는 %r의 ACK가 아님 — 버리고 계속 기다린다", reply, line.strip())
+        remaining = deadline - loop.time()
+        if result["status"] == "ok" or remaining <= 0:
+            break
+        _reply_event.clear()       # 위에서 다 비운 뒤라 await 없이 바로 지워도 놓치는 줄이 없다
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(_reply_event.wait(), timeout=remaining)
+    if ignored:
+        result["ignored"] = ignored
+    return result
 
 
 async def send_gesture(gesture_num: int, mock: bool = True) -> dict:
