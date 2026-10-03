@@ -1,0 +1,7 @@
+# CI·로컬 단위 테스트용 (.github/workflows/ci.yml, document/16 §3.2).
+# requirements.txt의 gpiozero·lgpio는 RPi 전용(lgpio는 x86 러너에서 빌드 실패) — 테스트는 mock 경로라
+# 필요 없어서 -r로 끌어오지 않고 나머지만 같은 버전으로 적는다. requirements.txt를 바꾸면 여기도 맞출 것.
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+smbus2==0.5.0
+pytest>=8,<10

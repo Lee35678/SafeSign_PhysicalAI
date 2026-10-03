@@ -12,18 +12,24 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from perception import capture, preview  # noqa: E402
 
+# JPEG 인코더(OpenCV 또는 Pillow)가 없으면 mjpeg()는 프레임을 끝없이 기다린다 — 실패 대신 건너뛴다.
+# 서비스는 인코더가 없으면 /stream에서 503을 먼저 돌려주므로 이 경로에 들어오지 않는다.
+needs_encoder = pytest.mark.skipif(not preview.encoder_available(), reason="JPEG 인코더(cv2/Pillow) 없음")
+
 
 def _jpeg_size(jpeg: bytes) -> tuple[int, int]:
-    import cv2
+    cv2 = pytest.importorskip("cv2")
     img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
     return img.shape[1], img.shape[0]
 
 
+@needs_encoder
 def test_frame_becomes_small_jpeg():
     preview._reset_for_tests()
     assert preview.get_jpeg() is None, "프레임이 없으면 None"
@@ -51,6 +57,7 @@ def test_same_frame_is_encoded_once():
         preview._enc = original
 
 
+@needs_encoder
 def test_mjpeg_stream_chunks_and_viewer_count():
     preview._reset_for_tests()
     preview.publish_frame(np.zeros((360, 640, 3), np.uint8))

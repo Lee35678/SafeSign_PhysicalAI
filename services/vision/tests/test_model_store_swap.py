@@ -86,3 +86,17 @@ def test_corrupt_bundle_is_not_reloaded_every_call(tmp_path, monkeypatch):
     os.utime(path, (st.st_atime, st.st_mtime + 10))   # 파일 교체
     model_store.load_bundle()
     assert len(calls) == 2, "파일이 바뀌었는데 다시 읽지 않았다"
+
+
+def test_describe_reports_the_loaded_bundle_sha256(tmp_path, monkeypatch):
+    """Pi에서 도는 번들이 KPI를 잰 번들과 같은지 /health로 대조할 수 있어야 한다."""
+    import hashlib
+
+    path = tmp_path / "bundle.joblib"
+    path.write_bytes(b"bundle-bytes")
+    monkeypatch.setitem(sys.modules, "joblib", types.SimpleNamespace(load=lambda p: {"model": "m"}))
+    monkeypatch.setattr(model_store, "MODEL_PATH", path)
+    for name in ("_bundle", "_loaded", "_loaded_mtime", "_failed_key", "_loaded_sha256"):
+        monkeypatch.setattr(model_store, name, None if name != "_loaded" else False)
+
+    assert model_store.describe()["sha256"] == hashlib.sha256(b"bundle-bytes").hexdigest()

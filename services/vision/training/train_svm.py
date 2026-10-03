@@ -60,6 +60,7 @@ from __future__ import annotations
 import argparse
 import collections
 import glob
+import hashlib
 import json
 import os
 import re
@@ -152,8 +153,12 @@ def _cache_signature(data_dir: Path, mode: str, per_class: int | None) -> str:
     """캐시가 지금 요청과 같은 조건에서 만들어졌는지 확인하는 지문.
 
     클래스별 파일 개수와 최신 mtime을 넣어, 데이터가 추가·갱신되면 캐시를 자동으로 버린다.
+    특징 코드(normalize.py) 해시도 넣는다 — 빠지면 joint_features를 고친 뒤에도 옛 특징으로 학습돼
+    실행 시 계산하는 특징과 어긋난다.
     """
-    parts = [str(data_dir.resolve()), mode, str(per_class)]
+    normalize_src = SERVICE_ROOT / "src" / "cognition" / "normalize.py"
+    parts = [str(data_dir.resolve()), mode, str(per_class),
+             hashlib.sha256(normalize_src.read_bytes()).hexdigest()[:16]]
     for cls in SIGN_CLASSES:
         files = glob.glob(str(data_dir / cls / "*.json"))
         newest = max((os.path.getmtime(f) for f in files), default=0.0)

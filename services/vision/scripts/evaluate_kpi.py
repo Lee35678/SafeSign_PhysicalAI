@@ -398,7 +398,8 @@ def main() -> int:
         report = {
             "rule_official": f"{N_CONSECUTIVE}연속", "rule_reference": "최빈값",
             "excluded_subjects": {} if args.include_excluded else EXCLUDED_SUBJECTS,
-            "model": {"feature_mode": mode, **((model_store.load_bundle() or {}).get("metadata") or {})},
+            "model": {"feature_mode": mode, "sha256": model_store.describe().get("sha256"),
+                      **((model_store.load_bundle() or {}).get("metadata") or {})},
             "kpi": {"official": k, "reference": km, "target": KPI,
                     "misclass_wilson_upper": upper, "critical_wilson_upper": crit_upper, "n_stop": n_stop},
             "per_subject": {s: {"official": kpi_table([r for r in rows if r["subject"] == s]),

@@ -29,6 +29,7 @@ format_version 2에서 바뀐 것 (2026-09-21 회의 결정 반영):
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
@@ -49,6 +50,8 @@ _loaded_mtime: Optional[float] = None
 # 읽기에 실패한 (경로, mtime). 같은 파일이면 다시 읽지 않는다 — predict가 프레임마다 load_bundle을
 # 여러 번 부르므로, 기억하지 않으면 손상 번들 하나로 초당 수백 번 joblib.load·traceback이 반복된다.
 _failed_key: Optional[tuple] = None
+# 적재한 번들 파일의 sha256 — Pi에서 도는 번들이 KPI를 잰 번들과 같은지 /health·KPI 리포트로 대조한다.
+_loaded_sha256: Optional[str] = None
 
 
 def _normalize_bundle(obj: Any) -> dict:
@@ -81,13 +84,20 @@ def _warn_if_sklearn_mismatch(bundle: dict) -> None:
         )
 
 
+def _file_sha256(path: Path) -> Optional[str]:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 def load_bundle(force: bool = False) -> Optional[dict]:
     """모델 번들을 로드(캐시). 파일이 없으면 None.
 
     파일이 교체되면(mtime 변경) 다음 호출에서 자동으로 다시 읽는다 — Colab에서 새로 받은 모델을
     덮어쓰고 서비스만 재시작하지 않아도 반영되게 하기 위함.
     """
-    global _bundle, _loaded, _loaded_mtime, _failed_key
+    global _bundle, _loaded, _loaded_mtime, _failed_key, _loaded_sha256
 
     with _lock:
         if not MODEL_PATH.exists():
@@ -133,6 +143,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
         _loaded = True
         _loaded_mtime = mtime
         _failed_key = None
+        _loaded_sha256 = _file_sha256(MODEL_PATH)
         _warn_if_sklearn_mismatch(_bundle)
         logger.info(
             "분류기 모델 로드 완료: %s (classes=%s, tau=%s, trained_at=%s)",
@@ -242,6 +253,7 @@ def describe() -> dict:
     return {
         "loaded": True,
         "path": str(MODEL_PATH),
+        "sha256": _loaded_sha256,
         "classes": bundle.get("classes"),
         "tau": bundle.get("tau"),
         "feature_mode": (bundle.get("metadata") or {}).get("feature_mode"),
