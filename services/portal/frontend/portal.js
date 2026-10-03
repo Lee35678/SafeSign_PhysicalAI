@@ -18,12 +18,13 @@ const SIGNALS = [
 const FINGER_NAMES = ["엄지", "검지", "중지", "약지", "소지"];
 
 // 최종 KPI (05_모델카드 §7-3, 2026-09-30): 팀원 3명 210시도, 공식 3연속. 수치는 바꾸지 않는다
+// provisional: 95% 구간이 목표선을 넘어 "잠정 달성"으로 적는 지표 (06 §2-1, 16 §5.7)
 const KPI = [
-  { name: "정답률", target: "≥ 92%", value: 95.2, unit: "%", goal: 92, better: "high", ci: "91.5-97.4%" },
+  { name: "정답률", target: "≥ 92%", value: 95.2, unit: "%", goal: 92, better: "high", ci: "91.5-97.4%", provisional: true },
   { name: "오분류율", target: "≤ 3%", value: 0.0, unit: "%", goal: 3, better: "low", ci: "상한 1.8%" },
-  { name: "미판정률", target: "≤ 5%", value: 4.8, unit: "%", goal: 5, better: "low", ci: "2.6-8.5%" },
+  { name: "미판정률", target: "≤ 5%", value: 4.8, unit: "%", goal: 5, better: "low", ci: "2.6-8.5%", provisional: true },
   { name: "Macro F1", target: "≥ 0.90", value: 0.974, unit: "", goal: 0.9, better: "high", ci: "" },
-  { name: "치명 오분류 (정지 → 다른 신호)", target: "0건", value: 0, unit: "건", goal: 0, better: "zero", ci: "정지 30시도, 상한 11.4%" },
+  { name: "치명 오분류 (정지 → 다른 신호)", target: "0건", value: 0, unit: "건", goal: 0, better: "zero", ci: "정지 30시도, 상한 11.4%", provisional: true },
 ];
 
 let session = null;       // {member_code, name} | null
@@ -140,7 +141,7 @@ function renderHome() {
         <div><dt>목표</dt><dd>${esc(k.target)}${k.better === "low" ? ' <small class="dir">낮을수록 좋음</small>' : ""}</dd></div>
         ${k.ci ? `<div><dt>95% 신뢰구간</dt><dd>${esc(k.ci)}</dd></div>` : ""}
       </dl>
-      <p class="kpi-state">${met ? `<span class="pass">${ICON.check}달성</span>` : `<span class="fail">${ICON.x}미달</span>`}</p>
+      <p class="kpi-state">${met ? `<span class="pass">${ICON.check}${k.provisional ? "잠정 달성" : "달성"}</span>` : `<span class="fail">${ICON.x}미달</span>`}</p>
     </div>`;
   }).join("");
 }

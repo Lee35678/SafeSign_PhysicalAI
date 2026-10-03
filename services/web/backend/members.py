@@ -56,6 +56,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _repo_dotenv(here: Path) -> Optional[Path]:
+    """저장소 루트의 `.env` 경로. 이 파일이 저장소 밖(web Docker 이미지 `/app/backend/`)에 있으면
+    상위 폴더가 모자라 None — 예전엔 `parents[3]`이 import 시점에 IndexError를 내 컨테이너가 죽었다."""
+    parents = here.resolve().parents
+    return parents[3] / ".env" if len(parents) > 3 else None
+
+
 def _load_dotenv() -> None:
     """저장소 루트의 `.env`(git 제외)를 읽어 **비어 있는** 환경변수만 채운다 — 셸·Docker·호스팅에서 준 값이 항상 우선.
 
@@ -65,7 +72,10 @@ def _load_dotenv() -> None:
     import sys
     if os.getenv("SAFESIGN_NO_DOTENV") == "1" or "pytest" in sys.modules:
         return
-    path = Path(os.getenv("SAFESIGN_DOTENV", str(Path(__file__).resolve().parents[3] / ".env")))
+    override = os.getenv("SAFESIGN_DOTENV")
+    path = Path(override) if override else _repo_dotenv(Path(__file__))
+    if path is None:
+        return
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:

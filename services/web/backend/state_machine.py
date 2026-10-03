@@ -693,6 +693,9 @@ def _check_devices(client: httpx.Client) -> dict:
         except (httpx.HTTPError, ValueError):
             status[name] = {"status": "unreachable"}
             continue
+        if not isinstance(body, dict):
+            status[name] = {"status": "unknown"}
+            continue
 
         entry = {"status": body.get("status", "unknown")}
         if name == "vision":
@@ -711,9 +714,12 @@ def _check_devices(client: httpx.Client) -> dict:
 def _device_health_loop() -> None:
     with httpx.Client() as client:
         while True:
-            devices = _check_devices(client)
-            with _lock:
-                _session["devices"] = devices
+            try:
+                devices = _check_devices(client)
+                with _lock:
+                    _session["devices"] = devices
+            except Exception:  # noqa: BLE001 — 스레드가 죽으면 장치 상태가 마지막 값("정상")에 멈춘다
+                logger.exception("장치 상태 확인 중 오류 — 다음 확인을 계속합니다")
             time.sleep(DEVICE_HEALTH_INTERVAL_S)
 
 

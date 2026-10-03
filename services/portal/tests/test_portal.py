@@ -152,3 +152,23 @@ def test_supabase_list_sessions_reads_joined_results_without_schema_change():
     rows = store.list_sessions("11111111-1111-1111-1111-111111111111")
     assert "select=*,training_results(*)" in seen["url"] and "user_id=eq.11111111" in seen["url"]
     assert [r["order_no"] for r in rows[0]["results"]] == [1, 2] and "training_results" not in rows[0]
+
+
+def test_missing_config_lists_secret_and_supabase():
+    assert main._missing_config("x" * 32, "https://example.supabase.co", "key") == []
+    assert len(main._missing_config("short", "", "")) == 2
+
+
+def test_render_refuses_to_start_without_config():
+    """배포에서 설정이 빠지면 임시 세션 키·컨테이너 파일 저장소로 조용히 돌던 결함 — 시작을 거부한다."""
+    import os
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PORTAL_SESSION_SECRET")}
+    env.update(RENDER="true", SAFESIGN_NO_DOTENV="1", PYTHONIOENCODING="utf-8")
+    proc = subprocess.run([sys.executable, "-c", "import app.main"], cwd=Path(main.__file__).parents[1],
+                          env=env, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode != 0
+    assert "portal 설정 누락" in proc.stderr

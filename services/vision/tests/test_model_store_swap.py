@@ -58,3 +58,31 @@ def test_swapped_bundle_none_keeps_current_path():
         assert model_store.MODEL_PATH == original
 
     assert model_store.MODEL_PATH == original
+
+
+def test_corrupt_bundle_is_not_reloaded_every_call(tmp_path, monkeypatch):
+    """손상 번들은 파일이 바뀔 때까지 다시 읽지 않는다 — predict가 프레임마다 load_bundle을
+    여러 번 불러, 기억하지 않으면 초당 수백 번 joblib.load·traceback이 반복됐다."""
+    import os
+
+    path = tmp_path / "broken.joblib"
+    path.touch()
+    calls = []
+
+    def _load(p):
+        calls.append(p)
+        raise ValueError("corrupt")
+
+    monkeypatch.setitem(sys.modules, "joblib", types.SimpleNamespace(load=_load))
+    monkeypatch.setattr(model_store, "MODEL_PATH", path)
+    for name in ("_bundle", "_loaded", "_loaded_mtime", "_failed_key"):
+        monkeypatch.setattr(model_store, name, None if name != "_loaded" else False)
+
+    assert model_store.load_bundle() is None
+    assert model_store.load_bundle() is None
+    assert len(calls) == 1, "같은 손상 파일을 다시 읽었다"
+
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime + 10))   # 파일 교체
+    model_store.load_bundle()
+    assert len(calls) == 2, "파일이 바뀌었는데 다시 읽지 않았다"

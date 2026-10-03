@@ -35,6 +35,9 @@ services/vision/logs/
 # web 시행 로그 CSV (web_판정_타이밍_스펙 §7.1 — 결과 정리 후 필요한 것만 문서에 붙인다)
 services/web/logs/
 
+# 측정 작업 폴더 (RPi에서 받아 온 시행·모니터 CSV) — 보존할 원본은 document/results/에 둔다
+/log/
+
 # web 회원·결과 로컬 파일 (개인정보 — 로컬 모드 회원, Supabase 전송 대기열, 게스트 결과)
 services/web/data/
 

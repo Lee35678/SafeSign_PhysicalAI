@@ -499,7 +499,9 @@ def main() -> int:
         },
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, args.out)
+    tmp = args.out.with_suffix(".tmp")
+    joblib.dump(bundle, tmp)
+    tmp.replace(args.out)  # 실행 중인 vision이 반쪽 파일을 읽지 않게 한 번에 바꾼다(add_match_calibration과 같은 방식)
     print(f"\n[8] 저장  {args.out}  ({args.out.stat().st_size / 1e6:.1f} MB)")
 
     # 템플릿: services/data의 seed_templates.py가 DB에 넣을 수 있게 JSON으로 (담당 김지훈)

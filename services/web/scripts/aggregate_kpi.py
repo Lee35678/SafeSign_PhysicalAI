@@ -181,8 +181,10 @@ def _nflag(n: int) -> str:
     return f" (n={n})" if n < SMALL_N else ""
 
 
-def verdict_rows(k: dict, lat: dict) -> list[tuple[str, str, str, str]]:
-    """06 §2-1 요약표 행: (지표, 목표, 실측, 달성)."""
+def verdict_rows(k: dict, lat: dict, rejects_recorded: bool = True) -> list[tuple[str, str, str, str]]:
+    """06 §2-1 요약표 행: (지표, 목표, 실측, 달성).
+
+    `rejects_recorded=False`(web 로그): below_tau·OOD가 기록되지 않아 미판정률이 구조적으로 0이므로 달성 판정을 내지 않는다."""
     n = k["n"]
     rows = []
 
@@ -199,13 +201,16 @@ def verdict_rows(k: dict, lat: dict) -> list[tuple[str, str, str, str]]:
     rate("정답률", "accuracy", k["correct"], TARGETS["accuracy"], True)
     rate("오분류율", "misclass", k["wrong"], TARGETS["misclass"], False)
     rate("미판정률 (온라인 참고치)", "reject", k["rejected"], TARGETS["reject"], False)
+    if not rejects_recorded:
+        rows[-1] = rows[-1][:3] + ("판정 불가 (미기록)",)
     f1_ok = k["macro_f1"] >= TARGETS["macro_f1"]
     rows.append(("Macro F1", "≥ 0.90", f"{k['macro_f1']:.3f}{_nflag(n)}", "달성" if f1_ok else "미달"))
+    # 목표가 0건이라 Wilson 상한은 언제나 0보다 크다 → 관측 0건이어도 "잠정 달성"(§5.7, 06 §2-1과 같은 규칙)
     _, crit_hi = wilson(k["critical"], k["stop_n"])
     rows.append(("치명 오분류", "0건",
                  f"{k['critical']}건 / 정지 {k['stop_n']}시도 (Wilson 상한 {crit_hi:.1f}%, 정지→미판정 "
                  f"{k['stop_rejected']}건 별도){_nflag(k['stop_n'])}",
-                 "미달" if k["critical"] else ("달성" if k["stop_n"] else "측정 없음")))
+                 "미달" if k["critical"] else ("잠정 달성" if k["stop_n"] else "측정 없음")))
 
     def lat_row(name, values, target, extra=""):
         v = p95(values)
@@ -256,7 +261,7 @@ def report(kind: str, rows: list[dict], excluded: collections.Counter, files: li
     if kind == "web" and k["rejected"] == 0:
         out.append("- ⚠️ web 로그는 below_tau·OOD를 기록하지 않아(화면 안내만) 미판정률이 0%로 나온다 — 참고치")
     out += ["", "### 2-1. 요약", "", md_table(["지표", "목표값", "실측값", "달성 여부"],
-                                              [list(r) for r in verdict_rows(k, lat)])]
+                                              [list(r) for r in verdict_rows(k, lat, rejects_recorded=kind != "web")])]
 
     cols, table = confusion(rows)
     matrix = [[f"**{s}**" if s == CRITICAL else s] + [table[s][c] for c in cols] for s in SIGNS]

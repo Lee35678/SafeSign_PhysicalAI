@@ -384,6 +384,14 @@ def test_check_devices_reads_vision_tau():
     assert sm._check_devices(client)["vision"] == {"status": "ok", "tau": 0.75, "n_frames": 3}
 
 
+def test_check_devices_survives_non_object_health_body():
+    """/health가 객체가 아닌 JSON을 주면 `.get`에서 AttributeError가 나 상태 스레드가 죽고
+    장치 상태가 마지막 값에 멈추던 결함."""
+    client = MagicMock()
+    client.get.return_value.json.return_value = ["not", "a", "dict"]
+    assert sm._check_devices(client) == {n: {"status": "unknown"} for n in ("vision", "actuation", "picar")}
+
+
 def test_member_in_state_has_no_email():
     _reset_session()
     sm._session["member"] = {"user_id": "u1", "member_code": "SS-00001", "name": "김", "email": "kim@example.com",

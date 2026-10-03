@@ -397,3 +397,11 @@ def test_pending_count_follows_queue_without_rereading(fake):
     fake.online = True
     assert members.flush_pending()["left"] == 0 and members.pending_count() == 0
 
+
+
+def test_dotenv_path_does_not_crash_outside_the_repo():
+    """web Docker 이미지는 members.py를 `/app/backend/`에 둔다 — 상위 폴더가 3개뿐이라
+    `parents[3]`이 import 시점에 IndexError를 내 `docker compose up web`이 바로 죽던 결함."""
+    assert members._repo_dotenv(Path("/app/backend/members.py")) is None
+    deep = Path("/home/pi/repo/services/web/backend/members.py")
+    assert members._repo_dotenv(deep) == deep.resolve().parents[3] / ".env"

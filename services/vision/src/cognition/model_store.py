@@ -46,6 +46,9 @@ _lock = threading.Lock()
 _bundle: Optional[dict] = None
 _loaded = False
 _loaded_mtime: Optional[float] = None
+# 읽기에 실패한 (경로, mtime). 같은 파일이면 다시 읽지 않는다 — predict가 프레임마다 load_bundle을
+# 여러 번 부르므로, 기억하지 않으면 손상 번들 하나로 초당 수백 번 joblib.load·traceback이 반복된다.
+_failed_key: Optional[tuple] = None
 
 
 def _normalize_bundle(obj: Any) -> dict:
@@ -84,7 +87,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
     파일이 교체되면(mtime 변경) 다음 호출에서 자동으로 다시 읽는다 — Colab에서 새로 받은 모델을
     덮어쓰고 서비스만 재시작하지 않아도 반영되게 하기 위함.
     """
-    global _bundle, _loaded, _loaded_mtime
+    global _bundle, _loaded, _loaded_mtime, _failed_key
 
     with _lock:
         if not MODEL_PATH.exists():
@@ -101,6 +104,8 @@ def load_bundle(force: bool = False) -> Optional[dict]:
         mtime = MODEL_PATH.stat().st_mtime
         if _bundle is not None and not force and mtime == _loaded_mtime:
             return _bundle
+        if _bundle is None and not force and (MODEL_PATH, mtime) == _failed_key:
+            return None  # 이미 실패한 파일 — 교체(mtime 변경)될 때까지 다시 읽지 않는다
 
         # 지연 import + 실패 흡수: 모델 파일이 있어도 joblib 미설치·번들 손상으로 서비스가
         # 죽으면 안 된다. 이 경우 "모델 없음"으로 떨어뜨려 classify가 미판정을 돌려주게 한다.
@@ -114,7 +119,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
                 "반환합니다. `pip install -r requirements.txt`",
                 MODEL_PATH,
             )
-            _bundle, _loaded, _loaded_mtime = None, True, None
+            _bundle, _loaded, _loaded_mtime, _failed_key = None, True, None, (MODEL_PATH, mtime)
             return None
         except Exception:
             logger.exception(
@@ -122,11 +127,12 @@ def load_bundle(force: bool = False) -> Optional[dict]:
                 "`python training/train_svm.py`로 다시 만드세요.",
                 MODEL_PATH,
             )
-            _bundle, _loaded, _loaded_mtime = None, True, None
+            _bundle, _loaded, _loaded_mtime, _failed_key = None, True, None, (MODEL_PATH, mtime)
             return None
 
         _loaded = True
         _loaded_mtime = mtime
+        _failed_key = None
         _warn_if_sklearn_mismatch(_bundle)
         logger.info(
             "분류기 모델 로드 완료: %s (classes=%s, tau=%s, trained_at=%s)",

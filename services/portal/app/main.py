@@ -52,7 +52,25 @@ SESSION_TTL_S = int(os.getenv("PORTAL_SESSION_TTL_S", str(8 * 3600)))
 COOKIE_SECURE = os.getenv("PORTAL_COOKIE_SECURE", "auto").lower()      # auto(HTTPS일 때만) · 1 · 0
 CURRICULUM_SIZE = 7
 
+# 배포(Render는 RENDER 환경변수를 자동으로 넣는다)에서는 설정 누락이면 시작하지 않는다. 그냥 넘어가면
+# 세션 키는 재시작마다 바뀌어 전원 로그아웃되고, 회원은 재배포 때 지워지는 컨테이너 파일(LocalStore)에 쌓인다.
+# 로컬 개발은 기존처럼 경고만 하고 임시 값으로 돈다.
+STRICT_CONFIG = os.getenv("PORTAL_STRICT_CONFIG", "1" if os.getenv("RENDER") else "0") == "1"
+
+
+def _missing_config(secret: str, supabase_url: str, supabase_key: str) -> list:
+    missing = []
+    if len(secret) < 32:
+        missing.append("PORTAL_SESSION_SECRET(32자 이상)")
+    if not (supabase_url and supabase_key):
+        missing.append("SUPABASE_URL·SUPABASE_SERVICE_ROLE_KEY")
+    return missing
+
+
 _secret_env = os.getenv("PORTAL_SESSION_SECRET", "")
+_missing = _missing_config(_secret_env, members.SUPABASE_URL, members.SUPABASE_SERVICE_ROLE_KEY)
+if _missing and STRICT_CONFIG:
+    raise RuntimeError(f"portal 설정 누락: {', '.join(_missing)} — Render 대시보드의 환경변수를 확인하세요")
 if len(_secret_env) < 32:
     logger.warning("PORTAL_SESSION_SECRET이 없거나 짧습니다(32자 미만) — 임시 키를 만듭니다. 서버를 다시 켜면 모두 로그아웃됩니다.")
     _secret_env = secrets.token_hex(32)

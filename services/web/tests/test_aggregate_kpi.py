@@ -128,6 +128,18 @@ def test_small_sample_marks_provisional_pass():
     assert verdicts["판정 지연 (P95)"] == "잠정 달성"
 
 
+def test_zero_critical_is_provisional_and_web_reject_not_judged():
+    """치명 목표는 0건이라 관측 0건이어도 Wilson 상한 > 0 → '잠정 달성'(§5.7).
+    web 로그는 below_tau·OOD를 남기지 않아 미판정률 0%가 구조적이므로 달성 판정을 내지 않는다."""
+    rows = [_row(s, "correct") for s in agg.SIGNS for _ in range(10)]
+    k, lat = agg.classify_rows(rows), agg.latencies(rows, include_wrong=False)
+    verdicts = {name: status for name, _, _, status in agg.verdict_rows(k, lat, rejects_recorded=False)}
+    assert verdicts["치명 오분류"] == "잠정 달성"
+    assert verdicts["미판정률 (온라인 참고치)"] == "판정 불가 (미기록)"
+    verdicts = {name: status for name, _, _, status in agg.verdict_rows(k, lat)}
+    assert verdicts["미판정률 (온라인 참고치)"] == "잠정 달성"
+
+
 def test_latency_pass_with_59_samples_and_fail_over_target():
     rows = [_row(agg.SIGNS[i % 7], "correct", latency=80, feedback=400) for i in range(59)]
     verdicts = {name: status for name, _, _, status in agg.verdict_rows(agg.classify_rows(rows),

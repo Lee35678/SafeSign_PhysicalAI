@@ -20,6 +20,7 @@ from cognition import classify, model_store, smoothing, templates
 from perception import capture, preview
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SafeSign Vision Service")
 
@@ -52,7 +53,10 @@ def _cognition_loop() -> None:
             time.sleep(idle_sleep_s)
             continue
         last_seen_ts = frame.get("timestamp")
-        _process_frame(frame)
+        try:
+            _process_frame(frame)
+        except Exception:  # noqa: BLE001 — 스레드가 죽으면 /latest가 마지막 판정에 멈추고 /health엔 안 보인다
+            logger.exception("프레임 판정 중 오류 — 이 프레임을 건너뛰고 계속합니다")
 
 
 def _process_frame(frame: dict) -> None:
