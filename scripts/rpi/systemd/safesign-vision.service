@@ -1,0 +1,17 @@
+# RPi5 — vision(CSI 카메라 + 판정). run_rpi5.sh가 venv·MOCK_CAMERA=false·CAMERA_SOURCE=csi를 맡는다.
+[Unit]
+Description=SafeSign vision (Camera Module 3 + judgment)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/services/vision
+ExecStart=/bin/bash @REPO@/services/vision/scripts/run_rpi5.sh
+KillSignal=SIGINT
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -55,7 +55,7 @@ has_session && abort "tmux 세션 '$SESSION'이 이미 있습니다 → 상태: 
 # '[u]vicorn': 이 검사 명령 자체(원격 실행 시 셸 명령 줄)가 걸리지 않게 하는 패턴
 if pgrep -af '[u]vicorn' >/dev/null; then
   pgrep -af '[u]vicorn'
-  abort "RPi5에 uvicorn이 이미 떠 있습니다 — 포트가 겹치고 micro:bit는 BLE 연결을 하나만 받습니다. 먼저 끄세요"
+  abort "RPi5에 uvicorn이 이미 떠 있습니다 — 포트가 겹치고 micro:bit는 BLE 연결을 하나만 받습니다. 먼저 끄세요 (systemd로 켜 뒀다면: sudo systemctl stop safesign-web safesign-vision safesign-actuation)"
 fi
 ok "RPi5: tmux 있음, 남아 있는 uvicorn 없음"
 
@@ -80,7 +80,7 @@ else warn "RPi5 get_throttled=${thr:-?} — 한 번 선 비트는 재부팅 전�
 picar_ssh true || abort "RPi4B에 SSH로 붙지 못했습니다($PICAR_SSH) → 계정이 다르면 PICAR_SSH=계정@$PICAR_HOST 로 지정, 연결은 ping $PICAR_HOST"
 picar_ssh 'command -v tmux' >/dev/null || abort "RPi4B에 tmux가 없습니다 → ssh $PICAR_SSH 'sudo apt install -y tmux'"
 picar_has_session && abort "RPi4B에 tmux 세션 '$PICAR_SESSION'이 이미 있습니다 → stop_all.sh"
-if picar_ssh "pgrep -af '[u]vicorn'"; then abort "RPi4B에 uvicorn이 이미 떠 있습니다 — 먼저 끄세요"; fi
+if picar_ssh "pgrep -af '[u]vicorn'"; then abort "RPi4B에 uvicorn이 이미 떠 있습니다 — 먼저 끄세요 (systemd로 켜 뒀다면: ssh $PICAR_SSH sudo systemctl stop safesign-picar)"; fi
 picar_ssh "test -f $PICAR_REPO/services/picar/.venv/bin/activate" || abort "RPi4B에 services/picar/.venv 가 없습니다 (README §4.1)"
 pthr=$(picar_ssh 'vcgencmd get_throttled' 2>/dev/null | cut -d= -f2)
 if [[ "$pthr" == 0x0 ]]; then ok "RPi4B get_throttled=0x0"

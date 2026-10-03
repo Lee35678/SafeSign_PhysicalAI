@@ -1,0 +1,19 @@
+# RPi5 — web(교육장 화면·상태머신). 주소 3개를 명시한다 — 루트 .env(.env.example 복사본)에는 docker용
+# http://vision:8000 등이 들어 있어, 비워 두면 그 값이 채워진다(start_all.sh와 같은 이유).
+[Unit]
+Description=SafeSign web (station UI + state machine)
+After=network-online.target safesign-actuation.service safesign-vision.service
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/services/web
+Environment=VISION_URL=http://localhost:8001 ACTUATION_URL=http://localhost:8002 PICAR_URL=@PICAR_URL@
+ExecStart=@REPO@/services/web/.venv/bin/uvicorn backend.app:app --host 0.0.0.0 --port 8000
+KillSignal=SIGINT
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

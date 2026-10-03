@@ -1,0 +1,19 @@
+# RPi4B — picar(모터 I2C + LED GPIO). 종료 신호를 받으면 서비스가 차를 세우고 LED를 끈 뒤 내려간다(lifespan).
+# 실행 계정은 i2c·gpio 그룹에 있어야 한다.
+[Unit]
+Description=SafeSign picar (motors + LEDs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/services/picar
+Environment=MOCK_HARDWARE=false PYTHONIOENCODING=utf-8
+ExecStart=@REPO@/services/picar/.venv/bin/uvicorn app:app --app-dir src --host 0.0.0.0 --port 8000
+KillSignal=SIGINT
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

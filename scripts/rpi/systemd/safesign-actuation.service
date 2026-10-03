@@ -1,0 +1,20 @@
+# RPi5 — actuation(AI Hand + micro:bit BLE). install.sh가 @REPO@·@USER@를 채워 /etc/systemd/system에 복사한다.
+# start_all.sh(tmux)와 함께 쓰지 않는다 — micro:bit는 BLE 연결을 하나만 받고 포트도 겹친다.
+[Unit]
+Description=SafeSign actuation (AI Hand + micro:bit BLE)
+After=network-online.target bluetooth.target
+Wants=network-online.target bluetooth.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/services/actuation
+Environment=MOCK_HARDWARE=false PYTHONIOENCODING=utf-8
+ExecStart=@REPO@/services/actuation/.venv/bin/uvicorn app:app --app-dir src --host 0.0.0.0 --port 8002
+# Ctrl+C와 같은 신호로 끈다 — SIGKILL로 죽으면 BLE 연결이 BlueZ에 남아 다음 실행 때 micro:bit가 안 보인다
+KillSignal=SIGINT
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
