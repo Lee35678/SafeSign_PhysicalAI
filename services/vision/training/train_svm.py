@@ -452,7 +452,7 @@ def main() -> int:
         s = (Xi @ v) / (np.linalg.norm(Xi, axis=1) * np.linalg.norm(v) + 1e-12)
         # 1~95 퍼센타일 — 5~95면 퍼짐이 좁은 클래스(서행·정지·좌회전)가 오히려 깎인다(scripts/add_match_calibration.py)
         calib["per_class"][str(c)] = {"sim_min": float(np.percentile(s, 1)), "sim_max": float(np.percentile(s, 95))}
-    print("      클래스별 p5~p95: " + ", ".join(
+    print("      클래스별 p1~p95: " + ", ".join(
         f"{c} {v['sim_min']:.3f}~{v['sim_max']:.3f}" for c, v in calib["per_class"].items()))
 
     # ---- 1단계 소속 게이트 임계값 (클래스별) --------------------------------
