@@ -624,7 +624,10 @@ def _poll_once(vision_client: httpx.Client) -> None:
                 #   좌회전_유도↔후진·우회전_유도↔주의는 엄지 하나로 갈려(10_PRD §3.2) 이 값이 있어야
                 #   "무엇을 어떻게 틀렸는가"를 교육 결과로 설명할 수 있다.
                 "last_outcome": outcome,        # correct · wrong · timeout
-                "last_predicted": predicted,    # 마지막 시도에 인식된 수신호 (없으면 None)
+                # 마지막 시도에 인식된 수신호. vision이 미판정 때 붙이는 출력 전용 라벨(negative, 7종 분포 밖)은
+                # 인식된 수신호가 아니므로 빈 값으로 남긴다(18 §2-3). 시간 초과는 마지막 프레임의 추정을 남기므로
+                # τ 미달로 끝났으면 목표 수신호 이름이 들어갈 수 있다 — "자세는 맞았지만 확신이 부족했다"는 뜻이다.
+                "last_predicted": None if predicted in (None, NEGATIVE_LABEL) else predicted,
                 **({"given_up": True} if given_up else {}),
             })
             _session["curriculum_index"] += 1
