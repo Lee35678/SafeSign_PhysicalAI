@@ -177,3 +177,18 @@ python scripts/aggregate_kpi.py logs/web_trials_*.csv ../actuation/aihand_vision
 ```
 
 PNG(혼동행렬·지연 히스토그램)는 matplotlib이 설치돼 있을 때만 만든다 — web 의존성에는 넣지 않았다.
+
+## 화면 캡처 (14 부록 A · 09)
+
+`scripts/capture_screens.py` — 화면 19장(정상 흐름 + 장치 이상·가입 입력 오류·카메라 연결 중/끊김·below_tau·재시도 초과)을
+`document/images/web_screens/`에 찍는다. 기본은 **mock**: 가짜 vision·actuation·picar와 web을 스크립트가 직접 띄우고
+판정·장치 상태를 바꿔 넣는다(회원은 로컬 모드, 시행 로그·회원 파일은 임시 폴더 — 실제 `logs/`·Supabase에 안 씀).
+카메라 영상은 예시 사진(git 기록 `2c19d9c^`)으로 만든다. `--real`이면 실물 web에 붙어 화면마다 할 동작을 안내하고
+그 화면이 되면 찍는다 — 파일 이름이 같아 문서 링크를 고칠 필요가 없다.
+
+```bash
+# 저장소 루트에서. 추가 의존성: playwright, pillow (브라우저는 시스템 Chrome)
+python services/web/scripts/capture_screens.py                                    # mock
+python services/web/scripts/capture_screens.py --real --web http://<RPi5>:8000 --timeout 90
+python services/web/scripts/capture_screens.py --size 1366x768 --out /tmp/shots    # 노트북 해상도 확인용
+```
