@@ -1,114 +1,105 @@
-# web 구현 보고서 (v1.17 — 초안)
+# web 구현 보고서 (v2.0)
 
-**팀명**: 심기일전 · **담당**: 조은수 (웹 R · 성능측정 R) ~~(프론트엔드 2026-09-29~ 송승호 대행)~~ (→ 2026-10-04 정정: 대행은 2026-09-29 ①-b 한 건,
-09-30 회의 확정 — ②-b KPI 집계·06 2부·⑥ web 재시험 = 송승호(완료), ⑦ 이 보고서·⑧ 화면 캡처 = 조은수, 09-30부터 web 담당 조은수 계속)
-**최초 작성**: 2026-09-27 (초안 정리: 송승호 — 조은수 검토·보완 필요) · **대상**: `services/web`
+**팀명**: 심기일전 · **담당**: 조은수 (웹 R · 성능측정 R) — 2026-09-29 ①-b 화면 한 건만 송승호 대행(09-30 회의 확정), 백엔드 판정 로직·새 화면은 이동혁
+**최초 작성**: 2026-09-27 (초안 송승호) · **본문 현행화**: 2026-10-05 조은수(⑦) · **대상**: `services/web`
 
-> **이 문서의 범위**: web(교육 상태머신 + 화면)이 **무엇을 어떻게 구현했고, 왜 그렇게 정했는가**를
-> 기록한다. 수신호 분류 정확도·혼동행렬은 `06_테스트·평가리포트`, 장치 쪽 실측은
-> `11_하드웨어설계서`·`13_picar_하드웨어_검증리포트`, 화면 설계 원안은 `09_화면목록`가 다룬다.
+> **이 문서의 범위**: web(교육 상태머신 + 화면 + 회원)이 **무엇을 어떻게 구현했고, 왜 그렇게 정했는가**를
+> 기록한다. 수신호 분류 정확도·혼동행렬·지연 KPI는 `06_테스트·평가리포트`, 장치 쪽 실측은
+> `11_하드웨어설계서`·`13_picar_하드웨어_검증리포트`, 화면 정의는 `09_화면목록`, 회원 DB는 `18_DB설계서`,
+> 회사 사이트는 `19_회사웹사이트`가 다룬다.
 >
 > 📝 **표기**: 이 문서 안의 `§n`은 이 문서의 절이다. 다른 문서는 **"설계서 §n"**(= `11_하드웨어설계서`)처럼
-> 문서명을 앞에 적는다. 기준 코드는 `dev` `41ef97c`(백엔드 최종 변경 `c8f1fd3` 이동혁, 2026-09-28 — 판정 타이밍·시행 로그·응답 판정,
-> 버튼 A web 연동 `100ea66`, ⑨·⑩ `feature/data` 병합 `41ef97c` 김지훈)이다. ~~**①-b(시범/판정 단계 화면, 송승호 대행)는
-> `feature/picar` `edb5da9`에만 있고 `dev` 병합 전**이다.~~ (→ 2026-10-04 정정: ①-b는 2026-09-29 `dev` 병합 `db4cd41`.
-> 그 뒤 새 화면·회원·라이브 영상·일치율은 §11, 10-01~10-03 결함 수정(`faa3fa9`·`f0393b0`)은 §3·§4·§6·§7에 반영 — 기준 `dev` `795d043`)
->
-> ✏️ **초안 상태**: 코드·커밋·개발로그에서 확인되는 사실만 정리했다. `【확인 필요】` 표시는 담당자가
-> 채우거나 정정할 곳이다.
+> 문서명을 앞에 적는다. **기준 코드는 `dev` `60231a6`**(web 코드 마지막 변경 `c560bbd`, 2026-10-04)이다.
+> 본문 §1~§9는 이 기준의 **현재 동작**만 적는다. 바뀌어 온 경위는 §7 이슈 이력·§10 변경 이력·§11(새 화면 도입 기록)에 있다.
 
 ---
 
 ## 1. 역할과 구성 (as-built)
 
-web은 학습 흐름 전체를 지휘하는 **오케스트레이터**다. vision의 판정 결과를 받아 현재 커리큘럼 단계와
-비교하고, 정답/오답에 따라 물리 장치(AI Hand·micro:bit·picar)를 호출하며, 학습자에게 화면을 보여준다.
+web은 학습 흐름 전체를 지휘하는 **오케스트레이터**다. 학습자를 로그인시키고, vision의 판정 결과를 받아 현재
+커리큘럼 단계와 비교하고, 정답/오답에 따라 물리 장치(AI Hand·micro:bit·picar)를 호출하며, 화면을 보여 주고,
+끝나면 결과를 회원 기록에 저장한다.
 
 | 항목 | 값 |
 | --- | --- |
 | 실행 위치 | **RPi5** (vision·actuation과 같은 보드), 포트 **8000**, `0.0.0.0` 바인딩 |
-| 접속 | 시연 PC 브라우저 → RPi5와 **UTP 직결**(설계서 §6.2) → `http://<RPi5 eth0 주소>:8000` |
-| 백엔드 | Python · FastAPI · `httpx` (`backend/app.py`, `backend/state_machine.py`) |
-| 프론트엔드 | 바닐라 JS (프레임워크 없음) — `frontend/index.html`·`main.js`·`station.css`(2026-10-02, 옛 `style.css`·`app.css` 대체)·`hand-data.js`·`icons/` |
-| 상태 저장 | 프로세스 메모리 딕셔너리 `_session` 1개 (DB·세션 ID 없음 — §5 D1) |
+| 접속 | 시연 PC 브라우저 → RPi5와 **UTP 직결**(설계서 §6.2) → `http://<RPi5 eth0 주소>:8000` (기준 화면 1920×1080, 노트북 1366×768·1366×657도 잘림 없음) |
+| 백엔드 | Python · FastAPI · `httpx` — `backend/app.py`(진입점·보안 헤더), `state_machine.py`(교육 상태머신), `members.py`(회원·결과 저장), `camera.py`(라이브 영상 중계) |
+| 프론트엔드 | 바닐라 JS (프레임워크 없음) — `frontend/index.html`·`main.js`·`station.css`(2026-10-02 리뉴얼, 한 파일)·`hand-data.js`(실측 손 관절 21점)·`icons/`(Phosphor, MIT)·`fonts/`(SUIT·Inter·JetBrains Mono, OFL). 외부 CDN 없음 — 교육장 오프라인에서도 뜬다 |
+| 교육 상태 | 프로세스 메모리 딕셔너리 `_session` 1개 (이어하기 없음 — §5 D1) |
+| 회원·결과 | **Supabase**(키는 루트 `.env`, 저장소에 올리지 않음). 키가 없으면 **로컬 모드**(`data/members_local.json`·`results_local.jsonl`). 인터넷이 끊기면 결과를 대기열에 두고 30초마다 재전송 — 18 |
+| 시행 로그 | `services/web/logs/web_trials_<기동시각>.csv` (UTF-8 BOM, 열은 스펙 §7 + `subject`·`target_score`) — KPI 집계 입력(`scripts/aggregate_kpi.py`) |
 | 호출 대상 | vision `:8001`(RPi5) · actuation `:8002`(RPi5) · picar `:8000`(**RPi4B**, Wi-Fi `192.168.50.10`) — 실물에서는 **`PICAR_URL=http://192.168.50.10:8000` 지정 필수**. 코드 기본값은 docker-compose용 `http://localhost:8003`이라 빼면 picar가 움직이지 않는다(루트 README §4) |
 
 ```
- [PC 브라우저] ──UTP── [RPi5]  web ──▶ vision   GET /latest (0.2초 폴링), POST /reset
-                              │  └──▶ actuation POST /command · /result · /progress ──BLE──▶ AI Hand + micro:bit
-                              │               GET /button (시범 단계 0.2초 폴링 — micro:bit 버튼 A 확인, D12)
+ [PC 브라우저] ──UTP── [RPi5]  web ──▶ vision    GET /latest (판정 단계 0.2초 폴링), POST /reset, GET /stream(MJPEG 중계)
+                              │  ├──▶ actuation POST /command · /result · /progress ──BLE──▶ AI Hand + micro:bit
+                              │  │              GET /button (시범 단계·SC-04 0.2초 폴링 — micro:bit 버튼 A, D12)
+                              │  └──▶ Supabase  회원·결과 (인터넷, 없으면 로컬 모드)
                               └──── Wi-Fi(AP) ──▶ [RPi4B] picar POST /picar ──▶ 모터 + LED
 ```
 
 ---
 
-## 2. 화면 흐름 (SC-01~SC-07)
+## 2. 화면 흐름
 
-`09_화면목록`의 화면 표를 그대로 구현했다. 같은 레이아웃에서 상태만 바뀌는 정답/오답은 별도 화면이
-아니라 **SC-03 위의 오버레이**다.
+`09_화면목록`의 화면 표대로 구현했다. 같은 레이아웃에서 상태만 바뀌는 정답/오답은 별도 화면이 아니라
+**SC-03 위의 오버레이**다. 캡처는 [부록 A](#부록-a-화면-캡처).
 
 | 화면 | 상태머신 `state` | 구현 내용 |
 | --- | --- | --- |
-| SC-01 시작 | `landing` | 시작 버튼 |
-| SC-02 교육 시작 확인 | (프론트엔드 전용) | 수신호 7종 목록(AI Hand 자세·picar 동작) 미리보기 → "교육 시작" → `POST /api/start` |
-| SC-03 시범/인식 | `training` + `phase` | 시범(`demo`): ~~예시 사진 크게~~ + 확인 버튼(Space·micro:bit A) / 판정(`judging`): 카메라 영역 + ~~사진 작게~~ + 실시간 일치율 바. 공통: 수신호 이름·설명, 진행(n/7), 시도 횟수 (→ 2026-09-29 회의로 예시 사진 폐지: 두 단계 모두 **라이브 영상**(`/api/camera/stream`) + 정답 손모양은 **손가락 패턴**(엄지~소지 폄/접음), §11) |
-| ㄴ SC-03a 정답 | `training` + `last_result.outcome=correct` | "정답!" + 일치율, 2초 후 자동으로 다음 수신호 |
-| ㄴ SC-03b 오답 | `training` + `last_result.outcome=wrong` | 오답 오버레이 — 문구, 일치율, 권장 재도전 횟수, 현재 시도 횟수 → 재시범. `below_tau`/`out_of_distribution`은 오버레이가 아니라 **판정 화면 안 문구**(사유별, 3초)만 — 물리 피드백·시도 횟수 없음(D10). **판정 한 번은 `JUDGING_TIMEOUT_S`(10초, 데모 스크립트 `_listen()`과 같음) 안에 끝난다** — 넘기면 `timeout`(문구 "시간이 초과됐습니다")으로 시도 1회를 세고 재시범(below_tau/OOD만 계속 나와도 판정이 끝나도록). **오답·timeout이 `MAX_ATTEMPTS_PER_SIGNAL`(3 = 최초 1회 + 재시도 2회)에 닿으면** 같은 수신호를 다시 보여주지 않고 "재시도 횟수를 초과해 다음 수신호로 넘어갑니다" 뒤 다음 수신호로 진행(`last_result.given_up`). 화면 배지는 "시도 n / 3" (2026-09-29 ⑥ 재시험에서 발견 — 상한이 없어 검정이 끝나지 않던 문제) |
-| SC-04 카메라 인식 실패 | `camera_fail` | 판정 단계에서 손 미검출 25회 연속(약 5초, D5 — 이전 15회/3초) 시 진입, **손이 다시 보이면 SC-03 자동 복귀**. **재시도 = 화면 버튼·Space·micro:bit A** → `POST /api/camera_retry`(버튼 A는 `_poll_retry_button`) → **시범 단계로 복귀 + 현재 수신호 AI Hand 재시범**, 학습자가 확인을 누르면 판정 재개. 시도 횟수에 넣지 않는다 (2026-09-29 ⑥ 재시험에서 발견 — 버튼이 조회만 하는 무동작이었고, 판정 단계로 바로 돌리는 1차 수정은 버튼을 누르느라 손이 카메라 밖이라 3초 뒤 다시 SC-04로 튕겼다) |
-| SC-05 학습 완료 | `summary` | 수신호별 시도 횟수·최종 일치율 표 + **결과 저장 (CSV)** 버튼(⑨, 브라우저에서 바로 저장 — 서버 호출 없음, §8 ⑨) |
-| SC-06 수료증 | `certificate` | `<canvas>` 렌더링 → PNG 저장 / 인쇄(PDF 저장). 7종 모두 완료해야 발급 |
-| SC-07 재접속 | (프론트엔드 판단) | 새로고침 시 `state ≠ landing`이면 "처음부터 다시" 안내 (이어하기 없음 — §5 D1) |
+| SC-01 시작 | `landing` | 시작하기 버튼 + 스테이션 준비 칸(교육 흐름도 AI Hand › 카메라 › picar, 장치 요약 "장치 3/3 정상" — 이상이면 그 칸이 빨갛고 사유, 수신호 7종 손 관절 그림) |
+| SC-AUTH 로그인·가입 | (프론트엔드 + `/api/auth/*`) | 로그인 / 회원가입(이름·소속·이메일·비밀번호 8자+영문·숫자) / 아이디 찾기(이름 + 사원 코드 → 가린 이메일) / 비밀번호 찾기(메일 6자리 코드) / **게스트로 학습**. 가입하면 **사원 코드 `SS-00001`**(DB 시퀀스) 안내 화면(SC-AUTH-OK). 로그인돼 있으면 건너뛴다 |
+| SC-02 교육 시작 확인 | (프론트엔드) | 수신호 7종 표(손 관절·손가락 패턴·AI Hand 시범·picar 동작) + 과정 사양(7종 · 3회까지 · 판정 기준 τ · N프레임 — `judge_rule`) → "교육 시작" → `POST /api/start` |
+| SC-03 시범/판정 | `training` + `phase` | 왼쪽 **카메라 라이브 영상**(`/api/camera/stream`, 두 단계 모두 같은 자리·같은 크기), 오른쪽 계기 열. 시범(`demo`): **정답 손 모양**(실측 손 관절 21점 + 손가락 패턴 엄지~소지 + 자세 설명) · picar 동작 · **확인** 버튼(Space · micro:bit A). 판정(`judging`): "판정 중" 문구 · 정답 손 모양(작게) · **일치율**(§3.2, 기준 τ 눈금) · 실시간 판정값(손 검출·인식·신뢰도·판정 규칙). 공통: 수신호 이름, 진행 n/7, 시도 "n / 3회". 영상이 아직 없으면 "카메라 연결 중…", 끊기면 "카메라 영상을 받을 수 없습니다"(3초마다 재연결) |
+| ㄴ SC-03a 정답 | `training` + `last_result.outcome=correct` | 초록 판 "정답입니다" + 일치율 + picar 동작 + 다음 수신호, 2초 후 자동으로 다음 수신호 시범 |
+| ㄴ SC-03b 오답 | `training` + `last_result.outcome=wrong`·`timeout` | 빨간 띠 "다시 시도하세요"(시간 초과면 "시간 초과") + 일치율 + 현재 시도 n/3 + 권장 재도전 횟수 → 2.5초 뒤 재시범. **3회째 오답·시간 초과**(`last_result.given_up`)면 "다음 수신호로 넘어갑니다" + "이 수신호는 불합격" 뒤 다음 수신호. `below_tau`/`out_of_distribution`은 오버레이 없이 **판정 화면 안 문구**("조금 더 정확히 해주세요" / "다른 수신호를 하고 계세요")만 — 물리 피드백·시도 횟수 없음(D10) |
+| SC-04 카메라 인식 실패 | `camera_fail` | 판정 단계에서 손 미검출 **25회 연속(약 5초, D5)**. 안전 표지 사선 띠 + 점검 3항목. **손이 다시 보이면 판정 단계로 자동 복귀**. **재시도 = 화면 버튼 · Space · micro:bit A** → `POST /api/camera_retry` → 시범 단계 + 현재 수신호 AI Hand 재시범(시도 횟수에 안 셈) |
+| SC-05 학습 완료 | `summary` | 요약(합격 n/7 · 첫 시도 정답 n종 · 총 시도 · 판정 기준) + 수신호별 합격/불합격·시도 횟수·일치율(기준 대비 ±). 7종을 마친 순간 **교육을 시작한 회원 이름으로 자동 저장** — 저장 상태 표시(저장함 / 이 기기에 저장(로컬 모드) / 인터넷 연결 대기 n건 + "지금 다시 저장" / 실패 / 게스트) |
+| SC-06 수료증 | `certificate` | `<canvas>` A4 가로(2246×1588) — 성명·사원 코드·소속·수료 일시·수료증 번호, 수신호별 합격·시도·일치율, 가상 기관 "주식회사 심기일전" 직인. 이미지로 저장 / 인쇄(PDF). 7종을 모두 마쳐야(불합격 포함) 발급. 다시 학습하기(SC-02) · 끝내기(로그아웃) |
+| SC-07 재접속 | (프론트엔드 판단) | 새로고침 시 `state ≠ landing`이면 "이전 학습이 종료되었습니다" 안내 → 처음부터 (§5 D1) |
 
-- 프론트엔드는 `/api/state`를 **0.4초** 간격으로 폴링해 화면을 전환한다.
-- **SC-03 시범/판정 단계**(①-b, 2026-09-29): `phase == "demo"`면 ~~예시 사진(`images/<command>.jpg`)을 크게, 그 아래~~
-  확인 버튼과 "Space 키 또는 micro:bit A" 안내를 띄운다(BLE 끊김이면 A 버튼 안내를 뺀다). ~~카메라 영역·일치율은 숨긴다.~~
-  `judging`이면 카메라 영역 + ~~사진 작게(120px)~~ + 일치율 + "판정 중" 문구. (→ 2026-09-29 회의 정정: 예시 사진 7장은
-  `2c19d9c`에서 `frontend/images/`째 삭제, 사진 자리는 라이브 영상 + 손가락 패턴 — §11.) 확인 버튼·Space는 정답/오답 오버레이가
-  사라진 뒤에만 받는다. Space는 `preventDefault`로 스크롤을 막고 `event.repeat`는 무시한다.
-- `below_tau`/OOD는 화면을 덮는 오버레이 대신 **판정 화면 안의 노란 문구**(3초)로 보여준다 — 판정이 계속되기 때문(D10).
-- 화면 상단에 vision·actuation·picar 장치 상태(BLE 끊김, I2C 무응답 등)를 표시한다.
-- ~~카메라 실시간 미리보기는 vision에 프레임 스트리밍 엔드포인트가 없어 **자리표시자**만 있다(§8).~~
-  (→ 2026-09-29 정정: vision `GET /stream`(MJPEG)을 web `GET /api/camera/stream`으로 중계 — [03 §4-1·§8](03_인터페이스계약서.md), §11)
+- 프론트엔드는 `/api/state`를 **0.4초** 간격으로 폴링해 화면을 전환한다. 상단 상태 스트립에 교육 단계(로그인 › 과정 › 시범·판정 › 결과 › 수료)·장치 3종(정상 = 회색, 이상 = 빨간 칸 + "micro:bit 끊김"·"응답 없음"·"연결 안 됨")·시계·학습자(사원 코드·이름)를 둔다.
+- 확인 버튼·Space는 정답/오답 오버레이가 사라진 뒤에만 받는다. Space는 `preventDefault`로 스크롤을 막고 `event.repeat`는 무시한다. BLE가 끊기면 micro:bit A 안내를 뺀다.
+- 판정 기준 τ·N프레임은 하드코딩하지 않고 vision `/health` → `/api/state` `judge_rule`로 받아 일치율 눈금·SC-02 사양·SC-05·수료증 문구에 쓴다(못 받으면 0.75·3).
+- 자리 비움 5분이면 자동 로그아웃 — 교육 화면(SC-03·SC-04)에서는 세지 않고, 교육이 끝난 뒤부터 센다.
+- 화면 문구는 "사원 코드"로 통일(DB 열 이름은 `member_code`). 모션(손 관절 모핑, SC-01 강조 순환)은 표시 전용이며 동작 줄이기 설정이면 끈다.
 
 ---
-
 ## 3. 상태머신 동작
 
-### 3.1 판정 루프
-
-백그라운드 스레드 2개가 앱 시작과 함께 뜬다.
+### 3.1 백그라운드 스레드
 
 | 스레드 | 주기 | 하는 일 |
 | --- | --- | --- |
-| `_poll_loop` | 0.2초 (`VISION_POLL_INTERVAL_S`) | `phase == "judging"`: vision `GET /latest`(타임아웃 0.5초, `VISION_TIMEOUT_S`) → 분기 → 장치 호출. 비JSON 응답·예상 못 한 예외는 그 폴링만 건너뛴다. `phase == "demo"`: 판정 대신 `_poll_button()` — actuation `GET /button`(타임아웃 0.3초, `BUTTON_TIMEOUT_S`)으로 micro:bit 버튼 A 확인(D12, 2026-09-29 `100ea66`, 같은 스레드) |
-| `_device_health_loop` | 5초 (`DEVICE_HEALTH_INTERVAL_S`) | 3개 장치 `GET /health` → `devices`로 노출. vision의 `tau`·`n_frames`도 받아 `/api/state` `judge_rule`로 넘긴다(2026-10-01 `faa3fa9`, §4.1). 한 번의 확인에서 예외가 나도 스레드가 죽지 않고 다음 주기를 계속하며, 본문이 JSON 객체가 아니면 `unknown`(2026-10-03 `f0393b0` — 전에는 스레드가 죽으면 장치 상태가 마지막 값에 멈췄다) |
+| `_poll_loop` | 0.2초 (`VISION_POLL_INTERVAL_S`) | `phase == "judging"`: vision `GET /latest`(타임아웃 0.5초, `VISION_TIMEOUT_S`) → §3.2 분기 → 장치 호출. 비JSON 응답·예상 못 한 예외는 그 폴링만 건너뛴다. `phase == "demo"`: 판정 대신 `_poll_button()` — actuation `GET /button`(타임아웃 0.3초)으로 micro:bit 버튼 A 확인(D12). `camera_fail`: `_poll_retry_button()`(버튼 A = 재시도) |
+| `_device_health_loop` | 5초 (`DEVICE_HEALTH_INTERVAL_S`) | 3개 장치 `GET /health` → `devices`. vision의 `tau`·`n_frames`는 `judge_rule`로. 예외가 나도 다음 주기를 계속하고, 본문이 JSON 객체가 아니면 `unknown` |
+| `members.start_background` | 30초 (`RESULTS_RETRY_INTERVAL_S`) | 오프라인 동안 대기열에 쌓인 결과를 Supabase로 재전송. 깨진 줄은 `<파일>.bad`로 격리 |
 
-### 3.2 판정 결과 분기 (`judgment_result.reason` 기준)
+### 3.2 판정 결과 분기 (`judgment_result.reason` 기준, `phase == "judging"`일 때만)
 
 | vision 응답 | web 처리 |
 | --- | --- |
 | `is_reject=false`, `predicted_class == target_signal` | **SC-03a 정답**(즉시) → 물리 피드백 + picar + 다음 수신호 + vision `/reset` + 다음 수신호 시범 |
 | `is_reject=false`, `predicted_class ≠ target_signal` | **SC-03b 오답** — 같은 오답 클래스가 **1초**(`WRONG_CONFIRM_S`) 이어질 때만 확정 → micro:bit 결과 표시 + AI Hand 재시범 |
-| `below_tau` | SC-03b "조금 더 정확히 해주세요" — **화면 안내만**(물리 피드백·시도 횟수 없음) |
-| `out_of_distribution` | SC-03b "다른 수신호를 하고 계세요" — **화면 안내만** |
+| 판정 시작 뒤 **10초**(`JUDGING_TIMEOUT_S`) 안에 정답·오답이 없음 | **`timeout`** — 오답처럼 시도 1회로 센다(below_tau/OOD만 계속 나와도 판정이 끝나도록). 바로 그 프레임이 정답이면 정답 우선 |
+| `below_tau` | "조금 더 정확히 해주세요" — **화면 안내만**(물리 피드백·시도 횟수·시행 로그 없음, D10) |
+| `out_of_distribution` | "다른 수신호를 하고 계세요" — **화면 안내만** |
 | `no_hand` / `normalize_failed` | 미검출 카운트 +1 → 25회 연속이면 SC-04. 오답 1초 유지도 새로 센다 |
-| `awaiting_consecutive_frames` / `model_not_loaded` / `inference_error` | 과도기 상태 — 화면 변화 없이 대기 |
+| `awaiting_consecutive_frames` / `model_not_loaded` / `inference_error` | 과도기 — 화면 변화 없이 대기 |
 | `predicted_class == negative` | 무시 |
 
-- **판정 단계 `phase`** (2026-09-28, [판정 타이밍 스펙](proposals/web_판정_타이밍_스펙.md) §4.1 구현): 위 분기는
-  `phase == "judging"`일 때만 한다. 수신호 시작(`/api/start`·정답 뒤)과 오답 확정 뒤에는 AI Hand 시범과 함께
-  `phase = "demo"`가 되고, 이때는 판정도 SC-04 카운트도 하지 않는다. 학습자가 확인 버튼(`POST /api/confirm`)을
-  누르면 vision `/reset` 뒤 `judging`으로 넘어간다.
-- **`below_tau`·OOD를 안내만 하는 이유**(스펙 §5, 이동혁 결정): 손을 올리는 도중에도 자주 나오는 값이라
-  매번 재시범을 보내면 따라 할 틈이 없다. web 없는 데모 스크립트(9/25 실물 7/7)와 같은 처리다.
-- **중복 방지**: 같은 안내(`below_tau`·OOD)는 한 번만 쓴다(`_last_dispatched`). 정답·오답은 확정 즉시
-  `demo` 단계로 넘어가므로 같은 자세를 들고 있어도 다시 처리되지 않는다.
-- **집계**: 수신호별 시도 횟수(`attempts`)와 완료 목록(`completed`: 수신호·시도 횟수·최종 일치율)을 쌓아
-  SC-05·SC-06에 쓴다.
-- **일치율**(2026-09-30 재정의): web이 화면·`last_result`·`live_judgment`·`completed`·`/result`에 싣는 `match_score`는 vision
-  `match_score`가 아니라 **목표 수신호의 분류기 확률 × 100**(`_target_score`, vision `class_probabilities`)이다. vision이 확률을 주지
-  않으면(손 미검출·OOD·구버전) vision `match_score`로 대신한다. 정의는 [05 §10-8](05_모델카드.md)·[03 §4](03_인터페이스계약서.md).
-  기준선(τ)은 하드코딩 75 대신 `judge_rule.tau`를 쓰고, 못 받았으면 0.75·3프레임(2026-10-01 `faa3fa9`).
+- **시도 상한**: 오답·`timeout`이 `MAX_ATTEMPTS_PER_SIGNAL`(3 = 최초 1회 + 재시도 2회)에 닿으면 재시범 없이 다음 수신호로(`given_up`, SC-05·DB에 불합격).
+- **단계 `phase`**([판정 타이밍 스펙](proposals/web_판정_타이밍_스펙.md) §4.1): 수신호 시작(`/api/start`·정답 뒤)·오답 확정 뒤·SC-04 재시도 뒤에는
+  AI Hand 시범과 함께 `phase = "demo"` — 판정도 SC-04 카운트도 하지 않는다. 확인(`POST /api/confirm`·버튼 A)을 받으면 vision `/reset` 뒤 `judging`.
+  vision `/reset`은 N프레임 누적과 직전 판정을 함께 비우고 리셋 전 프레임 결과를 버린다(`5208157`, 10-04 실물 확인).
+- **중복 방지**: 같은 안내(`below_tau`·OOD)는 한 번만 쓴다(`_last_dispatched`). 정답·오답은 확정 즉시 `demo`로 넘어가 같은 자세를 들고 있어도 다시 처리되지 않는다.
+  조회 도중 재시도·확인이 들어오면 세대 번호(`_gen`)·`phase`를 다시 확인해 낡은 결과를 버린다.
+- **집계**: 수신호별 시도 횟수(`attempts`)와 완료 목록(`completed`: 수신호·시도 횟수·일치율·`given_up`)을 쌓아 SC-05·SC-06·결과 저장에 쓴다.
+- **일치율**(2026-09-30 재정의): 화면·`last_result`·`live_judgment`·`completed`·actuation `/result`의 `match_score`는
+  **목표 수신호의 분류기 확률 × 100**(`_target_score`, vision `class_probabilities`)이다 — 목표를 제대로 하면 높고 다른 손동작이면 낮다.
+  vision이 확률을 주지 않으면(손 미검출·OOD·구버전) vision `match_score`로 대신한다. 정의는 [05 §10-8](05_모델카드.md)·[03 §4](03_인터페이스계약서.md).
+  시행 로그에는 화면 값이 `target_score`, vision 원값이 `match_score` 열로 따로 남는다.
 
 ### 3.3 장치 호출 순서 (`_dispatch_feedback`)
 
@@ -119,22 +110,17 @@ actuation POST /command   (정답: correct_pose / 오답: demo)      timeout 1.5
 actuation POST /progress  (current, total)                       timeout 0.5초 × 최대 2회
 ```
 
-- **2026-09-28 순서 변경**(스펙 §7.3, 이동혁): 예전 순서(`/command` 맨 앞)는 `/command`가 손 동작이 끝나야
-  회신(0.8초)해 picar·micro:bit 반응이 약 **0.85초 늦었다**. picar는 다른 보드라 맨 앞에, `/result`(ACK 26~42ms)는
-  `/command` 앞에 둔다.
-- 순차 호출이다. micro:bit가 명령을 하나씩 처리하므로 병렬로 보내도 빨라지지 않고, 순서 보장이 필요하다(§5 D4).
-- 최악 대기시간은 약 **6초**(모든 호출이 재시도까지 timeout일 때), 정상 시에는 `/command` 약 0.8초가 대부분이다.
-- **응답 판정**(03 §5-5, 2026-09-28): HTTP 200이어도 본문 `status`가 `timeout`·`error`·`partial`이면 실패로
-  기록하고 **재시도하지 않는다**(다시 보내면 AI Hand·picar가 두 번 움직인다). `mocked`는 성공. 결과는
-  `last_dispatch`와 시행 로그 CSV(`services/web/logs/web_trials_*.csv`, 스펙 §7)에 남는다.
-- **시범 전송**: 수신호 시작 시에는 `/command`(demo)**만** 보낸다(`/api/start`는 백그라운드 스레드, 정답 뒤에는
-  정답 자세가 끝난 다음). 오답 확정 때는 위 `/command`(demo)가 곧 재시범이다.
+- picar는 다른 보드라 맨 앞, `/result`(ACK 26~42ms)는 손 동작이 끝나야 회신하는 `/command`(약 0.8초) 앞에 둔다(D11). 순차 호출 — micro:bit가 명령을 하나씩 처리하므로 병렬로 보내도 빨라지지 않고 순서 보장이 필요하다(D4).
+- 최악 대기시간은 약 **6초**(모든 호출이 재시도까지 timeout일 때), 정상 시에는 `/command` 약 0.8초가 대부분이다. 10-02 실측: 판정 → 물리 피드백 **시작 P95 0.089초**, picar 주행을 뺀 완료 P95 1.089초(06 §2-1).
+- **응답 판정**(03 §5-5): HTTP 200이어도 본문 `status`가 `timeout`·`error`·`partial`이면 실패로 기록하고 **재시도하지 않는다**(다시 보내면 AI Hand·picar가 두 번 움직인다). `mocked`는 성공. 결과는 `last_dispatch`와 시행 로그에 남는다.
+- **시범 전송**: 수신호 시작 시에는 `/command`(demo)**만** 보낸다(`/api/start`·`/api/camera_retry`는 백그라운드 스레드, 정답 뒤에는 정답 자세가 끝난 다음). 오답 확정 때는 위 `/command`(demo)가 곧 재시범이다. 3회째(`given_up`)는 재시범을 보내지 않는다.
 
 ### 3.4 picar 명령표 (`PICAR_COMMANDS`)
 
 > 이 표는 **구현(코드) 기준**이다. 수신호별 picar 동작의 설계 정의는 [02_설계문서 §4](02_설계문서.md),
 > 속도 실측 근거는 [13 §4.5](13_picar_하드웨어_검증리포트.md)가 단일 출처다. `확인_완료`는 정지 + 적색·황색 전부
-> 동시 점멸(2초 후 자동 소등, 2026-09-28 picar)로 확정 — "번갈아 점멸"은 스키마를 확장하지 않기로 해 채택하지 않음(2026-09-27 결정, [13 §7.2 #4](13_picar_하드웨어_검증리포트.md)).
+> 동시 점멸(2초 후 picar가 자동 소등)로 확정 — "번갈아 점멸"은 스키마를 확장하지 않기로 해 채택하지 않음(2026-09-27, [13 §7.2 #4](13_picar_하드웨어_검증리포트.md)).
+> 같은 값이 데모 스크립트·스키마와 맞는지는 `tests/test_constants_sync.py`가 검사한다.
 
 | 수신호 | motor | speed | LED (적 / 황좌 / 황우) |
 | --- | --- | --- | --- |
@@ -153,116 +139,103 @@ actuation POST /progress  (current, total)                       timeout 0.5초 
 
 ## 4. 인터페이스
 
-### 4.1 web이 제공하는 API (`/api` 접두)
+### 4.1 web이 제공하는 API
 
 | 메서드 | 경로 | 용도 |
 | --- | --- | --- |
-| GET | `/api/state` | 화면 렌더링용 전체 상태 — `state`, **`phase`**(`demo`/`judging`), `target_signal`, `signal_info`, `curriculum`, `progress`, `last_result`, `live_judgment`, `attempts`, **`max_attempts`**(2026-09-29 — 실물에 새 코드가 올라갔는지 확인용으로도 씀), `last_dispatch`, **`last_demo`**, `devices`, `completed`, `certificate_issued_at`, `last_confirm_source`, (2026-09-29~) `member`·`result_save`, (2026-10-01) **`judge_rule`**(`{tau, n_frames}` — vision `/health` 값, 못 받았으면 `null`이라 화면이 0.75·3을 쓴다). `member`에는 **이메일을 넣지 않는다**(인증 없이 0.4초마다 나가는 응답이라, 2026-10-01 `faa3fa9`). `result_save`는 `_store_status_safe()` — 회원 저장 상태를 못 읽어도 `/api/state`는 500 대신 `{"backend": "unknown", …}`로 응답한다 |
-| POST | `/api/start` | 세션 초기화 후 SC-03 시작 (장치 상태는 유지). 첫 수신호 시범 `/command`(demo)를 백그라운드로 보내고 `phase: "demo"` |
-| POST | `/api/confirm` | 확인 버튼(스페이스바) — `phase == "demo"`일 때만 vision `/reset` 뒤 `judging`, 그 밖에는 `{"status": "ignored"}` (2026-09-28). micro:bit 버튼 A도 같은 처리(`_confirm`)를 쓴다 — 어느 입력인지는 `/api/state`의 `last_confirm_source` |
-| POST | `/api/certificate` | 7종 완료 시 수료증 발급 시각·집계 확정, 미완료면 `not_completed` |
-| POST | `/api/camera_retry` | (2026-09-29 신규) SC-04 재시도(화면 버튼·Space) — `camera_fail`이면 `training` + `phase: "demo"`로 되돌리고 현재 수신호 시범 `/command`(demo)를 백그라운드로 보낸다. 그 밖에는 `{"status": "ignored"}`. micro:bit 버튼 A도 같은 처리(`_camera_retry`) |
+| GET | `/api/state` | 화면 렌더링용 전체 상태 — `state`, `phase`(`demo`/`judging`), `target_signal`, `signal_info`, `curriculum`, `progress`, `last_result`, `live_judgment`, `attempts`, `max_attempts`, `last_dispatch`, `last_demo`, `devices`, `completed`, `certificate_issued_at`, `last_confirm_source`, `member`, `result_save`, `judge_rule`(`{tau, n_frames}`, 못 받았으면 `null`). 인증 없이 0.4초마다 나가는 응답이라 `member`에 **이메일을 넣지 않는다**. `result_save`는 저장 상태를 못 읽어도 500 대신 `{"backend": "unknown", …}` |
+| POST | `/api/start` | 세션 초기화 후 SC-03 시작(장치 상태는 유지). 이 회차의 학습자(로그인 회원·게스트)를 고정하고 첫 수신호 시범 `/command`를 백그라운드로 보낸다 → `phase: "demo"` |
+| POST | `/api/confirm` | 확인(화면 버튼·Space) — `phase == "demo"`일 때만 vision `/reset` 뒤 `judging`, 그 밖에는 `{"status": "ignored"}`. micro:bit 버튼 A도 같은 처리(`_confirm`), 입력 구분은 `last_confirm_source` |
+| POST | `/api/camera_retry` | SC-04 재시도 — `camera_fail`이면 `training` + `phase: "demo"`로 되돌리고 현재 수신호 시범을 백그라운드로 보낸다. 그 밖에는 `ignored`. 버튼 A도 같은 처리(`_camera_retry`) |
+| POST | `/api/certificate` | 7종을 모두 마치면 수료증 발급 시각·집계 확정, 아니면 `not_completed` |
+| GET | `/api/camera/stream` | vision `GET /stream` MJPEG 중계(같은 출처라 주소·CORS 문제 없음, web은 바이트만 옮김). vision에 못 붙으면 503 — 화면이 3초 뒤 다시 붙는다 |
+| POST·GET | `/api/auth/*` | 회원 — `signup`·`login`·`find-id`·`password/request`·`password/reset`·`guest`·`logout`·`me`·`results/retry`. 요점은 [03 §8](03_인터페이스계약서.md), 저장·보안(로그인 5회 실패 잠금, 찾기 횟수 제한, scrypt/Supabase Auth)은 [18](18_DB설계서.md) |
 | GET | `/health` | web 자체 상태 |
-| GET | `/api/camera/stream` | (2026-09-29) vision `GET /stream` MJPEG 중계 — [03 §8](03_인터페이스계약서.md) |
-| POST·GET | `/api/auth/*` | (2026-09-29~30) 회원 — `signup`·`login`·`find-id`·`password/request`·`password/reset`·`guest`·`logout`·`me`·`results/retry`. 목록·요점은 [03 §8](03_인터페이스계약서.md), 저장·보안은 [18](18_DB설계서.md) |
+
+모든 응답에 보안 헤더(CSP `default-src 'self'` 등, `/api/*`는 `Cache-Control: no-store`)를 붙인다(`app.py`, 18 §5).
 
 ### 4.2 web이 호출하는 API
 
 | 대상 | 경로 | 스키마 (`shared/schemas/`) | 실패 시 |
 | --- | --- | --- | --- |
-| vision | `GET /latest` | `judgment_result` | 해당 폴링 건너뜀 (타임아웃 0.5초, 비JSON 응답 포함) |
-| vision | `POST /reset` | — | 무시 (`/api/confirm` 응답의 `vision_reset`에 결과 기록). vision은 N프레임 누적과 **직전 판정(`/latest`)**을 함께 비우고 리셋 전 프레임 결과를 버린다(2026-10-02 `5208157`, [03 §4-1](03_인터페이스계약서.md)) |
-| vision | `GET /stream` | — (MJPEG) | `/api/camera/stream`이 중계. 실패 시 503 — 화면 `<img>`가 다시 붙는다 |
-| actuation | `GET /button` | 03 §5-3 (`seq`) | 시범 단계에서만 0.2초마다(타임아웃 0.3초). 실패는 조용히 넘김 — 보조 입력 (2026-09-29, D12) |
+| vision | `GET /latest` | `judgment_result` (선택 필드 `class_probabilities`) | 해당 폴링 건너뜀 (타임아웃 0.5초, 비JSON 응답 포함) |
+| vision | `POST /reset` | — | 무시 (`/api/confirm` 응답의 `vision_reset`에 결과 기록) |
+| vision | `GET /stream` | — (MJPEG) | `/api/camera/stream`이 503, 화면이 다시 붙는다 |
+| actuation | `GET /button` | 03 §5-3 (`seq`) | 시범 단계·SC-04에서만 0.2초마다(타임아웃 0.3초). 실패는 조용히 넘김 — 보조 입력(D12) |
 | actuation | `POST /command` | `aihand_command` (`servo_angles`는 스키마 호환용 placeholder — 실제 동작은 `target_signal`로 결정) | 연결 실패·4xx/5xx만 재시도 1회, **읽기 타임아웃·본문 실패는 재시도 없이** 기록하고 진행 (03 §5-5) |
 | actuation | `POST /result`, `/progress` | — | 연결 실패·4xx/5xx·읽기 타임아웃 재시도 1회, 본문 실패는 기록만 |
 | picar | `POST /picar` | `picar_command` | `/command`와 같음 (`partial`은 실패, LED 실패는 `picar_led_ok`로 따로 기록) |
-| 3개 모두 | `GET /health` | — | `unreachable`로 표시 (본문이 JSON 객체가 아니면 `unknown`, 2026-10-03). vision은 `tau`·`n_frames`도 읽는다 |
+| 3개 모두 | `GET /health` | — | `unreachable`(본문이 JSON 객체가 아니면 `unknown`). vision은 `tau`·`n_frames`도 읽는다 |
+| Supabase | REST·Auth | `supabase/schema.sql` (18) | 결과 저장 실패 → 대기열 + 30초마다 재전송(`queued`), 키가 없으면 로컬 모드 |
 
 ---
-
 ## 5. 설계 결정과 근거
 
 | # | 결정 | 근거 | 시점 |
 | --- | --- | --- | --- |
-| D1 | 세션을 **메모리 딕셔너리 1개**로 관리, 이어하기 없음 | 1대1 교육 스테이션이라 동시 세션이 범위 밖. 재접속 시 항상 처음부터(팀 결정) → DB·Redis 불필요 | 2026-09-18 |
+| D1 | 교육 세션을 **메모리 딕셔너리 1개**로 관리, 이어하기 없음 | 1대1 교육 스테이션이라 동시 세션이 범위 밖. 재접속 시 항상 처음부터(팀 결정). 회원·결과만 DB(D13) | 2026-09-18 |
 | D2 | 장치 호출은 **best-effort** — 실패해도 학습 흐름은 계속 | `03_인터페이스계약서` §7. 장치 하나의 고장이 교육 전체를 멈추지 않게 | 설계 |
 | D3 | 4xx/5xx도 실패로 판정하고 결과를 `last_dispatch`로 노출 | 이전에는 응답을 버려 서버 오류를 성공으로 셌다("조용한 실패") — `archive/web_picar_통신_신뢰성_개선안` 변경 1·2 | 2026-09-22 |
 | D4 | 장치 호출 **순차 유지**, 타임아웃 **엔드포인트별 분리**(C′안) | `/command`는 손 동작 완료 후 회신(실측 0.79~0.83초) → 1.5초, `/result`·`/progress`(실측 26~42ms) → 0.5초. 앞서 채택한 C안(일괄 0.6초)은 `/command`가 전부 timeout 나서 철회 | 2026-09-22 C안 → 09-25 C′안 |
-| D5 | SC-04 진입 = 판정 단계에서 손 미검출 **25회 연속**(0.2초 × 25 ≈ 5초), 환경변수 `CAMERA_FAIL_STREAK_THRESHOLD` | 처음엔 `09_화면목록`가 "임계값 필요"라고만 정의해 15회(3초) 잠정치. 9/25 실물 데모에서 판정 시작 → 정답까지 1.2~8.0초(중앙값 2.3초)라 3초는 정상 동작도 SC-04로 넘길 수 있어 늘림. 판정 제한시간(`JUDGING_TIMEOUT_S` 10초)보다는 짧다 | 2026-09-22 잠정 → 09-29 조은수(이동혁 확인 대기) |
+| D5 | SC-04 진입 = 판정 단계에서 손 미검출 **25회 연속**(0.2초 × 25 ≈ 5초), 환경변수 `CAMERA_FAIL_STREAK_THRESHOLD` | 처음엔 `09_화면목록`가 "임계값 필요"라고만 정의해 15회(3초) 잠정치. 9/25 실물 데모에서 판정 시작 → 정답까지 1.2~8.0초(중앙값 2.3초)라 3초는 정상 동작도 SC-04로 넘길 수 있어 늘림. 판정 제한시간(10초)보다는 짧다 | 2026-09-22 잠정 → 09-29 조은수(이동혁 확인 대기) |
 | D6 | 정답 시 vision `POST /reset` 호출 | 호출이 빠져 있어 이전 수신호의 N프레임 누적이 이월될 수 있었음 | 2026-09-22 |
 | D7 | `below_tau`와 `out_of_distribution` 문구 구분 | "자세를 다듬으라"와 "다른 수신호를 하고 있다"는 학습자에게 다른 행동을 요구 | 2026-09-22 |
 | D8 | picar 속도 20/40/40/40 | 바닥 주행 실측, 60은 너무 빨라 기각(`13_picar_…` §4.5) | 2026-09-25 반영 |
-| D9 | **판정 타이밍 재설계**: 시범 + 예시 사진 → 확인 버튼(스페이스바) → 판정, 오답 1초 유지 | 9/25 실물에서 학습자가 AI Hand를 보기 전에 오답 처리됨(§6.2). 고정 보는 시간(3초)은 학습자마다 달라 버튼으로 대체 — `proposals/web_판정_타이밍_스펙` | 2026-09-27 스펙 확정, **2026-09-28 백엔드 구현**(`c8f1fd3`), **2026-09-29 화면 ①-b 구현**(`edb5da9`, 송승호 대행 — ~~`dev` 병합 전~~ → `db4cd41` 병합). 예시 사진은 2026-09-29 회의로 폐지(라이브 영상 + 손가락 패턴, §11) |
+| D9 | **판정 타이밍**: 시범 → 확인 버튼(Space) → 판정, 오답 1초 유지 | 9/25 실물에서 학습자가 AI Hand를 보기 전에 오답 처리됨(§6.3). 고정 보는 시간(3초)은 학습자마다 달라 버튼으로 대체 — `proposals/web_판정_타이밍_스펙` | 2026-09-27 스펙 → 09-28 백엔드(`c8f1fd3`) → 09-29 화면(`edb5da9` → `dev` `db4cd41`) |
 | D10 | `below_tau`/OOD는 **화면 안내만** — 물리 피드백·시도 횟수·시행 로그 없음 | 손을 올리는 도중에도 자주 나오는 값이라 매번 재시범하면 따라 할 틈이 없다. 데모 스크립트(9/25 실물 7/7)와 같은 처리 — 스펙 §5 | 2026-09-28 이동혁 |
 | D11 | 장치 호출 순서 **`/picar` → `/result` → `/command` → `/progress`**, 응답은 본문 `status`까지 판정 | `/command`가 맨 앞이면 손 동작 회신(0.8초)만큼 picar·micro:bit 반응이 약 0.85초 늦었다(스펙 §7.3). 본문 실패·읽기 타임아웃을 재시도하면 AI Hand·picar가 두 번 움직인다(03 §5-5) | 2026-09-28 이동혁 |
-| D12 | micro:bit **버튼 A도 확인 입력**으로 받는다(web이 actuation `GET /button`을 폴링, pull). 기준 `seq`는 시범 `/command` 응답 뒤 처음 읽은 값 | 학습자가 키보드 없이 AI Hand 옆에서 확인. push(actuation → web)는 역방향 의존이 생겨 pull. 기준을 시범 뒤로 잡아 AI Hand 동작 중·판정 중 누름이 확인으로 새지 않게. BLE가 끊기면 입력이 사라져 스페이스바를 항상 병행 — 스펙 §9 | 2026-09-29 송승호 |
+| D12 | micro:bit **버튼 A도 확인 입력**(web이 actuation `GET /button`을 폴링, pull). 기준 `seq`는 시범 `/command` 응답 뒤 처음 읽은 값 | 학습자가 키보드 없이 AI Hand 옆에서 확인. push(actuation → web)는 역방향 의존이 생겨 pull. 기준을 시범 뒤로 잡아 AI Hand 동작 중·판정 중 누름이 확인으로 새지 않게. BLE가 끊기면 입력이 사라져 Space를 항상 병행 — 스펙 §9 | 2026-09-29 송승호 |
+| D13 | **시도 상한 3회 + 판정 제한시간 10초**, 상한을 넘기면 불합격으로 다음 수신호 | 상한이 없으면 한 수신호에서 교육이 끝나지 않았고, below_tau/OOD만 나오면 상한이 적용될 기회가 없었다(§7 09-29) | 2026-09-29 ⑥ 재시험 |
+| D14 | **예시 사진 폐지 → 라이브 영상 + 손가락 패턴** | 학습자가 자기 손을 보며 맞추는 편이 사진과 비교하는 것보다 직접적이다. 영상은 vision이 이미 찍는 프레임을 MJPEG로 내보내 web이 중계(인코딩 부담 없음) | 2026-09-29 회의 |
+| D15 | **회원 로그인 + 결과 자동 저장(Supabase)**, SC-05 CSV 내려받기 대체 | 교육자가 사원별 이수 기록을 회사 사이트(19)에서 본다. 인터넷이 끊겨도 교육이 멈추지 않게 대기열·로컬 모드, 게스트 학습 허용 | 2026-09-29~30 이동혁 |
+| D16 | **일치율 = 목표 수신호 확률 × 100** | 예전 값(예측 클래스 템플릿 코사인)은 7종을 가르지 못해 오답인데 85~99%가 나왔다. 판정(τ)에 쓰는 바로 그 값이라 "75% 넘으면 정답"이 화면과 일치 | 2026-09-30 이동혁 |
 
 ---
 
 ## 6. 검증 결과
 
-### 6.1 단위 테스트 — `tests/test_state_machine.py`
+### 6.1 단위 테스트
 
-vision·actuation·picar 서버 없이 `httpx` 호출만 patch해서 검증한다. 테스트 중 시행 로그는 `tests/conftest.py`가 임시 폴더로 돌린다 —
-**반드시 `pytest`로 실행**한다(`python tests/…py`로 직접 돌리면 실제 `logs/`에 가짜 행이 쓰인다).
+vision·actuation·picar 서버 없이 `httpx` 호출만 patch해서 검증한다. 테스트 중 시행 로그·회원 파일은 `tests/conftest.py`가 임시 폴더로 돌리고
+`.env`(Supabase 키)도 읽지 않는다 — **반드시 `pytest`로 실행**한다(`python tests/…py`로 직접 돌리면 실제 `logs/`에 가짜 행이 쓰인다).
 
-**2026-10-04 실행: web 124개 전부 통과** (`python -m pytest -q`, `dev` `795d043`). 10-01~10-03 결함 수정의 회귀 테스트 포함 —
-`faa3fa9` 6개(대기열 깨진 줄 격리, 대기 건수 메모리 카운터, 회원 저장소 오류에도 `/api/state` 응답, `judge_rule` 노출, vision `tau` 읽기,
-`member`에 이메일 없음), `f0393b0` 3개(`.env` 경로가 저장소 밖이어도 안 죽음, 비객체 `/health` 응답, 집계 스크립트 1개). 아래는 그 전 기록이다.
+**2026-10-05 실행: web 124개 전부 통과** (`python -m pytest -q`, 약 4.6초, `dev` `60231a6`).
 
-**2026-09-29 실행: 61개 전부 통과** (`python -m pytest -q`, 2.5초, 5회 반복) — ⑥ 재시험에서 발견한 SC-04 재시도·시도 횟수 상한·판정 제한시간
-회귀 테스트 11개 추가(`test_state_machine.py` 9, `test_microbit_button_confirm.py` 2 + `test_judging_timing_spec.py`의 상한 테스트 1). 이 중 10개는
-수정 전 코드(HEAD)에서 실패하는 것을 확인했다. 그 전은 버튼 A `test_microbit_button_confirm.py` 14개(D12, conftest가 버튼
-폴링을 기본으로 끄고 이 파일만 켬) 포함 49개. 아래는 2026-09-28 `dev` 병합 때 35개 — `test_judging_timing_spec.py` 26개(①-a 13 · ③ 9 · ②-a 4,
-선작성한 인수 테스트의 xfail 22개가 모두 통과로 바뀜)와 아래 `test_state_machine.py` 9개. 저장소 전체는 170개 통과.
-인수 테스트 목록과 구현 계약은 [판정 타이밍 스펙](proposals/web_판정_타이밍_스펙.md) §8.
+| 파일 | 개수 | 확인 내용 |
+| --- | --- | --- |
+| `test_state_machine.py` | 22 | 재시도·실패 판정(D3), 정답 → 다음 수신호 + picar, 오답 → 단계 유지, below_tau/OOD 문구 구분(D7), 과도기 사유 무시, SC-04 임계값·자동 복귀·재시도(시범 단계 복귀, 조회 도중 경합), 시도 상한·판정 제한시간(D13), 수료증 조건, 회원 저장소 오류에도 `/api/state` 응답, `judge_rule`·vision `tau` 읽기, 비객체 `/health`, `member`에 이메일 없음 |
+| `test_judging_timing_spec.py` | 27 | 판정 타이밍 스펙 §8 인수 테스트 — 시범 단계 판정·SC-04 무시, `/api/confirm`·vision `/reset`, 오답 1초 유지, 시범 `/command`만 전송, 시행 로그 1행·열, 본문 `status` 실패 판정(`timeout`·`error`·`partial`), 상한 |
+| `test_microbit_button_confirm.py` | 17 | 버튼 A 확인·재시도(D12) — 기준 `seq`, 시범 동작 중·판정 중 누름 무시, actuation 재시작(`seq` 감소), 조회 실패 무시, 기능 끄기, SC-04 재시도 |
+| `test_members.py` | 28 | 가입·사원 코드·로그인·잠금·입력 검증·아이디/비밀번호 찾기(코드 추측 제한), 오프라인 안내, 회원별 결과 저장(대기열 → 재전송 1회, 게스트는 로컬, 시작한 회원으로 저장, 합격 표시), 깨진 대기열 줄 격리·대기 건수, 보안 헤더, 키 역할 점검, `.env` 경로가 저장소 밖이어도 안 죽음 |
+| `test_aggregate_kpi.py` | 16 | KPI 집계 스크립트(16 §5.7·§5.8) |
+| `test_constants_sync.py` | 8 | 여러 곳에 따로 적힌 정의의 일치 — 커리큘럼 이름·순서·손가락, picar 속도 ≤ 스키마, 데모 `PICAR_COMMANDS` = web, τ·N |
+| `test_target_score.py` | 4 | 일치율 = 목표 수신호 확률 × 100, 확률이 없을 때 대체값(D16) |
+| `test_camera_proxy.py` | 2 | 영상 중계 — 정상 스트림 전달, vision 미연결 시 503 |
 
-`test_state_machine.py` (2026-09-27 작성, ①-a 이후에도 깨지지 않게 9/28 수정):
+테스트 수 변천: 9(09-27) → 35(09-28 백엔드 병합) → 49(버튼 A) → 61(09-29 ⑥ 재시험 회귀 11건, 그중 10건은 수정 전 코드에서 실패 확인)
+→ 92(09-30 회원·영상·일치율) → 108·113(10-02 리뉴얼) → 124(10-01~10-04 결함 수정·정의 일치 검사).
 
-| 테스트 | 확인 내용 |
-| --- | --- |
-| `test_post_with_retry_ok_on_2xx` | 2xx → 성공 |
-| `test_post_with_retry_fails_on_5xx_not_silently_ok` | 5xx를 성공으로 세지 않음 (D3) |
-| `test_post_with_retry_fails_on_connection_error` | 연결 실패 → 실패 기록 |
-| `test_poll_once_correct_advances_curriculum_and_calls_picar` | 정답 → 다음 수신호 + picar 호출 |
-| `test_poll_once_wrong_does_not_advance_or_call_picar` | 오답 → 단계 유지, picar 미호출 |
-| `test_poll_once_below_tau_vs_out_of_distribution_messages_differ` | 두 사유 문구 구분 (D7) |
-| `test_poll_once_silent_reasons_do_not_produce_overlay` | 과도기 사유는 화면 변화 없음 |
-| `test_camera_fail_threshold_and_auto_recovery` | 임계값 회수 → SC-04, 손 보이면 SC-03 복귀 (D5) |
-| `test_certificate_requires_all_signals_completed` | 7종 미완료 시 수료증 거부 |
+### 6.2 화면 E2E (mock)
 
-### 6.1b 화면 E2E (mock) — 2026-09-29 ①-b (`edb5da9`, 송승호 대행)
+- **2026-10-05 화면 캡처 실행**(조은수, `scripts/capture_screens.py`): 실제 web + 가짜 vision·actuation·picar, 시스템 Chrome headless 1920×1080.
+  가입(입력 오류 → 정상) → SC-02 → 카메라 연결 중·끊김 → 시범 → Space → below_tau 안내 → 정답 → 판정 일치율 → 오답 1초 유지 → 재시범 →
+  손 미검출 약 5초 뒤 SC-04 → 재시도 → 시범 → 나머지 수신호(후진 3회 오답 → 불합격으로 다음 수신호) → SC-05(합격 6/7, 로컬 저장) → SC-06 → 새로고침 → SC-07.
+  장치 이상(micro:bit 끊김·picar 연결 안 됨) 표시도 확인. 19장 저장, 화면 전환 대기 시간 초과 0(부록 A).
+- 2026-10-02 리뉴얼(이동혁): 가입 → 7종 → 합격표 → 수료증 → 아이디 찾기 → 비밀번호 재설정 → 새 비밀번호 로그인 전 구간, 1920×1080·1366×768·1366×657 × 14화면 잘림 0, 콘솔 오류 0, CSP 위반 0.
+- 2026-09-29 ①-b(송승호): 31/31 통과(1280×900·1366×768) — 시범 중 정답 자세 무시, Space → vision `/reset` 1회, below_tau 시도 0회, 오버레이 중 Space 무시, 버튼 A(`POST /button/simulate`).
 
-web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 조작했다. **31/31 통과, 1280×900·1366×768 모두**
-(같은 날 저장소 단위 테스트 158개 통과, xfail 0). 실물 장치는 쓰지 않았다 — 실물 확인은 §8 ⑥.
+### 6.3 실물 통합
 
-- 시범 중 정답 자세 무시, Space → vision `/reset` 1회·`judging` 전환·페이지 스크롤 없음
-- `below_tau` → 판정 화면 안 문구만, 시도 0회(D10)
-- 정답 오버레이 중 Space 무시 → 오버레이가 사라지면 다음 수신호 사진 + 확인 버튼
-- 확인 클릭 → 오답 1초 유지 → 재시범, micro:bit A(`POST /button/simulate`) → `judging`
-- 7종 완료 → SC-05 7행 → 결과 저장 CSV(BOM) → SC-06
+| 날짜 | 구성 | 결과 |
+| --- | --- | --- |
+| 2026-09-25 | RPi5 + RPi4B, PC UTP 직결 | 접속·장치 연동·SC-04 자동 복귀 ✅ / **web 전 구간 🔴 미완** — 판정 타이밍 문제(아래). 같은 날 web 없는 데모 스크립트는 7/7 정답, 정답 확정 → 장치 반응 시작 25~47ms |
+| 2026-09-29 | 같은 구성(쿨러 미장착) | **⑥ web 전 구간 재시험 통과** — SC-01 → SC-06, SC-03a·b·SC-04, "다시 학습하기" 재진입. 발견한 결함 2건(SC-04 탈출 불가, 시도 상한 없음)을 당일 수정·실물 재검증(`cb8a25b`) |
+| 2026-09-29~10-02 | KPI 측정 | 오프라인 210회(06 2부) · 온라인 지연 91회(10-02, 판정 P95 0.046초, 물리 피드백 시작 P95 0.089초) — web 시행 로그 + `aggregate_kpi.py`. 영상 켠 채 판정 29.7~29.9fps(17 §10) |
 
-### 6.2 실물 통합 — 2026-09-25 (RPi5 + RPi4B, PC UTP 직결)
-
-| 단계 | 결과 |
-| --- | --- |
-| PC 브라우저 → RPi5 web 접속 (UTP) | ✅ SC-01부터 진행, 상단 장치 상태 전부 정상 |
-| web → actuation·picar 연동 | ✅ 호출·응답 정상 (타임아웃 1.5/0.5초 반영 후) |
-| SC-04 자동 복귀 | ✅ 손을 다시 올리면 SC-03 복귀 |
-| **web 전 구간 (SC-01 → SC-05)** | 🔴 **미완** — 판정 타이밍 문제로 진행이 끊김 |
-
-같은 날 web 없이 돌린 전 구간(데모 스크립트)은 **7/7 정답**, 정답 확정 → 장치 반응 시작 25~47ms였다.
-즉 장치·판정 경로는 정상이고, 남은 문제는 web의 **흐름 설계**다.
-
-**드러난 문제**
+**9/25에 드러난 문제** → D9로 재설계
 1. 수신호를 시작할 때 AI Hand 시범이 없다. 정답 직후 학습자가 방금 맞힌 손모양을 들고 있어 약 0.12초 만에 새 수신호의 오답이 된다.
-2. 오답 시범이 끝나자마자 다시 판정한다. 손을 바꾸는 도중의 자세가 새 오답으로 잡힌다(중복 방지는 직전과 같은 오답만 막는다).
+2. 오답 시범이 끝나자마자 다시 판정한다. 손을 바꾸는 도중의 자세가 새 오답으로 잡힌다.
 3. 시범·정답 연출을 보는 동안에도 미검출을 세서 SC-04로 쉽게 넘어간다.
-
-→ D9로 재설계. 백엔드는 2026-09-28 반영(`c8f1fd3`) — 가짜 장치 서버로 두 수신호 + 오답 1회를 실제 스레드·시간 흐름으로 돌려
-시범 중 정답 무시, 오답 1초 유지 후 재시범, 바뀐 호출 순서, CSV 3행 기록을 확인했다(이동혁). 화면 ①-b도 2026-09-29 구현(`edb5da9`, mock E2E §6.1b).
-~~**남은 것은 실물 전 구간 재시험(§8 ⑥)뿐이다** — ①-b `dev` 병합 뒤.~~ (→ ①-b `dev` 병합 `db4cd41`, ⑥ 2026-09-29 실물 재시험 통과 — §7)
 
 ---
 
@@ -296,58 +269,18 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 
 ---
 
-## 8. 남은 작업 (조은수·이동혁·김지훈 분담, 송승호 지원 — ⑪ 단위 테스트·`dev` 병합)
+## 8. 남은 작업
 
-우선순위 순이다. `15_개발로그` 전체 TODO `web`과 같은 목록이다(2026-09-28 3명 분담). 번호는 2026-09-27 목록을 유지하고,
-나눈 항목만 `-a`/`-b`로 갈랐다.
+web 할 일 ①~⑫(2026-09-27~28 목록, 15 개발로그 TODO `web`)는 **⑧ 실물 캡처를 빼고 모두 끝났다**. 완료 경위는 §10 변경 이력(v1.4~v1.17)과 15에 있다.
 
-| 담당 | 영역 |
-| --- | --- |
-| **이동혁** | 백엔드 판정 로직 — `state_machine.py` 전담 (①-a·②-a·③) |
-| **조은수** | 화면 · KPI 집계 · 이 보고서 (①-b·②-b·⑥·⑦·⑧) + **web 코드 리뷰** — (→ 2026-09-29 조은수 사정으로 **①-b는 송승호 대행**(완료), ~~**②-b·⑥·⑦·⑧·코드 리뷰는 재배정 팀 결정 대기**~~) (→ 2026-09-30 회의 확정: ②-b·06 2부·⑥ = 송승호(완료), **⑦·⑧ = 조은수**, 09-30부터 web 담당 조은수 계속. 코드 리뷰 담당은 회의 기록에 없음) |
-| **김지훈** | 예시 사진 · 결과 내보내기 (⑩·⑨) — ✅ 둘 다 완료(`41ef97c` 병합) (→ 2026-09-29 회의로 예시 사진 폐지, 결과 내보내기는 회원 결과 자동 저장으로 대체 — §11) |
-| **송승호** (지원) | **`dev` 병합** + web **단위 테스트** 전담 (⑪), ⑤ 옛 문구 정리(완료), ③용 응답 `status` 판정 기준표, ⑥ 장치 준비, ⑫ 버튼 A web 연동(완료), **①-b 대행(완료, `edb5da9`) + ①-b `dev` 병합(10/01까지)** (→ 병합 완료 `db4cd41`, 2026-09-29) · (09-30 재배정) ②-b KPI 집계·06 2부·⑥ web 재시험(완료) |
-
-**먼저 합의 (9/28)**: ~~⓪ `/api/state`의 `phase`(`demo`/`judging`)·`POST /api/confirm`을 스펙 §4.1대로 쓸지(이동혁 ↔ 조은수),
-사진 경로 `frontend/images/<command>.jpg`(김지훈 ↔ 조은수).~~ → **[x] 종결**(2026-09-29): ①-b(`edb5da9`)가 스펙 §4.1(`phase`·`POST /api/confirm`)·§4.3(`images/<command>.jpg`)대로 구현됐다.
-⑤(완료)가 `state_machine.py`를 건드렸으므로 `dev`에 푸시된 뒤 이동혁이 착수한다.
-
-**브랜치**: 각자 쓰던 브랜치(이동혁 `feature/vision`, 조은수 `feature/web`, 김지훈 `feature/data`)에 푸시하되 **시작 전에 `dev`를 병합**한다.
-`dev` 병합은 송승호가 단위 테스트를 붙이며 하고, 순서는 이동혁 백엔드 먼저(목표 9/30) → 조은수 프론트엔드 → 김지훈. 10/01까지 전부 `dev`에.
-→ **실제(2026-09-29)**: 이동혁 백엔드 `1da641b`(`c8f1fd3`) → 버튼 A web 연동 `100ea66` → 김지훈 `feature/data` `41ef97c`까지 `dev`(= `origin/dev`)에 병합.
-**남은 것**: ①-b `edb5da9`(`feature/picar`) — 10/01까지 송승호가 `dev` 병합. (→ ✅ `db4cd41`, 2026-09-29)
-
-**KPI 실측(W4, ~10/04) 전에 끝낼 것**
-
-| # | 작업 | 담당 | 근거 · 참고 |
+| # | 작업 | 상태 | 담당 |
 | --- | --- | --- | --- |
-| ⑤ ✅ | ~~**화면에 보이는 옛 문구 정리**~~ → **완료**(2026-09-28, 송승호): `CURRICULUM_INFO` `확인_완료` picar 설명을 “정지 + 적색·황색 LED 전부 동시 점멸”로, “엄지만 펴기” gap 주석 삭제, web README 해소 항목 3건 종결. | 송승호 | §7 |
-| ①-a ✅ | **완료**(2026-09-28 `c8f1fd3`, `dev` 병합) — **판정 타이밍 — 백엔드** (D9) — `phase`, `POST /api/confirm`(vision `/reset`), 오답 1초 유지, 시범 `/command` 전송, 시범 단계 SC-04 카운트 정지 (단위 테스트는 ⑪) | 이동혁 | [proposals/web_판정_타이밍_스펙](proposals/web_판정_타이밍_스펙.md) §4.1·§5·§6 |
-| ①-b ✅ | **완료**(2026-09-29 `edb5da9`, 송승호 — 조은수 사정으로 대행, ~~**`feature/picar`에만 있음 — `dev` 병합 전**~~ → `db4cd41` 병합): 시범 단계 사진 크게 + 확인 버튼, 판정 단계 카메라 + 사진 작게 + 일치율, Space(`preventDefault`·`event.repeat` 무시), 오버레이 중 확인 불가, `below_tau`/OOD는 화면 안 문구. headless Chrome E2E 31/31(1280×900·1366×768) — **판정 타이밍 — 프론트엔드** — 예시 사진 영역, 확인 버튼, 스페이스바 | ~~조은수~~ 송승호 | 스펙 §4.2 |
-| ⑩ ✅ | ~~**수신호 예시 사진 7장**~~ → **완료**(2026-09-28, 김지훈): `services/web/frontend/images/`에 7장. 800×1067px(짧은 변 800)·90~135KB·배경/조명 동일. `좌회전_유도`↔`후진`·`우회전_유도`↔`주의`는 엄지 상태가 화면에서 판별된다. 재촬영용 규격 변환 도구 `services/web/scripts/prepare_sign_images.py` 동봉 (→ 2026-09-29 회의로 예시 사진 폐지 — 7장은 `2c19d9c`에서 삭제, git 기록에만 있음. 화면은 라이브 영상 + 손가락 패턴, §11) | 김지훈 | 스펙 §4.3 |
-| ②-a ✅ | **완료**(2026-09-28 `c8f1fd3`) — `services/web/logs/web_trials_<기동시각>.csv`, 대상자는 `LOG_SUBJECT`, 호출 순서 변경(D11)도 반영. 원래 내용: **시행 로그 CSV 기록 구현** — **열 정의는 스펙 §7**(2026-09-28). 판정 뒤 호출 순서 변경 권장(§7.3, 지금은 picar·micro:bit 반응이 약 0.85초 늦음). 열 이름은 데모 스크립트 CSV와 맞추고, 판정지연은 vision `latency_ms`, 물리피드백지연은 **장치별 응답 시간을 따로** 기록(“완료” 정의 미결이라 어느 정의로도 계산 가능하게) | 이동혁 | `06_테스트·평가리포트` §1-2, [picar_주행시간_스키마_변경안](proposals/picar_주행시간_스키마_변경안.md) 안건 2 |
-| ②-b ✅ | **로그 검증 · KPI 집계** — `06` §2-1 요약·§2-2 혼동행렬·§2-3 지연 P95. **집계 스크립트 작성 완료**(2026-09-29 조은수): `services/web/scripts/aggregate_kpi.py`(16 §5.8 명세·§5.7 규칙, 미결 정의는 안건 잠정치 기본값, web `timeout`은 기본 제외·`--timeout-as-reject` 선택). ~~남은 것: 실측 CSV로 실행해 06 §2 기입~~ → **완료**(2026-10-02 송승호, 06 v3.9) | ~~(담당 재배정 결정 대기 — 원래 조은수)~~ 송승호(2026-09-30 회의 재배정) | `06_테스트·평가리포트` 2부 |
-| ③ ✅ | **완료**(2026-09-28 `c8f1fd3`) — **`_post_with_retry` 본문 `status` 확인** — `partial`·`timeout`을 성공으로 세지 않게. ②의 로그가 왜곡되므로 KPI 전에. 본문 실패는 재시도 없이 기록만, **`/command`·`/picar` 읽기 타임아웃 재시도 금지**(이중 전송 방지) | 이동혁 | **판정 기준 [03 §5-5](03_인터페이스계약서.md)**, §7, `08_리스크레지스터` |
-| ⑪ ✅ | **완료**(2026-09-28 백엔드 병합 시 35개 통과 확인 → 2026-09-29 버튼 A 추가 후 **web 49개 / 저장소 전체 158개 통과**, xfail 0, §6.1 — ①-b `dev` 병합 때 회귀 확인은 계속) — **web 단위 테스트** — 인수 테스트 22개 선작성(2026-09-28, 구현 계약 스펙 §8).  ①-a(시범 단계 판정·SC-04 무시, `/api/confirm`·`/reset`, 오답 1초, 시범 `/command`만 전송), ②-a(CSV 1행·열), ③(`timeout`·`error`·`partial` 실패 판정), 기존 9개 회귀. 구현 브랜치가 올라오면 병합 전에 붙인다 | 송승호 | 스펙 §6 마지막 항목 |
-| ④ ✅ | ~~**picar LED 잔류**~~ → **picar 쪽에서 해결**(2026-09-28, 송승호): LED를 켠 명령 뒤 2초에 picar가 스스로 끈다. **web은 할 일 없음** | — | §7, `13_picar_하드웨어_검증리포트` §5 #8 |
-| ⑫ ✅ | **micro:bit 버튼 A 확인 입력 — web 연동**(스펙 §9, D12) — 2026-09-29 송승호 구현, 단위 테스트 14개. 실물 확인은 설계서 §9.1 ④, 화면 안내 문구(“Space 또는 micro:bit A”)는 ①-b에서 반영 완료(`edb5da9`) | 송승호 | 스펙 §9 |
-
-**재시험 (①~③ 반영 후)**
-
-| # | 작업 | 담당 | 근거 · 참고 |
-| --- | --- | --- | --- |
-| ⑥ ✅ | **web 전 구간 재시험** — 스펙 §6 완료 기준 확인, SC-01 → SC-05 7종 2~3회, RPi5 쿨러 장착 후, ①-b `dev` 병합 뒤. KPI 시행이면 `LOG_SUBJECT`를 지정해 web을 띄운다 → **완료**(2026-09-29 실물 재시험 통과, 쿨러 없이 — §7·v1.10·v1.12) | 송승호(장치 준비) ~~+ 조은수 몫은 담당 재배정 결정 대기~~ (→ 2026-09-30 회의: ⑥ 송승호) | 결과는 §6.2, `06` §1-3, 설계서 §9.3에 기록 |
-
-**결과보고서·발표용 산출물**
-
-| # | 작업 | 담당 | 근거 · 참고 |
-| --- | --- | --- | --- |
-| ⑦ | **이 보고서 완성** — `【확인 필요】` 보완, ① 반영 후 §3·§6 갱신(백엔드 절은 이동혁 설명 받아 작성) | ~~(담당 재배정 결정 대기 — 원래 조은수)~~ 조은수(2026-09-30 회의 확정) | — |
-| ⑧ 🟡 | **실제 화면 캡처본** — SC-01~SC-07(시범 단계·정답/오답 오버레이·수료증 포함), 예시 사진 반영 후. **mock 장치 기준 11장**(2026-09-29 조은수, [부록 A](#부록-a-화면-캡처-2026-09-29), 현재 `dev` 화면). 카메라 영역은 자리표시자라 실물 화면이 필요하면 교체 | ~~(담당 재배정 결정 대기 — 원래 조은수)~~ 조은수(2026-09-30 회의 확정) | `09_화면목록`(머리말 v3) 또는 이 보고서 부록 |
-| ⑨ ✅ | ~~**교육자용 결과 집계 내보내기**~~ → **완료**(2026-09-28, 김지훈): SC-05 “결과 저장 (CSV)” 버튼. `renderSummary`가 받은 `completed`를 브라우저에서 바로 CSV로 저장 — **서버 호출·백엔드 변경 없음**. 열은 `저장일자,저장시각,수신호,시도 횟수,정답 시 일치율(%),성공률(%)`, 파일명 `safesign_result_<YYYYMMDD_HHMMSS>.csv`, **UTF-8 BOM**(엑셀 한글 깨짐 방지 — §7.1 시행 로그와 같은 이유). 수료증(SC-06)으로 넘어가면 이 화면에 돌아올 수 없어 버튼을 수료증 앞에 둔다. 흩어져 있던 성공률 계산은 `successRate()` 한 곳으로 모음(§9 “성공률” 정의가 정해지면 한 군데만 고치면 화면·수료증·CSV가 함께 따라감) | 김지훈 | `09_화면목록` SC-05 |
-
-> 일정(제안): 9/28 ⓪·⑤ → ~10/01 ①②③⑨⑩ + ⑪(구현 브랜치마다) → 10/02 ⑥ → 10/03~04 KPI 실측·`06` 집계 → 10/05~ ⑦⑧.
-> 결정이 필요한 값과 담당은 §9 표를 본다.
+| ①-a·①-b·②-a·②-b·③·④·⑤·⑥·⑨·⑩·⑪·⑫ | 판정 타이밍(백엔드·화면), 시행 로그·KPI 집계, 본문 `status` 판정, LED 잔류, 옛 문구, 전 구간 재시험, 결과 내보내기(→ 회원 저장으로 대체), 예시 사진(→ 폐지), 단위 테스트, 버튼 A | ✅ | 이동혁·송승호·김지훈·조은수 |
+| ⑦ | 이 보고서 본문 현행화 | ✅ 2026-10-05 (v2.0) | 조은수 |
+| ⑧ | 화면 캡처 — 새 화면 기준 19장(오류·로딩 포함, mock 장치) | ✅ 2026-10-05 mock / 🟡 **RPi5 실물 화면**은 장치 연결 때 `capture_screens.py --real`로 같은 파일 이름에 다시 찍는다 | 조은수 |
+| — | RPi5에 루트 `.env`(Supabase 키) 복사 — 없으면 교육장이 로컬 모드로 돈다 | 🟡 시연 전 확인 | 송승호(장치) |
+| — | `judgment_result.class_probabilities`(선택 필드) 팀 확인 | 🟡 | 이동혁 |
+| — | 10-02 코드 검토 미수정 결함 7건(SC-04 라이브 영상 꺼짐, 멈춘 영상 재연결 등) | 단일 출처 [08_리스크레지스터](08_리스크레지스터.md) | 08 참고 |
 
 ---
 
@@ -355,17 +288,13 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 
 | 항목 | 현재 | 필요한 것 | 결정 |
 | --- | --- | --- | --- |
-| ~~`below_tau`/OOD 처리~~ | **확정: 화면 안내만**(D10, 2026-09-28) | — | 이동혁 ✅ |
 | 커리큘럼 순서 | PRD §3.2 표 순서 그대로 | 교육 설계상 순서 확인 | 이동혁 |
-| 권장 재도전 횟수 산식 | match_score ≥70 → 1회, ≥40 → 2회, 그 외 3회 (잠정) — 입력은 2026-09-30부터 화면 일치율(목표 수신호 확률 × 100, §3.2) | 교육 설계 확정 | 이동혁 |
-| 물리피드백지연 KPI “완료” 정의 | 미결 | picar 변경안 안건 2 · 설계서 §10 #4 — ②-a는 장치별 기록이라 기다리지 않음 | 이동혁 |
-| SC-05·SC-06의 "성공률" | **"첫 시도 정답"(수신호별 O/X, 전체 k/7, 미완주는 X)로 교체** — `firstTry()` 한 곳(⑨ CSV 열 이름 `첫 시도 정답`) | `100 / 시도 횟수`는 시도 횟수를 다른 모양으로 쓴 값인데 "50% 성공률"처럼 보여 KPI 정답률과 혼동 → 교육자에게 필요한 "한 번에 못 맞힌 수신호"를 직접 보인다 | 2026-09-29 조은수 결정 — 웹 A 이동혁 확인 대기 |
-| SC-04 임계값 | **25회(약 5초)** — D5 | 실측 1.2~8.0초 근거. 필요하면 환경변수 `CAMERA_FAIL_STREAK_THRESHOLD`로 조정 | 2026-09-29 조은수 결정 — 웹 A 이동혁 확인 대기 |
-| ~~카메라 실시간 미리보기~~ | ~~자리표시자~~ → **구현**(2026-09-29, MJPEG — vision `GET /stream` → web `/api/camera/stream`, §11) | — | 이동혁 ✅ |
-| 수료증 디자인 | canvas 기본 레이아웃 | 정식 템플릿 확정 | 조은수 (W4 범위 밖) |
+| 권장 재도전 횟수 산식 | 일치율 ≥70 → 1회, ≥40 → 2회, 그 외 3회 (잠정) — 입력은 화면 일치율(§3.2) | 교육 설계 확정 | 이동혁 |
+| SC-05·SC-06 "성공률" | **"첫 시도 정답"**(수신호별 표시, 전체 k종) + 합격/불합격 — `firstTry()` 한 곳 | — | 2026-09-29 조은수 결정 — 웹 A 이동혁 확인 대기 |
+| SC-04 임계값 | **25회(약 5초)** — D5, 환경변수로 조정 | — | 2026-09-29 조은수 결정 — 웹 A 이동혁 확인 대기 |
 
-> **정리 완료** (§8 ⑤, 2026-09-28): `CURRICULUM_INFO`의 "`확인_완료` actuation 코드가 아직 엄지만 펴기" 주석과 web README의
-> 같은 gap(2026-09-25 `d3a209e`로 해소)을 지우고, `확인_완료` picar 설명을 동시 점멸 확정(`591cd5f`)에 맞춰 정정했다.
+**확정된 것**(이전 미확정): `below_tau`/OOD 처리(D10, 09-28), 카메라 미리보기(라이브 영상 D14, 09-29), 수료증 디자인(09-30, §11),
+물리피드백지연 KPI "완료" 정의(09-30 회의 — "시작" `feedback_ms`로 판정, "완료" `feedback_done_ms` 병기, 설계서 §10 #4).
 
 ---
 
@@ -373,6 +302,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 
 | 버전 | 날짜 | 내용 |
 | --- | --- | --- |
+| v2.0 | 2026-10-05 | **(조은수, ⑦·⑧) 본문 현행화** — §1~§9를 `dev` `60231a6` 현재 동작으로 다시 씀(취소선·정정 메모를 본문에서 걷어내고 경위는 §7·§10·§11에): §1 회원·Supabase·시행 로그·영상 중계 구성, §2 로그인·가입·사원 코드, 라이브 영상 + 손 관절 21점·손가락 패턴, 시간 초과·재시도 초과(불합격), SC-05 회원 기록 자동 저장 상태(CSV 내려받기 삭제), SC-06 새 수료증, §3 결과 재전송 스레드·timeout 분기·D13, §4 `/api/auth/*`·보안 헤더·Supabase, §5 D13~D16 추가, §6.1 **web 124개 파일별 표**(옛 61개 기준 삭제), §6.2 mock E2E(10-05 캡처 실행), §6.3 실물(09-29 통과·KPI 측정), §8 ⑦ 완료·⑧ mock 완료(실물 대기), §9 확정 항목 정리(KPI 완료 정의 09-30). 부록 A를 새 화면 19장(오류·로딩 포함)으로 교체, 캡처 스크립트 `scripts/capture_screens.py`(mock·`--real`) 추가 |
 | v1 초안 | 2026-09-27 | 최초 작성 — 코드(`6f82886` 기준)·커밋·개발로그·9/25 통합 결과를 정리. 조은수 검토 전 |
 | v1.15 | 2026-09-30 | **`feature/web` → `feature/picar` 병합** — 조은수 09-29 작업(`feature/web`에서 v1.13으로 적었던 것; 이동혁 v1.13·v1.14와 번호가 겹쳐 재번호): (조은수) §9 결정 2건 — 성공률 → "첫 시도 정답", SC-04 15회 → 25회(D5, 이동혁 확인 대기). §8 ②-b 집계 스크립트(`aggregate_kpi.py`) 작성, ⑧ 화면 캡처 11장·부록 A. 조은수가 따로 만든 ①-b(`feature/web` `d03a2dc`)는 `dev`의 송승호 대행본(`edb5da9`)으로 대체 |
 | v1.17 | 2026-10-04 | (송승호) 10-01~10-03 코드 변경 반영 — 머리말 담당(09-30 회의 확정)·기준 코드, §2 예시 사진 폐지·라이브 영상 정정, §3.1 장치 상태 `judge_rule`·스레드 예외 처리, §3.2 일치율 정의(목표 수신호 확률 × 100), §4.1 `/api/state` `judge_rule`·`member`(이메일 제거)·`/api/camera/stream`·`/api/auth/*`, §4.2 vision `/reset`(`5208157`)·`/stream`, §6.1 web 124개 통과, §7 결함 8행(`faa3fa9` 5·`5208157`·`f0393b0` 2) + 10-02 미수정 7건은 08 링크, §8 ②-b·⑥ 완료·⑦⑧ 조은수, §9 미리보기 구현. 본문 나머지(SC-05 CSV 등 §11 미반영분)는 ⑦ 몫으로 남김 같은 날 추가: §11 `result_fps` 확인 완료 표기(17 §10 실측 29.7·29.9fps). 같은 날 추가 — 실물 확인 반영(§7 10-02 vision `/reset` 행 → 실물 확인 완료, 2026-10-04 송승호 5/5·재확정 144~189ms). |
@@ -398,7 +328,7 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 
 ## 11. 2026-09-29 ~ 30 추가 — 새 화면 · 회원 · 라이브 영상 · 일치율 (이동혁)
 
-> 본문 §1~§9는 그 전 구현 기준이다. 아래 내용은 ⑦(이 보고서 보완) 때 본문에 녹인다.
+> 새 화면 도입 기록(이동혁). **2026-10-05 v2.0에서 본문 §1~§6에 반영했다** — 아래는 경위·근거로 남긴다.
 
 | 항목 | 내용 | 코드 |
 | --- | --- | --- |
@@ -421,54 +351,84 @@ web·actuation·picar(mock) + 가짜 vision을 띄우고 headless Chrome으로 �
 | 회사 사이트 연결 (09-30) | `members.py`에 읽기 전용 `get_member`·`list_sessions`·`ping` 추가(회사 사이트 `services/portal`이 같은 저장소 코드를 쓴다), 루트 `.env` 자동 로드(`_load_dotenv` — 셸 값 우선, **pytest는 안 읽음**). 교육장 동작은 그대로 | [19](19_회사웹사이트.md) |
 
 **남은 것**: ~~Supabase 프로젝트 생성·키 설정~~ → ✅ 2026-09-30 연결(키는 루트 `.env`) — **RPi5에 `.env` 복사**, ~~RPi5에서 영상 켠 채 `result_fps` 확인~~ (→ 2026-10-04 정정: 확인됨 — 영상 켠 상태 판정 평균 29.7fps(10-01)·29.9fps(10-02), 27fps 미만 2.7%·0.2%, [17 §10](17_실물실행_스크립트_사용법.md) 측정 기록·[08](08_리스크레지스터.md)), `judgment_result` 선택 필드
-`class_probabilities` 팀 확인, 화면 캡처(⑧) 갱신(HMI 디자인 기준).
+`class_probabilities` 팀 확인, ~~화면 캡처(⑧) 갱신(HMI 디자인 기준)~~ (→ 2026-10-05 새 화면 19장, 부록 A).
 
-## 부록 A. 화면 캡처 (2026-09-29)
+## 부록 A. 화면 캡처
 
-> ⚠️ **옛 화면이다.** 아래 캡처는 §11의 새 화면(Gemini → 산업 제어실(HMI) 디자인, 2026-09-30) **이전** 화면이다.
-> 예시 사진·CSV 저장·옛 수료증이 보이며 지금 코드와 다르다. HMI 기준 재캡처는 §11 "남은 것"(⑧ 갱신)에 있다.
+> **조건** (2026-10-05, 조은수 — ⑧): `dev` `60231a6`의 실제 web을 시스템 Chrome headless **1920×1080**으로 캡처했다
+> (`python services/web/scripts/capture_screens.py`). vision·actuation·picar는 판정·장치 상태를 바꿔 넣을 수 있는 **가짜 서버**라
+> **카메라 영상은 예시 사진(git 기록)으로 만든 영상, 일치율은 넣은 값**이고, 회원은 로컬 모드(Supabase 미연결)다.
+> 실행 순서는 §6.2. **RPi5 실물 화면**은 `--real --web http://<RPi5>:8000`으로 같은 파일 이름에 다시 찍는다
+> (화면마다 할 동작을 안내하고, 그 화면이 되면 찍는다). 원본: `document/images/web_screens/`, 화면 정의: [09](09_화면목록.md) 표의 캡처 열.
+> 2026-09-29 옛 화면 11장(예시 사진·CSV 저장)은 같은 이름으로 덮어써 git 기록에만 있다.
 
-> **조건**: `feature/web`(`dev` `8be5dfe` 병합 + §9 결정 2건 반영)의 실제 web을 시스템 Chrome(1100×900, headless)으로 캡처했다.
-> vision·actuation·picar는 판정을 바꿔 넣을 수 있는 **가짜 서버**라 카메라 영역은 자리표시자, 일치율은 넣은 값(90%)이다.
-> 같은 실행에서 확인한 것: 시범 → Space 확인 → 판정, 판정 단계 손 미검출 5.4초 뒤 SC-04(25회), 손이 보이면 복귀, 오답 1초 유지 →
-> SC-03b → 재시범, 7종 → SC-05 "첫 시도 정답 6 / 7"·CSV 열 `첫 시도 정답`, SC-06, 새로고침 → SC-07 (24개 확인 전부 통과).
-> 원본: `document/images/web_screens/`
+**SC-01 시작 — 스테이션 준비(장치 3/3 정상)**
 
-**SC-01 시작**
+![SC-01 시작 — 스테이션 준비(장치 3/3 정상)](images/web_screens/SC-01_landing.png)
 
-![SC-01 시작](images/web_screens/SC-01_landing.png)
+**SC-01 장치 이상 — micro:bit 끊김 · picar 연결 안 됨 (오류)**
 
-**SC-02 교육 시작 확인**
+![SC-01 장치 이상 — micro:bit 끊김 · picar 연결 안 됨 (오류)](images/web_screens/SC-01_device_error.png)
 
-![SC-02 교육 시작 확인](images/web_screens/SC-02_curriculum.png)
+**SC-AUTH 로그인 (로컬 모드 안내)**
 
-**SC-03 시범 단계 — 예시 사진 + 확인 버튼**
+![SC-AUTH 로그인 (로컬 모드 안내)](images/web_screens/AUTH_login.png)
 
-![SC-03 시범 단계 — 예시 사진 + 확인 버튼](images/web_screens/SC-03_demo.png)
+**SC-AUTH 회원가입 — 비밀번호 확인 불일치 (입력 오류)**
 
-**SC-03 판정 단계 — 카메라 + 사진 작게**
+![SC-AUTH 회원가입 — 비밀번호 확인 불일치 (입력 오류)](images/web_screens/AUTH_signup_error.png)
 
-![SC-03 판정 단계 — 카메라 + 사진 작게](images/web_screens/SC-03_judging.png)
+**SC-AUTH-OK 가입 완료 — 사원 코드**
+
+![SC-AUTH-OK 가입 완료 — 사원 코드](images/web_screens/AUTH_welcome.png)
+
+**SC-02 교육 시작 확인 — 수신호 7종 · 과정 사양**
+
+![SC-02 교육 시작 확인 — 수신호 7종 · 과정 사양](images/web_screens/SC-02_curriculum.png)
+
+**SC-03 카메라 연결 중 (로딩)**
+
+![SC-03 카메라 연결 중 (로딩)](images/web_screens/SC-03_camera_loading.png)
+
+**SC-03 카메라 영상을 받을 수 없음 (오류 — 3초마다 재연결)**
+
+![SC-03 카메라 영상을 받을 수 없음 (오류 — 3초마다 재연결)](images/web_screens/SC-03_camera_offline.png)
+
+**SC-03 시범 단계 — 라이브 영상 + 정답 손 모양 + 확인**
+
+![SC-03 시범 단계 — 라이브 영상 + 정답 손 모양 + 확인](images/web_screens/SC-03_demo.png)
+
+**SC-03 판정 단계 — below_tau 안내 (일치율 62%, 기준 미달)**
+
+![SC-03 판정 단계 — below_tau 안내 (일치율 62%, 기준 미달)](images/web_screens/SC-03_judging_below_tau.png)
 
 **SC-03a 정답**
 
 ![SC-03a 정답](images/web_screens/SC-03a_correct.png)
 
+**SC-03 판정 단계 — 일치율 88% · 실시간 판정값**
+
+![SC-03 판정 단계 — 일치율 88% · 실시간 판정값](images/web_screens/SC-03_judging.png)
+
 **SC-03b 오답**
 
 ![SC-03b 오답](images/web_screens/SC-03b_wrong.png)
 
-**SC-03 오답 뒤 재시범 단계**
+**SC-03 오답 뒤 재시범 (시도 1 / 3회)**
 
-![SC-03 오답 뒤 재시범 단계](images/web_screens/SC-03_retry_demo.png)
+![SC-03 오답 뒤 재시범 (시도 1 / 3회)](images/web_screens/SC-03_retry_demo.png)
 
 **SC-04 카메라 인식 실패 (판정 단계 손 미검출 약 5초)**
 
 ![SC-04 카메라 인식 실패 (판정 단계 손 미검출 약 5초)](images/web_screens/SC-04_camera_fail.png)
 
-**SC-05 학습 완료 — 첫 시도 정답 · 결과 저장**
+**SC-03b 재시도 초과 — 불합격으로 다음 수신호**
 
-![SC-05 학습 완료 — 첫 시도 정답 · 결과 저장](images/web_screens/SC-05_summary.png)
+![SC-03b 재시도 초과 — 불합격으로 다음 수신호](images/web_screens/SC-03b_given_up.png)
+
+**SC-05 학습 결과 — 합격 6/7 · 저장 상태**
+
+![SC-05 학습 결과 — 합격 6/7 · 저장 상태](images/web_screens/SC-05_summary.png)
 
 **SC-06 수료증**
 
