@@ -332,6 +332,41 @@ def test_timeouts_reach_attempt_cap_and_advance():
     assert len(demo_stop) == sm.MAX_ATTEMPTS_PER_SIGNAL - 1, "상한 도달 때는 같은 수신호를 다시 보여주지 않는다"
 
 
+def _give_up_by_timeouts(judgment: dict) -> dict:
+    """같은 판정이 계속 나오는 채로 시간 초과 3번 — 불합격으로 넘어간 회차 기록을 돌려준다."""
+    _reset_session("training")
+    with patch("backend.state_machine.httpx.post", return_value=_FakeResponse(200, {"status": "ok"})):
+        client = _FakeVisionClient(judgment)
+        for _ in range(sm.MAX_ATTEMPTS_PER_SIGNAL):
+            sm._session["phase"] = "judging"
+            _start_judging_ago(sm.JUDGING_TIMEOUT_S + 0.1)
+            sm._poll_once(client)
+    assert sm._session["curriculum_index"] == 1
+    return sm._session["completed"][-1]
+
+
+def test_timeout_on_out_of_distribution_leaves_last_predicted_empty():
+    """vision은 7종 분포 밖 손에 출력 전용 라벨 negative를 붙인다. 인식된 수신호가 아니므로
+    회원 DB의 last_predicted에는 빈 값이 들어가야 한다(18 §2-3, 08 2026-10-02 신규 행)."""
+    done = _give_up_by_timeouts({
+        "predicted_class": sm.NEGATIVE_LABEL, "confidence": 0.0, "match_score": 0,
+        "is_reject": True, "latency_ms": 5, "reason": "out_of_distribution",
+    })
+    assert done["last_outcome"] == "timeout"
+    assert done["last_predicted"] is None
+
+
+def test_timeout_below_tau_on_target_keeps_target_name():
+    """자세는 목표대로인데 확신이 τ에 못 미쳐 시간 초과로 끝나면 목표 수신호 이름이 남는다.
+    '자세는 맞았지만 확신이 부족했다'는 정보라 지우지 않는다(18 §2-3에 뜻을 적어 둠)."""
+    done = _give_up_by_timeouts({
+        "predicted_class": "정지", "confidence": 0.6, "match_score": 60,
+        "is_reject": True, "latency_ms": 5, "reason": "below_tau",
+    })
+    assert done["last_outcome"] == "timeout"
+    assert done["last_predicted"] == "정지"
+
+
 def test_state_exposes_max_attempts():
     """화면 '시도 n / 3' 표시용 — 실물에 새 코드가 올라갔는지 `curl /api/state`로 확인하는 데도 쓴다."""
     _reset_session("training")
