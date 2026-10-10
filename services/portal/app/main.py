@@ -90,20 +90,22 @@ def make_token(member: dict, now: Optional[float] = None) -> str:
     body = {"uid": member["user_id"], "code": member.get("member_code"), "name": member.get("name"),
             "exp": int((now or time.time()) + SESSION_TTL_S)}
     raw = _b64(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-    sig = _b64(hmac.new(SECRET, raw.encode("ascii"), hashlib.sha256).digest())
-    return f"{raw}.{sig}"
+    return f"{raw}.{_sign(raw)}"
+
+
+def _sign(raw: str) -> str:
+    return _b64(hmac.new(SECRET, raw.encode("ascii"), hashlib.sha256).digest())
 
 
 def read_token(token: Optional[str], now: Optional[float] = None) -> Optional[dict]:
     if not token or token.count(".") != 1:
         return None
     raw, sig = token.split(".")
-    good = _b64(hmac.new(SECRET, raw.encode("ascii"), hashlib.sha256).digest())
-    if not hmac.compare_digest(sig, good):
+    if not hmac.compare_digest(sig, _sign(raw)):
         return None
     try:
         body = json.loads(_unb64(raw))
-    except (ValueError, json.JSONDecodeError):
+    except ValueError:   # json.JSONDecodeError·잘못된 base64 모두 ValueError
         return None
     if body.get("exp", 0) < (now or time.time()):
         return None

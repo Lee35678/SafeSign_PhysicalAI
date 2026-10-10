@@ -237,11 +237,7 @@ def shutdown(mock: bool = True) -> None:
     with _led_lock:
         if _led_off_timer is not None:
             _led_off_timer.cancel()
-        for led in _leds.values():
-            try:
-                led.off()
-            except Exception:  # noqa: BLE001
-                pass
+        _all_leds_off()
 
 
 def _apply_motor(action: str, speed_pct: int, mock: bool) -> dict:
@@ -363,11 +359,16 @@ def _leds_off_if_current(gen: int) -> None:
     with _led_lock:
         if gen != _led_gen:
             return
-        for led in _leds.values():
-            try:
-                led.off()
-            except Exception:  # noqa: BLE001
-                pass
+        _all_leds_off()
+
+
+def _all_leds_off() -> None:
+    """만들어진 LED 채널을 전부 끈다. 호출 측이 `_led_lock`을 잡고 있어야 한다. GPIO 실패는 삼킨다."""
+    for led in _leds.values():
+        try:
+            led.off()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _schedule_leds_off(gen: int) -> None:

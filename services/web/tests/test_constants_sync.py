@@ -80,6 +80,17 @@ def test_portal_curriculum_size_is_the_curriculum_length():
     assert size == len(sm.CURRICULUM)
 
 
+def test_web_scripts_use_the_curriculum():
+    """오프라인 도구(KPI 집계·화면 캡처)에 따로 적힌 7종 목록과 picar command."""
+    assert _py_literal("services/web/scripts/aggregate_kpi.py", "SIGNS") == sm.CURRICULUM
+    assert _py_literal("services/web/scripts/capture_screens.py", "SIGNS") == sm.CURRICULUM
+
+
+def test_capture_script_commands_match_picar_commands():
+    command = _py_literal("services/web/scripts/capture_screens.py", "COMMAND")
+    assert command == {s: c["command"] for s, c in sm.PICAR_COMMANDS.items()}
+
+
 def test_picar_speeds_stay_within_the_schema_maximum():
     schema = json.loads((REPO / "shared/schemas/picar_command.schema.json").read_text(encoding="utf-8"))
     maximum = schema["properties"]["motor"]["properties"]["speed"]["maximum"]

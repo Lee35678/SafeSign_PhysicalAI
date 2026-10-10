@@ -339,8 +339,9 @@ def save_plots(kind: str, rows: list[dict], lat: dict, out_dir: Path) -> list[Pa
     written.append(path)
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    for ax, (key, title, target) in zip(axes, (("decision", "판정 지연", 1000), ("feedback", "물리 피드백 (반응 시작)", 2000),
-                                               ("feedback_done", "물리 피드백 (완료)", 2000))):
+    dec_t, fb_t = TARGETS["decision_p95_ms"], TARGETS["feedback_p95_ms"]
+    for ax, (key, title, target) in zip(axes, (("decision", "판정 지연", dec_t), ("feedback", "물리 피드백 (반응 시작)", fb_t),
+                                               ("feedback_done", "물리 피드백 (완료)", fb_t))):
         vs = lat[key]
         ax.set_title(f"{title} (n={len(vs)})")
         ax.set_xlabel("ms")
