@@ -66,6 +66,7 @@ import os
 import re
 import sys
 import time
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -180,18 +181,21 @@ def load_cached(data_dir: Path, mode: str, per_class: int | None,
     sig = _cache_signature(data_dir, mode, per_class)
     if cache_path and cache_path.exists():
         try:
-            z = np.load(cache_path, allow_pickle=False)
-            if str(z["signature"]) == sig:
-                return (z["X"], z["y"], z["subjects"], z["sessions"],
-                        collections.Counter(), [], True)
-        except (OSError, ValueError, KeyError) as exc:
+            with np.load(cache_path, allow_pickle=False) as z:   # 닫아야 Windows에서 다음 저장의 replace가 된다
+                if str(z["signature"]) == sig:
+                    return (z["X"], z["y"], z["subjects"], z["sessions"],
+                            collections.Counter(), [], True)
+        except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile) as exc:
+            # 저장 중 끊긴 반쪽 npz는 BadZipFile·EOFError로 온다 — 학습을 멈추지 말고 다시 적재
             print(f"      [경고] 캐시를 읽지 못해 다시 적재합니다: {exc}")
 
     X, y, subjects, sessions, failures, skipped = load_dataset(data_dir, mode, per_class)
     if cache_path:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(cache_path, X=X, y=y, subjects=subjects, sessions=sessions,
-                            signature=np.array(sig))
+        # 번들과 같은 방식(임시 파일 → 한 번에 교체). savez는 .npz로 안 끝나는 이름에 확장자를 붙인다.
+        tmp = cache_path.with_name(cache_path.stem + ".tmp.npz")
+        np.savez_compressed(tmp, X=X, y=y, subjects=subjects, sessions=sessions, signature=np.array(sig))
+        tmp.replace(cache_path)
     return X, y, subjects, sessions, failures, skipped, False
 
 

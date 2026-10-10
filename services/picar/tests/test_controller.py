@@ -495,5 +495,18 @@ def test_stale_off_timer_does_not_turn_off_a_newer_command(monkeypatch):
     controller._led_off_timer.cancel()
 
 
+def test_led_off_timer_is_scheduled_under_the_led_lock(monkeypatch):
+    """세대 갱신과 소등 타이머 예약 사이에 다른 /picar가 끼면, 앞 요청의 예약이 뒤 요청의 타이머를 취소하고
+    남은 앞 세대 타이머는 무시돼 마지막 명령의 LED가 꺼지지 않는다 — 예약도 같은 잠금 안에서 해야 한다."""
+    _fake_gpio(monkeypatch)
+    monkeypatch.setattr(controller, "LED_HOLD_S", 60.0)
+    held = []
+    monkeypatch.setattr(controller, "_schedule_leds_off", lambda gen: held.append(controller._led_lock.locked()))
+
+    controller.execute(_stop_cmd(red="on"), mock=False)
+
+    assert held == [True]
+
+
 def test_diagnose_exposes_led_hold():
     assert controller.diagnose(mock=True)["led_hold_s"] == controller.LED_HOLD_S

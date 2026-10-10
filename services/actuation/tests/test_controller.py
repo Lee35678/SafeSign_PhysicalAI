@@ -489,6 +489,47 @@ def test_only_wrong_replies_end_in_timeout(fresh_bridge, monkeypatch):
     assert result == {"status": "timeout", "sent": "G5", "ignored": ["OK3"]}
 
 
+def test_write_os_error_reconnects_and_retries(fresh_bridge, monkeypatch):
+    """BlueZ는 쓰기 중 끊기면 BleakError 대신 OSError·TimeoutError를 내기도 한다 — connect()와 같은 범위로
+    잡아야 '재연결 후 1회 재시도'가 돈다(안 잡으면 /command가 500)."""
+    class _FailsOnce:
+        is_connected = True
+        calls = 0
+
+        async def write_gatt_char(self, _uuid, data):
+            _FailsOnce.calls += 1
+            if _FailsOnce.calls == 1:
+                raise OSError("Broken pipe")
+            n = data.decode().strip()[1:]
+            asyncio.get_running_loop().call_soon(ble_bridge._on_notify, None, f"OK{n}\n".encode())
+
+    async def _reconnect(mock=False):
+        return True
+
+    monkeypatch.setattr(ble_bridge, "_client", _FailsOnce())
+    monkeypatch.setattr(ble_bridge, "connect", _reconnect)
+
+    async def _run():
+        ble_bridge._reply_event = asyncio.Event()
+        return await ble_bridge.send_gesture(4, mock=False)
+
+    assert asyncio.run(_run())["status"] == "ok"
+    assert _FailsOnce.calls == 2
+
+
+def test_disconnect_never_raises_on_shutdown(fresh_bridge, monkeypatch):
+    """종료 핸들러에서 BlueZ/D-Bus가 이미 사라져 disconnect가 실패해도 서버 종료가 예외로 끝나면 안 된다."""
+    class _Broken:
+        is_connected = True
+
+        async def disconnect(self):
+            raise OSError("D-Bus connection lost")
+
+    monkeypatch.setattr(ble_bridge, "_client", _Broken())
+    asyncio.run(ble_bridge.disconnect())
+    assert ble_bridge._client is None
+
+
 def test_reconnect_releases_the_previous_client(monkeypatch):
     """재연결 때 이전 BleakClient를 끊지 않고 덮어쓰면 BlueZ에 연결이 남을 수 있다."""
     _patch_ble(monkeypatch, [_Dev("BBC micro:bit")])

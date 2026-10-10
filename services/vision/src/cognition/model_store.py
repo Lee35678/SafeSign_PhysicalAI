@@ -201,7 +201,8 @@ def get_match_score_calibration() -> Optional[dict]:
 
 
 _gate_cache: Optional[dict] = None
-_gate_cache_key: Optional[int] = None
+# 캐시를 만든 번들 객체 자체. id()로 두면 이전 번들이 해제된 뒤 같은 id를 받은 새 번들에 옛 게이트가 쓰인다.
+_gate_cache_key: Optional[dict] = None
 
 
 def get_open_set_gate() -> Optional[dict]:
@@ -217,7 +218,7 @@ def get_open_set_gate() -> Optional[dict]:
     raw = (bundle or {}).get("open_set_gate")
     if not raw:
         return None
-    if _gate_cache is not None and _gate_cache_key == id(bundle):
+    if _gate_cache is not None and _gate_cache_key is bundle:
         return _gate_cache
 
     import numpy as np
@@ -230,7 +231,7 @@ def get_open_set_gate() -> Optional[dict]:
             str(k): np.asarray(v, dtype=float) for k, v in (raw.get("centroids") or {}).items()
         },
     }
-    _gate_cache_key = id(bundle)
+    _gate_cache_key = bundle
     return _gate_cache
 
 

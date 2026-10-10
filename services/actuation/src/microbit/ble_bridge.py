@@ -150,10 +150,15 @@ async def connect(mock: bool = True) -> bool:
 
 
 async def disconnect() -> None:
+    """종료 핸들러에서 부른다 — BlueZ/D-Bus가 먼저 내려가 실패해도 예외를 올리지 않고 연결 정보만 비운다."""
     global _client
-    if _client is not None and _client.is_connected:
-        await _client.disconnect()
-    _client = None
+    try:
+        if _client is not None and _client.is_connected:
+            await _client.disconnect()
+    except (BleakError, asyncio.TimeoutError, OSError) as exc:
+        log.warning("micro:bit BLE 연결 해제 실패(무시): %s: %s", type(exc).__name__, exc)
+    finally:
+        _client = None
 
 
 def is_connected(mock: bool = True) -> bool:
@@ -198,7 +203,8 @@ async def _send_line_locked(line: str) -> dict:
         try:
             await _client.write_gatt_char(UART_RX_UUID, line.encode())
             return True
-        except BleakError:
+        except (BleakError, asyncio.TimeoutError, OSError):
+            # connect()와 같은 범위 — BlueZ는 쓰기 중 끊기면 OSError·TimeoutError를 내기도 한다
             return False
 
     _replies.clear()

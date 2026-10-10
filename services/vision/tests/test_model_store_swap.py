@@ -51,6 +51,24 @@ def test_swapped_bundle_reloads_original_bundle(tmp_path, monkeypatch):
     assert model_store._bundle["model"] == "orig.joblib"
 
 
+def test_gate_cache_follows_the_bundle_not_its_id(monkeypatch):
+    """게이트 캐시 키가 id(bundle)이면, 이전 번들이 해제된 뒤 같은 id를 받은 새 번들에 옛 게이트가 쓰인다
+    (모델 파일 교체·evaluate_kpi --compare로 번들이 바뀔 때)."""
+    def _bundle(th):
+        return {"model": "m", "open_set_gate": {"thresholds": {"정지": th}, "centroids": {"정지": [1.0, 0.0]}}}
+
+    holder = {"b": _bundle(0.1)}
+    monkeypatch.setattr(model_store, "load_bundle", lambda force=False: holder["b"])
+    monkeypatch.setattr(model_store, "_gate_cache", None)
+    monkeypatch.setattr(model_store, "_gate_cache_key", None)
+    # 해제된 번들의 id를 새 번들이 다시 받는 상황을 매번 재현한다(CPython은 자주 그러지만 보장되지 않음)
+    monkeypatch.setattr(model_store, "id", lambda _obj: 1, raising=False)
+
+    assert model_store.get_open_set_gate()["thresholds"]["정지"] == 0.1
+    holder["b"] = _bundle(0.9)
+    assert model_store.get_open_set_gate()["thresholds"]["정지"] == 0.9
+
+
 def test_swapped_bundle_none_keeps_current_path():
     original = model_store.MODEL_PATH
 

@@ -116,6 +116,24 @@ def test_mode_rule_rows_swap_in_the_mode_prediction():
 
 
 # ── 학습 특징 캐시 지문 ───────────────────────────────────────────────────────
+def test_corrupt_feature_cache_is_rebuilt_atomically(tmp_path, monkeypatch):
+    """저장 중 끊겨 반쪽 npz가 남으면 BadZipFile로 학습이 죽었다 — 다시 적재하고, 새 캐시는 한 번에 바꿔 쓴다."""
+    import collections
+
+    import numpy as np
+
+    ts = _load("vision_train_svm_cache", "training/train_svm.py")
+    cache = tmp_path / "cache" / "feat.npz"
+    cache.parent.mkdir()
+    cache.write_bytes(b"PK\x03\x04 truncated")
+    data = (np.zeros((1, 2)), np.array(["정지"]), np.array(["s"]), np.array(["s1"]), collections.Counter(), [])
+    monkeypatch.setattr(ts, "load_dataset", lambda *a, **k: data)
+
+    assert ts.load_cached(tmp_path, "joint23", None, cache)[-1] is False   # 손상 → 다시 적재
+    assert ts.load_cached(tmp_path, "joint23", None, cache)[-1] is True    # 새 캐시는 온전
+    assert sorted(p.name for p in cache.parent.iterdir()) == ["feat.npz"]  # 임시 파일이 남지 않음
+
+
 def test_cache_signature_changes_when_feature_code_changes(tmp_path, monkeypatch):
     """normalize.py를 고쳐도 지문이 같으면 옛 특징으로 학습돼 실행 시 특징과 어긋난다."""
     ts = _load("vision_train_svm", "training/train_svm.py")

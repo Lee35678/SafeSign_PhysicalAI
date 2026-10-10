@@ -440,14 +440,15 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
 
     states = {ch: led.get(ch, "off") for ch in ("red", "yellow_left", "yellow_right")}
     lit = any(s != "off" for s in states.values())
-    # 켜는 도중에 이전 명령의 소등 타이머가 끼어들지 않게 LED 적용과 세대 갱신을 한 번에 묶는다
+    # 켜는 도중에 이전 명령의 소등 타이머가 끼어들지 않게 LED 적용·세대 갱신·소등 예약을 한 번에 묶는다.
+    # 예약이 잠금 밖이면 동시 요청 A·B에서 A의 예약이 B의 타이머를 취소해 B의 LED가 꺼지지 않는다.
+    led_hold_s = LED_HOLD_S if lit and LED_HOLD_S > 0 else None
     with _led_lock:
         _led_gen += 1
         gen = _led_gen
         led_result = {ch: _apply_led(f"led_{ch}", s, mock) for ch, s in states.items()}
-    led_hold_s = LED_HOLD_S if lit and LED_HOLD_S > 0 else None
-    if led_hold_s is not None and not mock:
-        _schedule_leds_off(gen)
+        if led_hold_s is not None and not mock:
+            _schedule_leds_off(gen)   # Timer 생성·취소는 _led_lock을 잡지 않아 교착이 없다
 
     try:
         motor_result = _apply_motor(motor.get("action", "stop"), motor.get("speed", 0), mock)
