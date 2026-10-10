@@ -98,7 +98,8 @@ def make_token(member: dict, now: Optional[float] = None) -> str:
 
 
 def read_token(token: Optional[str], now: Optional[float] = None) -> Optional[dict]:
-    if not token or token.count(".") != 1:
+    # 정상 토큰은 base64url + "." 라 항상 ASCII — 아니면 위조로 본다(encode·compare_digest가 예외를 내기 전에)
+    if not token or not token.isascii() or token.count(".") != 1:
         return None
     raw, sig = token.split(".")
     if not hmac.compare_digest(sig, _sign(raw)):

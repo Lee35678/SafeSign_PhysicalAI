@@ -79,6 +79,13 @@ def test_me_requires_valid_cookie():
     assert main.read_token(good, now=time.time() + main.SESSION_TTL_S + 5) is None  # 만료
 
 
+def test_non_ascii_cookie_is_rejected_not_a_server_error():
+    """정상 토큰은 base64url + "."라 항상 ASCII다 — 한글 등이 섞인 쿠키에서 encode·compare_digest가
+    예외를 올려 500이 났다. 위조 토큰처럼 None이어야 한다."""
+    for token in ("한글.abc", "abc.한글", "é.é"):
+        assert main.read_token(token) is None, token
+
+
 def test_login_logout_and_wrong_password():
     c = _client()
     email, _ = _signup(c)
