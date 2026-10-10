@@ -397,7 +397,7 @@ def main() -> None:
                     confirmed = smoothing.push_and_check(observed)
                     if not result["is_reject"] and not confirmed:
                         result["is_reject"] = True
-                        result["reason"] = "awaiting_consecutive_frames"
+                        result["reason"] = classify.REASON_AWAITING_CONSECUTIVE
                     result["consecutive"] = smoothing.streak()
                 else:
                     result = {"predicted_class": "negative", "is_reject": True, "reason": "no_frame",

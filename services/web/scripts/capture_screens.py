@@ -203,9 +203,9 @@ def _landscape(raw: bytes) -> bytes:
 
 
 def _no_hand(frame: bytes) -> bytes:
-    """손이 없는 화면 — 사진 전체를 아주 흐리게 해서 배경색만 남긴다(손 미검출 판정은 mock 값이 정한다)."""
+    """손이 없는 화면 — 사진의 평균색 한 가지로 채워 배경만 남긴다(손 미검출 판정은 mock 값이 정한다)."""
     try:
-        from PIL import Image, ImageFilter
+        from PIL import Image
     except ImportError:
         return frame
     import io

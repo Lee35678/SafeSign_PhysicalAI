@@ -245,7 +245,7 @@ function renderDeviceStatus(devices) {
     const extra = deviceProblem(name, info);
     const bad = Boolean(extra);
     // 표시: 칸마다 라벨/값. 정상 = 회색 글자, 이상 = 칸 전체 경보색(station.css .device.bad)
-    return { name, bad, extra, html: `<span class="device${bad ? " bad" : ""}"><i class="device-dot"></i><b>${esc(labels[name] ?? name)}</b><small>${esc(extra || "정상")}</small></span>` };
+    return { name, bad, extra, html: `<span class="device${bad ? " bad" : ""}"><b>${esc(labels[name] ?? name)}</b><small>${esc(extra || "정상")}</small></span>` };
   });
   el.innerHTML = cells.map((c) => c.html).join("");
   // 표시 전용: SC-01 스테이션 준비 패널 = 교육 흐름도(AI Hand 시범 > 카메라 판정 > picar 동작).

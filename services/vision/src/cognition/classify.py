@@ -55,6 +55,7 @@ REASON_MODEL_NOT_LOADED = "model_not_loaded"  # 분류기 미배치(학습 전)
 REASON_INFERENCE_ERROR = "inference_error"
 REASON_BELOW_TAU = "below_tau"             # 신뢰도 부족 -> 재시도 유도(SC-03b)
 REASON_OUT_OF_DISTRIBUTION = "out_of_distribution"  # 7종 어디에도 속하지 않는 손모양 -> 1단계 게이트
+REASON_AWAITING_CONSECUTIVE = "awaiting_consecutive_frames"  # N프레임 연속을 채우는 중(smoothing 단계, 오답 아님)
 
 # 05_모델카드 §8-0 초기 기본값. 환경변수 > 모델 번들 > 이 기본값 순으로 우선한다.
 _DEFAULT_TAU = 0.75

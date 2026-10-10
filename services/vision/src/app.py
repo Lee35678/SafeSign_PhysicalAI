@@ -78,7 +78,7 @@ def _process_frame(frame: dict) -> None:
         confirmed = smoothing.push_and_check(observed)
         if not result["is_reject"] and not confirmed:
             result["is_reject"] = True
-            result["reason"] = "awaiting_consecutive_frames"
+            result["reason"] = classify.REASON_AWAITING_CONSECUTIVE
         result["consecutive"] = smoothing.streak()
         _latest_judgment = result
 
@@ -151,5 +151,5 @@ def reset():
         _reset_at_ms = int(time.time() * 1000)
         smoothing.reset()
         _latest_judgment = {**_latest_judgment, "is_reject": True,
-                            "reason": "awaiting_consecutive_frames", "consecutive": 0}
+                            "reason": classify.REASON_AWAITING_CONSECUTIVE, "consecutive": 0}
     return {"status": "ok"}

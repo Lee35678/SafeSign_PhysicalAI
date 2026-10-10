@@ -89,7 +89,7 @@ def judge_consecutive(judged: list[dict], n: int = N_CONSECUTIVE) -> tuple[str, 
         run_cls = cls
         if run >= n:
             return cls, False, None
-    return "negative", True, (_top_reason(judged) or "awaiting_consecutive_frames")
+    return "negative", True, (_top_reason(judged) or classify.REASON_AWAITING_CONSECUTIVE)
 
 
 def judge_mode(judged: list[dict]) -> tuple[str, bool, str | None]:

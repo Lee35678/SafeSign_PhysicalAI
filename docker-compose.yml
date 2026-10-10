@@ -6,7 +6,6 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - SERVICE_NAME=vision
       - DB_PATH=/data/db/signdb.sqlite3
       # 비워두면 학습 번들(svm_classifier.joblib)에 기록된 τ·N을 쓴다.
       # .env에서 값을 주면 그 값이 번들을 덮어쓴다(운영 중 급히 조일 때용).
@@ -30,7 +29,6 @@ services:
     ports:
       - "8002:8000"
     environment:
-      - SERVICE_NAME=actuation
       - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
       - MICROBIT_BLE_NAME=${MICROBIT_BLE_NAME:-BBC micro:bit}
     # 실물 micro:bit(BLE)는 RPi5 네이티브로 운영한다(README §4). docker-compose.hw.yml(D-Bus 소켓 마운트)은
@@ -46,7 +44,6 @@ services:
     ports:
       - "8003:8000"
     environment:
-      - SERVICE_NAME=picar
       - MOCK_HARDWARE=${MOCK_HARDWARE:-true}
     # 실물 모터(I2C)/LED(GPIO)는 RPi4B 네이티브로 운영한다(README §4). docker-compose.hw.yml(/dev/i2c-1·/dev/gpiochip0
     # 매핑)은 미검증·선택 사항이며 시연에 쓰지 않는다.

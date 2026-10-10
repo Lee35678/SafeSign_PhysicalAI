@@ -244,7 +244,6 @@ input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px 
 }
 .device b { font-size: max(13px, 0.9rem); font-weight: 600; }
 .device small { font-size: max(13px, 0.9rem); font-weight: 500; }
-.device-dot { display: none; }
 .device.bad { background: var(--red); color: var(--on-orange); }
 .device.bad small { font-weight: 700; }
 .strip-clock {
@@ -289,7 +288,6 @@ input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px 
   background: var(--panel); border-left: 1px solid var(--line-2);
 }
 .about-live { font-size: max(13px, 1rem); font-weight: 600; color: var(--text-2); white-space: nowrap; }
-.about-live i { display: none; }
 .about-live.warn { color: var(--red); }
 
 .station-devices { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border: 1px solid var(--line-2); }
