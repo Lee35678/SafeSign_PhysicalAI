@@ -172,22 +172,6 @@ def test_mock_mode_never_opens_a_ble_connection():
     assert ble_bridge._client is None
 
 
-if __name__ == "__main__":  # pytest 없이도 돌려볼 수 있게
-    import traceback
-
-    failed = 0
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_") and callable(fn):
-            try:
-                fn()
-                print(f"PASS {name}")
-            except Exception:
-                failed += 1
-                print(f"FAIL {name}")
-                traceback.print_exc()
-    print(f"\n{'FAILED ' + str(failed) if failed else 'ALL PASSED'}")
-
-
 # ── is_connected (2026-09-23 RPi5 실측에서 발견) ─────────────────────────────
 class _DeprecatedIsConnectedLike:
     """bleak 0.22 BlueZ 백엔드가 `is_connected`로 돌려주는 래퍼를 흉내 낸다.

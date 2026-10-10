@@ -282,7 +282,6 @@ def main() -> int:
         print("=" * 78)
         print("소속 게이트 — 7종이 아닌 자세를 막는가 (미판정이 정답)")
         print("=" * 78)
-        model_store.load_bundle(force=True)
         takes = collections.defaultdict(list)
         for s in amb:
             takes[(s["subject"], s["take"])].append(s)

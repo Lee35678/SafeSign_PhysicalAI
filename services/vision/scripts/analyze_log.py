@@ -158,18 +158,18 @@ def main() -> int:
 
     # ---------------------------------------------------------------- 4
     section("4. 소속 게이트가 제 역할을 했나")
-    gated = [f for f in labeled if f.get("reason") == "out_of_distribution"]
+    gated = [f for f in labeled if f.get("reason") == classify.REASON_OUT_OF_DISTRIBUTION]
     amb = [f for f in labeled if f["intended"] == AMBIGUOUS]
     normal = [f for f in labeled if f["intended"] != AMBIGUOUS]
     if amb:
         blocked = sum(1 for f in amb if f.get("is_reject"))
-        by_gate = sum(1 for f in amb if f.get("reason") == "out_of_distribution")
+        by_gate = sum(1 for f in amb if f.get("reason") == classify.REASON_OUT_OF_DISTRIBUTION)
         print(f"  애매한 자세 {len(amb)}프레임 중 미판정 {blocked}"
               f" ({blocked / len(amb) * 100:.0f}%), 그중 게이트가 막은 것 {by_gate}")
     else:
         print("  '애매한자세'(0번 키) 프레임이 없어 게이트 차단력을 잴 수 없습니다.")
     if normal:
-        fp = sum(1 for f in normal if f.get("reason") == "out_of_distribution")
+        fp = sum(1 for f in normal if f.get("reason") == classify.REASON_OUT_OF_DISTRIBUTION)
         print(f"  정상 자세 {len(normal)}프레임 중 게이트가 잘못 막은 것 {fp}"
               f" ({fp / len(normal) * 100:.1f}%)  ← 미판정률 KPI(≤5%)와 직결")
     if gated:

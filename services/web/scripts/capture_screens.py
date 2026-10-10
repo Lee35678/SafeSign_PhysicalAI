@@ -218,11 +218,6 @@ def _no_hand(frame: bytes) -> bytes:
 
 # ---------------------------------------------------------------- 캡처 흐름
 
-def _attempts(state: dict, sign: str) -> int:
-    a = state.get("attempts")
-    return a.get(sign, 0) if isinstance(a, dict) else int(a or 0)
-
-
 class Capture:
     def __init__(self, page, web: str, out: Path, mock: Mock | None, timeout: float):
         self.page, self.web, self.out, self.mock, self.timeout = page, web, out, mock, timeout
@@ -260,7 +255,7 @@ class Capture:
         await self.page.wait_for_selector(sel, state="visible", timeout=timeout_ms)
 
 
-async def run(cap: Capture, args):
+async def run(cap: Capture):
     page, mock = cap.page, cap.mock
     real = mock is None
 
@@ -486,7 +481,7 @@ async def main_async(args):
             page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
             cap = Capture(page, web, out, mock, args.timeout)
             print(f"캡처 → {out.relative_to(ROOT) if out.is_relative_to(ROOT) else out}  ({args.size}, {'실물' if args.real else 'mock'})")
-            await run(cap, args)
+            await run(cap)
             await browser.close()
             print(f"\n{len(cap.shots)}장 저장" + (f", 건너뜀 {len(cap.skipped)}: {cap.skipped}" if cap.skipped else ""))
             real_errors = [e for e in errors if "camera/stream" not in e and "503" not in e]

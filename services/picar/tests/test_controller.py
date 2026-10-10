@@ -248,22 +248,6 @@ def test_mock_mode_never_imports_hardware_libraries():
         assert "gpiozero" not in sys.modules
 
 
-if __name__ == "__main__":  # pytest 없이도 돌려볼 수 있게
-    import traceback
-
-    failed = 0
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_") and callable(fn):
-            try:
-                fn()
-                print(f"PASS {name}")
-            except Exception:
-                failed += 1
-                print(f"FAIL {name}")
-                traceback.print_exc()
-    print(f"\n{'FAILED ' + str(failed) if failed else 'ALL PASSED'}")
-
-
 # ── 정지 경로 (2026-09-23 부하 테스트 #10 회귀 방지) ──────────────────────────
 def test_stop_writes_before_cancelling_the_safety_timer(monkeypatch):
     """정지 쓰기가 **성공한 뒤에** 자동 정지 타이머를 걷어야 한다.
