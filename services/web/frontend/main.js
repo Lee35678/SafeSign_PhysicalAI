@@ -266,7 +266,7 @@ function renderAboutSys(devices) {
   const bad = entries.filter(([name, info]) => deviceProblem(name, info)).length;
   const good = entries.length - bad;
   box.classList.toggle("warn", !entries.length || bad > 0);
-  box.querySelector("span").textContent = !entries.length ? "장치 정보 없음"
+  box.textContent = !entries.length ? "장치 정보 없음"
     : bad ? `장치 이상 ${bad}대, 정상 ${good}/${entries.length}` : `장치 ${good}/${entries.length} 정상`;
 }
 

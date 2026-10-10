@@ -51,8 +51,8 @@ services/vision/training/.feature_cache*.npz
 #   cd services/vision && python training/train_svm.py
 # 팀 전체가 같은 모델을 공유해야 할 시점(시연 직전 등)이 오면 아래 줄을 지우고 커밋할 것.
 # (라이선스상 외부 공개는 하지 않는다 — 회의안건_2026-09-21 안건 5)
-# MediaPipe hand_landmarker.task는 저장소에 포함한다(start_all.sh·17 §2가 그 전제) — 무시하지 않는다.
 services/vision/models/*.joblib
+# (MediaPipe hand_landmarker.task는 저장소에 포함한다 — start_all.sh·vision Dockerfile·17 §2가 그 전제)
 
 # DB 파일
 *.sqlite3

@@ -334,6 +334,15 @@ def test_password_reset_with_code_local(local, caplog):
     assert again["reason"] == "invalid_code", "코드는 한 번만 쓴다"
 
 
+def test_non_ascii_reset_code_is_invalid_not_a_server_error(local):
+    """인증 코드에 한글이 섞이면 str끼리 compare_digest가 TypeError를 내 500이 났다 — 틀린 코드로 처리."""
+    c = _client()
+    c.post("/api/auth/signup", json={"email": "a@x.kr", "password": "secret12", "name": "가"})
+    c.post("/api/auth/password/request", json={"email": "a@x.kr"})
+    r = c.post("/api/auth/password/reset", json={"email": "a@x.kr", "code": "일이삼사오육", "new_password": "newpass99"})
+    assert r.status_code == 200 and r.json()["reason"] == "invalid_code"
+
+
 # ── 무차별 대입 방지 ─────────────────────────────────────────────────────────
 def test_login_is_locked_after_repeated_failures(local):
     c = _client()

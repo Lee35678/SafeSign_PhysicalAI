@@ -308,7 +308,9 @@ class LocalStore:
 
     def confirm_reset(self, email: str, code: str, new_password: str) -> None:
         saved = LocalStore._codes.get(email)
-        if not saved or saved[1] < time.monotonic() or not hmac.compare_digest(saved[0], (code or "").strip()):
+        # bytes로 비교한다 — str끼리면 사용자가 보낸 비ASCII(한글 등)에서 compare_digest가 TypeError로 500을 낸다
+        given = (code or "").strip().encode("utf-8")
+        if not saved or saved[1] < time.monotonic() or not hmac.compare_digest(saved[0].encode("utf-8"), given):
             raise MemberError("invalid_code", "인증 코드가 맞지 않거나 만료됐습니다.")
         with self._lock:
             db = self._load()
