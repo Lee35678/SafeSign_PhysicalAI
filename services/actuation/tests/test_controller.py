@@ -492,16 +492,14 @@ def test_only_wrong_replies_end_in_timeout(fresh_bridge, monkeypatch):
 def test_write_os_error_reconnects_and_retries(fresh_bridge, monkeypatch):
     """BlueZ는 쓰기 중 끊기면 BleakError 대신 OSError·TimeoutError를 내기도 한다 — connect()와 같은 범위로
     잡아야 '재연결 후 1회 재시도'가 돈다(안 잡으면 /command가 500)."""
-    class _FailsOnce:
-        is_connected = True
+    class _FailsOnce(_EchoClient):
         calls = 0
 
         async def write_gatt_char(self, _uuid, data):
             _FailsOnce.calls += 1
             if _FailsOnce.calls == 1:
                 raise OSError("Broken pipe")
-            n = data.decode().strip()[1:]
-            asyncio.get_running_loop().call_soon(ble_bridge._on_notify, None, f"OK{n}\n".encode())
+            await super().write_gatt_char(_uuid, data)
 
     async def _reconnect(mock=False):
         return True

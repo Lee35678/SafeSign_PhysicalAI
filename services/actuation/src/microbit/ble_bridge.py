@@ -45,6 +45,10 @@ log = logging.getLogger("uvicorn.error")  # uvicorn 콘솔에 그대로 찍히�
 SCAN_TIMEOUT_S = 5.0
 ACK_TIMEOUT_S = 2.0  # 물리 피드백 지연 KPI(P95<=2.0초, 10_PRD §3 참고) 기준
 
+# 연결·쓰기·해제에서 잡는 BLE 실패. asyncio.TimeoutError(연결 시간 초과)는 BleakError가 아니고, BlueZ는
+# 쓰기 중 끊기면 OSError를 내기도 한다 — 빠지면 서버 기동이 죽거나 재연결 재시도 없이 500이 된다.
+_BLE_ERRORS = (BleakError, asyncio.TimeoutError, OSError)
+
 _client: "BleakClient | None" = None
 _reply_event: "asyncio.Event | None" = None
 # 받은 회신 줄(BTN 제외). 전송마다 비우고, 보낸 명령에 맞는 줄(_expected_reply)만 ACK로 인정한다 —
@@ -137,8 +141,7 @@ async def connect(mock: bool = True) -> bool:
 
     try:
         return await _connect_once()
-    except (BleakError, asyncio.TimeoutError, OSError) as exc:
-        # asyncio.TimeoutError(연결 시간 초과)는 BleakError가 아니다 — 안 잡으면 서버 기동 자체가 죽는다
+    except _BLE_ERRORS as exc:
         hint = ""
         if isinstance(exc, asyncio.TimeoutError):
             # 2026-09-23 RPi5 실측: bluetoothctl `scan on`을 켜 둔 채(Discovering: yes)면 스캔에는 잡히는데
@@ -155,7 +158,7 @@ async def disconnect() -> None:
     try:
         if _client is not None and _client.is_connected:
             await _client.disconnect()
-    except (BleakError, asyncio.TimeoutError, OSError) as exc:
+    except _BLE_ERRORS as exc:
         log.warning("micro:bit BLE 연결 해제 실패(무시): %s: %s", type(exc).__name__, exc)
     finally:
         _client = None
@@ -203,8 +206,7 @@ async def _send_line_locked(line: str) -> dict:
         try:
             await _client.write_gatt_char(UART_RX_UUID, line.encode())
             return True
-        except (BleakError, asyncio.TimeoutError, OSError):
-            # connect()와 같은 범위 — BlueZ는 쓰기 중 끊기면 OSError·TimeoutError를 내기도 한다
+        except _BLE_ERRORS:
             return False
 
     _replies.clear()

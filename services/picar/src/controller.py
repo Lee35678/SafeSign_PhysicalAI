@@ -220,6 +220,15 @@ def _safe_stop(gen: "int | None" = None) -> None:
             pass
 
 
+def _all_leds_off() -> None:
+    """만들어진 LED 채널을 전부 끈다. 호출 측이 `_led_lock`을 잡고 있어야 한다. GPIO 실패는 삼킨다."""
+    for led in _leds.values():
+        try:
+            led.off()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def shutdown(mock: bool = True) -> None:
     """프로세스 종료 시 호출 — 차를 세우고 LED를 끈다.
 
@@ -362,16 +371,12 @@ def _leds_off_if_current(gen: int) -> None:
         _all_leds_off()
 
 
-def _all_leds_off() -> None:
-    """만들어진 LED 채널을 전부 끈다. 호출 측이 `_led_lock`을 잡고 있어야 한다. GPIO 실패는 삼킨다."""
-    for led in _leds.values():
-        try:
-            led.off()
-        except Exception:  # noqa: BLE001
-            pass
-
-
 def _schedule_leds_off(gen: int) -> None:
+    """LED_HOLD_S 뒤 gen 세대 LED를 끄는 타이머를 건다(이전 타이머는 취소).
+
+    호출 측이 `_led_lock`을 쥔 채로 부른다 — 밖에서 부르면 동시 요청의 예약끼리 서로 취소해 마지막 명령의
+    LED가 꺼지지 않는다. Timer 생성·취소는 이 잠금을 잡지 않아 교착이 없다.
+    """
     global _led_off_timer
     if _led_off_timer is not None:
         _led_off_timer.cancel()
@@ -440,15 +445,14 @@ def execute(picar_command: dict, mock: bool = True) -> dict:
 
     states = {ch: led.get(ch, "off") for ch in ("red", "yellow_left", "yellow_right")}
     lit = any(s != "off" for s in states.values())
-    # 켜는 도중에 이전 명령의 소등 타이머가 끼어들지 않게 LED 적용·세대 갱신·소등 예약을 한 번에 묶는다.
-    # 예약이 잠금 밖이면 동시 요청 A·B에서 A의 예약이 B의 타이머를 취소해 B의 LED가 꺼지지 않는다.
+    # 켜는 도중에 이전 명령의 소등 타이머가 끼어들지 않게 LED 적용·세대 갱신·소등 예약을 한 번에 묶는다
     led_hold_s = LED_HOLD_S if lit and LED_HOLD_S > 0 else None
     with _led_lock:
         _led_gen += 1
         gen = _led_gen
         led_result = {ch: _apply_led(f"led_{ch}", s, mock) for ch, s in states.items()}
         if led_hold_s is not None and not mock:
-            _schedule_leds_off(gen)   # Timer 생성·취소는 _led_lock을 잡지 않아 교착이 없다
+            _schedule_leds_off(gen)
 
     try:
         motor_result = _apply_motor(motor.get("action", "stop"), motor.get("speed", 0), mock)

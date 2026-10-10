@@ -61,7 +61,8 @@ def test_gate_cache_follows_the_bundle_not_its_id(monkeypatch):
     monkeypatch.setattr(model_store, "load_bundle", lambda force=False: holder["b"])
     monkeypatch.setattr(model_store, "_gate_cache", None)
     monkeypatch.setattr(model_store, "_gate_cache_key", None)
-    # 해제된 번들의 id를 새 번들이 다시 받는 상황을 매번 재현한다(CPython은 자주 그러지만 보장되지 않음)
+    # 옛 구현(id 키) 회귀 재현용 — 해제된 번들의 id를 새 번들이 다시 받는 상황을 매번 만든다.
+    # 지금 구현은 id()를 쓰지 않으므로 이 패치와 무관하게 통과해야 한다.
     monkeypatch.setattr(model_store, "id", lambda _obj: 1, raising=False)
 
     assert model_store.get_open_set_gate()["thresholds"]["정지"] == 0.1

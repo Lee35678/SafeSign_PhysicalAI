@@ -21,6 +21,7 @@ def _load(name: str, rel: str):
 
 
 ek = _load("vision_evaluate_kpi", "scripts/evaluate_kpi.py")
+ts = _load("vision_train_svm", "training/train_svm.py")
 
 
 def _f(cls=None, reason=None):
@@ -122,7 +123,6 @@ def test_corrupt_feature_cache_is_rebuilt_atomically(tmp_path, monkeypatch):
 
     import numpy as np
 
-    ts = _load("vision_train_svm_cache", "training/train_svm.py")
     cache = tmp_path / "cache" / "feat.npz"
     cache.parent.mkdir()
     cache.write_bytes(b"PK\x03\x04 truncated")
@@ -136,7 +136,6 @@ def test_corrupt_feature_cache_is_rebuilt_atomically(tmp_path, monkeypatch):
 
 def test_cache_signature_changes_when_feature_code_changes(tmp_path, monkeypatch):
     """normalize.py를 고쳐도 지문이 같으면 옛 특징으로 학습돼 실행 시 특징과 어긋난다."""
-    ts = _load("vision_train_svm", "training/train_svm.py")
     fake_root = tmp_path / "svc"
     src = fake_root / "src" / "cognition" / "normalize.py"
     src.parent.mkdir(parents=True)

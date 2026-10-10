@@ -86,15 +86,15 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
+def _sign(raw: str) -> str:
+    return _b64(hmac.new(SECRET, raw.encode("ascii"), hashlib.sha256).digest())
+
+
 def make_token(member: dict, now: Optional[float] = None) -> str:
     body = {"uid": member["user_id"], "code": member.get("member_code"), "name": member.get("name"),
             "exp": int((now or time.time()) + SESSION_TTL_S)}
     raw = _b64(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     return f"{raw}.{_sign(raw)}"
-
-
-def _sign(raw: str) -> str:
-    return _b64(hmac.new(SECRET, raw.encode("ascii"), hashlib.sha256).digest())
 
 
 def read_token(token: Optional[str], now: Optional[float] = None) -> Optional[dict]:
