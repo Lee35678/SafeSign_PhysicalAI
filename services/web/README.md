@@ -69,7 +69,7 @@ actuation(`POST /command`, `/result`, `/progress` — AI Hand+micro:bit, RPi5) �
 - `backend/camera.py` — `GET /api/camera/stream`: vision `GET /stream`(MJPEG)을 그대로 중계한다. 브라우저는 교육장 PC에서
   열리는데 `VISION_URL`은 RPi5 기준 주소라, web을 거쳐야 주소·포트가 맞는다.
 - `frontend/` — `index.html`(화면 마크업) + `station.css`(화면 전체 스타일 하나, 2026-10-02) + `main.js`(폴링·전환) + `hand-data.js`(KPI 촬영 실측 손 관절 21점)
-  + `icons/`(Phosphor Icons, MIT) + `fonts/`(SUIT·Inter·JetBrains Mono, OFL — 오프라인용 동봉).
+  + `icons/`(Phosphor Icons 2.1.1 MIT 라이선스·버전 기록만 — 아이콘은 `index.html`·`main.js`에 인라인 SVG로 넣었다) + `fonts/`(SUIT·Inter·JetBrains Mono, OFL — 오프라인용 동봉).
   - **모션·팔레트 (2026-10-02 오후, 이동혁)** — UI UX Pro Max("Industrial grey + safety orange")로 팔레트를 slate 회색 + 주황 `#F97316`(누름 `#EA580C`)로 정리,
     회사 사이트와 같은 값. 본문 SUIT, 번호·코드 JetBrains Mono. 손 관절 모션(표시 전용): 신호가 바뀌면 안내 손그림이 이전 손모양에서 관절 순서대로 옮겨 그려지고(0.6초),
     첫 화면 7종 띠는 들어올 때 한 번 그려진 뒤 2.4초마다 한 신호씩 밝아진다. 동작 줄이기 설정이면 모두 끈다. 수료증은 같은 팔레트의 밝은 변형(종이 `#F8FAFC`, 주황 `#EA580C`).
@@ -151,6 +151,9 @@ vision/actuation/picar 실물·mock 서버 없이 httpx 호출만 patch해 검�
   로컬 모드, 시작한 회원에게 저장되는지
 - `tests/test_camera_proxy.py` — 영상 중계·vision 다운 시 503
 - `tests/test_aggregate_kpi.py` — KPI 집계 스크립트(아래)
+- `tests/test_target_score.py` — 학습자 화면 일치율 = 목표 수신호 확률 × 100(`_target_score`, 2026-09-30)
+- `tests/test_constants_sync.py` — 여러 곳에 따로 적힌 수신호 정의(web Python·JS, portal, vision, picar 스키마)가
+  서로 어긋나지 않는지 글자로 대조
 
 테스트 동안 회원 파일·시행 로그는 임시 폴더를 쓰고 Supabase 키는 지운다(`tests/conftest.py`).
 
@@ -160,7 +163,7 @@ cd services/web && python -m pytest tests -q
 
 > ⚠️ **반드시 pytest로 실행한다.** `tests/conftest.py`가 테스트 동안 시행 로그를 임시 폴더로 돌린다.
 > `python tests/test_state_machine.py`처럼 직접 실행하면 이 설정을 거치지 않아 실제 `logs/`에 가짜 판정 행이 쓰인다
-> (그래서 직접 실행하면 안내만 하고 끝나게 해 두었다).
+> (그래서 `test_state_machine.py`는 직접 실행하면 안내만 하고 끝나게 해 두었다. 나머지 파일은 실행 블록이 없어 직접 실행해도 테스트가 돌지 않는다).
 
 ## KPI 집계 (06 2부)
 

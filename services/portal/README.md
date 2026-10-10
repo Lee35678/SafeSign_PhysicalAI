@@ -114,5 +114,7 @@ docker run -d --restart unless-stopped -p 8100:8100 --env-file .env safesign-por
 ## 테스트
 
 ```bash
-cd services/portal && python -m pytest -q      # 10개 — 쿠키·CSRF·수료 판정·타인 기록 차단·찾기/재설정·Supabase 조회 형식
+cd services/portal && python -m pytest -q      # 쿠키(위조·비ASCII 거부)·CSRF·수료 판정·타인 기록 차단·찾기/재설정·보안 헤더·Supabase 조회 형식·설정 누락 시 기동 거부
 ```
+
+테스트 개수는 적지 않는다 — 서비스별 현재 수는 `document/16_통합테스트_KPI_CI.md` §1.1.

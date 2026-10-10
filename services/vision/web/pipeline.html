@@ -460,13 +460,13 @@ footer li{margin-bottom:5px}
     이 페이지의 모든 그림과 숫자는 <b>실제로 돌아가는 모델의 값</b>으로 계산된다 — 학습 데이터에서 뽑은
     손가락 평균 위치와 클래스 중심을 그대로 심었다.</p>
   <div class="kpis">
-    <div class="kpi"><b class="num">97.1%</b><span>정답률 (목표 92%)</span></div>
+    <div class="kpi"><b class="num">95.2%</b><span>정답률 (목표 92%)</span></div>
     <div class="kpi"><b class="num">0.0%</b><span>오분류율 (목표 3%)</span></div>
-    <div class="kpi"><b class="num">0.985</b><span>Macro F1 (목표 0.90)</span></div>
-    <div class="kpi"><b class="num">105</b><span>시도 · 촬영자 2명</span></div>
+    <div class="kpi"><b class="num">0.974</b><span>Macro F1 (목표 0.90)</span></div>
+    <div class="kpi"><b class="num">210</b><span>시도 · 촬영자 3명</span></div>
   </div>
   <p style="font-size:12px; color:var(--dim); margin-top:9px">
-    <span class="ds own">자체 촬영</span> 위 수치는 팀원이 직접 찍은 105시도로 측정한 값입니다.
+    <span class="ds own">자체 촬영</span> 위 수치는 팀원 3명이 RPi5 Camera Module 3(CSI)으로 직접 찍은 210시도로 측정한 최종 KPI입니다(2026-09-30, 공식 규칙 3프레임 연속).
     페이지 안의 <span class="ds pub">공개 데이터</span> 수치와는 서로 다른 데이터입니다 — 아래 “숫자 읽는 법” 참고.
   </p>
   <p class="hint"><b>직접 만져보세요.</b> 아래에서 손가락을 켜고 끄면 정규화·특징·분류 화면이 전부 함께 움직입니다.
@@ -525,11 +525,11 @@ footer li{margin-bottom:5px}
       </div>
       <div class="dsbox own">
         <span class="ds own">자체 촬영</span>
-        <div class="v num">97.1%</div>
-        <div class="vl2">정답률 — 105시도 중 맞힌 비율</div>
+        <div class="v num">95.2%</div>
+        <div class="vl2">정답률 — 210시도 중 맞힌 비율</div>
         <dl>
-          <dt>출처</dt><dd>팀원 2명이 웹캠으로 직접 촬영</dd>
-          <dt>규모</dt><dd>105시도 315프레임</dd>
+          <dt>출처</dt><dd>팀원 3명이 RPi5 Camera Module 3(CSI)으로 직접 촬영</dd>
+          <dt>규모</dt><dd>210시도 630프레임</dd>
           <dt>재는 법</dt><dd>학습에 쓰지 않은 데이터로 판정</dd>
           <dt>쓰는 곳</dt><dd><b>KPI 실측</b></dd>
           <dt>KPI?</dt><dd style="color:var(--green)">예 — 목표 5개 전부 달성</dd>
@@ -540,7 +540,7 @@ footer li{margin-bottom:5px}
       <b>자체 촬영이 더 높은 건 모델이 좋아졌기 때문이 아닙니다.</b> 데이터가 다릅니다 —
       공개 데이터는 수천 명이 제각각인 환경에서 찍은 사진이고, 자체 촬영은 카메라 1대 고정에
       안내를 보고 또박또박 수행한 것입니다. <b>실사용 환경은 후자에 가깝습니다.</b>
-      다만 표본이 105시도뿐이라 통계적으로는 아직 확정이 아닙니다(맨 아래 참고).
+      다만 210시도로도 정답률·미판정률·치명 오분류는 신뢰구간이 목표선에 걸려 통계적으로는 “잠정 달성”입니다(맨 아래 참고).
     </div>
   </div>
 
@@ -678,7 +678,8 @@ footer li{margin-bottom:5px}
   <div class="callout">
     <b>회전을 지운 게 강점으로 돌아왔다.</b> 회전 정렬은 “손을 기울여 드는 방향” 정보를 버린다.
     한때 그 정보를 되살릴까 검토했지만, 실제로 찍어보니 <b>정면 97.6% / 좌기울임 97.1% / 우기울임 96.4%</b>로
-    기울여도 성능이 유지됐다. 학습자가 손을 어떻게 들든 같은 판정이 나온다 — 교육 제품에선 이게 낫다.
+    기울여도 성능이 유지됐다(최종 KPI 이전 105시도 측정). 최종 210시도에서는 정면 98.8% / 좌기울임 96.8% / 우기울임 88.9%로
+    우기울임이 낮았다 — 다만 틀린 신호로 판정한 것은 0건이고 모두 미판정으로 빠졌다. 학습자가 손을 어떻게 들든 같은 판정이 나온다 — 교육 제품에선 이게 낫다.
   </div>
 </div></section>
 
@@ -1000,10 +1001,12 @@ K(a, b) = exp( −<span class="k">γ</span> · |a − b|² )
     <div class="ctl"><label for="sTau">τ 신뢰도 기준</label><input type="range" id="sTau" min="0" max="9" step="1" value="5"><output id="oTau">0.75</output></div>
     <div class="bars" id="tauBars" style="margin-top:14px"></div>
     <p class="metric" style="padding-left:0" id="tauNote"></p>
+    <p style="font-size:12px; color:var(--dim); margin-top:9px">※ 이 패널의 수치는 최종 KPI(210시도) 이전, 촬영자 2명이 웹캠으로 찍은 <b>105시도</b> 측정에서 낸 것입니다.</p>
   </div>
 
   <div class="panel">
     <div class="panel-h">두 손잡이를 같이 움직여보기 <span class="ds own">자체 촬영 363프레임 전부</span></div>
+    <p style="font-size:12px; color:var(--dim); margin-top:9px">※ 이 패널의 수치는 최종 KPI(210시도) 이전, 촬영자 2명이 웹캠으로 찍은 <b>105시도</b> 측정(애매한 자세 포함 363프레임)에서 낸 것입니다.</p>
     <p class="sub" style="margin-top:0; font-size:13px">
       점 하나가 실제로 찍은 프레임 하나다. <b>가로축은 게이트가 보는 값</b>(중심과 닮은 정도),
       <b>세로축은 τ가 보는 값</b>(분류기 확신도)이다.
@@ -1140,7 +1143,7 @@ if cos(x, 중심[예측]) &lt; 기준[예측]:
         제각각이었다</b>는 뜻입니다. 주먹(확인 완료)은 얼마나 꽉 쥐느냐가 제각각이라 가장 낮습니다.</p>
 
       <h4>왜 하필 10%인가</h4>
-      <p>실측으로 골랐습니다. 촬영한 정상 자세 105시도와 애매한 자세 24건을 놓고
+      <p>실측으로 골랐습니다. 촬영한 정상 자세 105시도(최종 KPI 210시도 이전 측정)와 애매한 자세 24건을 놓고
         퍼센타일을 바꿔가며 잰 결과, <b>10%가 무릎점</b>이었습니다 — 바로 위 슬라이더가 그 실측표입니다.</p>
     </div></details>
   </div>
@@ -1153,6 +1156,7 @@ if cos(x, 중심[예측]) &lt; 기준[예측]:
       <div class="kpi" style="min-width:0"><b class="num" id="gFR">2.9%</b><span>정상 자세를 잘못 튕김</span></div>
     </div>
     <p class="sub" id="gateNote" style="font-size:13px; margin-top:13px"></p>
+    <p style="font-size:12px; color:var(--dim); margin-top:9px">※ 이 패널의 수치는 최종 KPI(210시도) 이전, 촬영자 2명이 웹캠으로 찍은 <b>105시도</b> 측정에서 낸 것입니다.</p>
   </div>
 
   <div class="panel">
@@ -1184,25 +1188,27 @@ if cos(x, 중심[예측]) &lt; 기준[예측]:
 <section id="result"><div class="wrap">
   <div class="stage">결과</div>
   <h2>KPI 다섯 항목을 전부 달성했다</h2>
-  <p class="sub"><span class="ds own">자체 촬영</span> 촬영자 2명이 직접 찍은 <b>105시도</b> 기준.
+  <p class="sub"><span class="ds own">자체 촬영</span> 팀원 3명이 RPi5 Camera Module 3(CSI)으로 직접 찍은 <b>210시도</b> 기준(최종 KPI, 2026-09-30).
     모델은 공개 데이터로만 학습했으므로 이 데이터는 전부 <b>처음 보는 입력</b>이다.
-    집계 단위는 <b>한 번의 시도</b>(3프레임을 묶어 한 판정으로 센다).</p>
+    집계 단위는 <b>한 번의 시도</b>(3프레임을 묶어 한 판정으로 센다). 공식 규칙은 운영과 같은 <b>3프레임 연속</b>
+    (참고: 최빈값 규칙이면 정답률 96.7% · 미판정률 3.3% · Macro F1 0.982).</p>
 
   <div class="tw"><table>
     <tr><th>지표</th><th>목표</th><th>실측</th><th></th></tr>
-    <tr><td>정답률</td><td class="n">≥ 92%</td><td class="n"><b>97.1%</b></td><td><span class="tag">달성</span></td></tr>
+    <tr><td>정답률</td><td class="n">≥ 92%</td><td class="n"><b>95.2%</b></td><td><span class="tag">달성</span></td></tr>
     <tr><td>오분류율</td><td class="n">≤ 3%</td><td class="n"><b>0.0%</b></td><td><span class="tag">달성</span></td></tr>
-    <tr><td>미판정률</td><td class="n">≤ 5%</td><td class="n"><b>2.9%</b></td><td><span class="tag">달성</span></td></tr>
-    <tr><td>Macro F1</td><td class="n">≥ 0.90</td><td class="n"><b>0.985</b></td><td><span class="tag">달성</span></td></tr>
+    <tr><td>미판정률</td><td class="n">≤ 5%</td><td class="n"><b>4.8%</b></td><td><span class="tag">달성</span></td></tr>
+    <tr><td>Macro F1</td><td class="n">≥ 0.90</td><td class="n"><b>0.974</b></td><td><span class="tag">달성</span></td></tr>
     <tr><td>치명 오분류 (정지)</td><td class="n">0건</td><td class="n"><b>0건</b></td><td><span class="tag">달성</span></td></tr>
   </table></div>
 
   <div class="panel">
     <div class="panel-h">당연히 나오는 질문 — 안 본 데이터가 왜 더 높은가</div>
     <div class="body" style="margin-top:0">
-      <p>학습에 쓴 공개 데이터에서는 <b>88.7%</b>인데, 학습에 쓰지 않은 자체 촬영에서는 <b>97.1%</b>가
+      <p>학습에 쓴 공개 데이터에서는 <b>88.7%</b>인데, 학습에 쓰지 않은 자체 촬영에서는 <b>95.2%</b>가
         나왔다. 보통은 반대여야 한다 — <b>안 본 데이터가 더 어려워야</b> 정상이다.
         그래서 세 가지를 확인했다.</p>
+      <p style="font-size:12px; color:var(--dim); margin-top:9px">※ 아래 ②·③의 수치는 최종 KPI(210시도) 이전, 촬영자 2명이 웹캠으로 찍은 <b>105시도</b> 측정에서 낸 것입니다.</p>
     </div>
 
     <h3 style="margin-top:18px; font-size:14px">① 자체 촬영분이 학습에 섞였나 — 아니다</h3>
@@ -1238,7 +1244,7 @@ if cos(x, 중심[예측]) &lt; 기준[예측]:
 
     <div class="tw" style="margin-top:14px"><table>
       <tr><th></th><th>공개 데이터</th><th>자체 촬영</th></tr>
-      <tr><td>촬영자</td><td>수천 명, 제각각</td><td>2명, 일관된 수행</td></tr>
+      <tr><td>촬영자</td><td>수천 명, 제각각</td><td>팀원 3명(최종 KPI), 일관된 수행</td></tr>
       <tr><td>환경</td><td>카메라·조명·각도 전부 다름</td><td>카메라 1대 고정</td></tr>
       <tr class="hi"><td>수행 방식</td><td><b>ASL 지문자를 찍은 것</b> — 우리 수신호를 의도한 게 아님</td><td>안내 화면 보고 <b>2초 카운트다운 후</b> 자세 잡고 촬영</td></tr>
       <tr><td>라벨 품질</td><td>공개 데이터셋 자체의 오라벨 가능성</td><td>찍는 사람이 뭘 하는지 알고 찍음</td></tr>
@@ -1250,10 +1256,10 @@ if cos(x, 중심[예측]) &lt; 기준[예측]:
       <br><br>
       <b>어느 쪽을 믿어야 하나 — 둘 다, 용도가 다르다.</b>
       88.7%는 <b>어떤 방법이 나은지 비교</b>하는 데 쓴다(27,735건이라 비교가 안정적이다).
-      97.1%는 <b>실제 쓸 때 얼마나 맞나</b>를 재는 데 쓴다 — 우리 제품은 카메라 1대 고정에
+      95.2%는 <b>실제 쓸 때 얼마나 맞나</b>를 재는 데 쓴다 — 우리 제품은 카메라 1대 고정에
       학습자가 안내를 보고 수행하는 환경이라 이쪽이 실사용에 가깝다.
       <br><br>
-      다만 <b>97.1%를 과신하면 안 된다.</b> 105시도뿐이고 촬영자 둘 다 수신호를 아는 팀원이다.
+      다만 <b>95.2%를 과신하면 안 된다.</b> 210시도이고 촬영자 3명 모두 수신호를 아는 팀원이다.
       진짜 초보 학습자는 공개 데이터 쪽에 가까운 어정쩡한 자세를 낼 것이고 —
       <b>게이트와 τ를 둔 것이 정확히 그것 때문이다.</b>
     </div>
@@ -1284,9 +1290,9 @@ if cos(x, 중심[예측]) &lt; 기준[예측]:
     <div class="panel-h">솔직하게 — 아직 남은 것</div>
     <div class="tw"><table>
       <tr><th>한계</th><th>내용</th></tr>
-      <tr><td><b>통계적 확정은 아님</b></td><td>105시도에서 오분류 0건이어도 95% 신뢰 상한은 <b>3.5%</b>로 목표 3%를 넘는다. 강한 정황이지 증명은 아니다. 약 120시도까지 늘리면 상한이 3% 아래로 내려간다.</td></tr>
-      <tr><td><b>모르는 자세 19%가 샌다</b></td><td>새어나간 것들은 정지와 닮은 정도가 <span class="mono">0.99</span> — 손가락 4개를 편 자세처럼 기하학적으로 거의 같은 입력이다. 거리로는 원리적으로 못 가른다.</td></tr>
-      <tr><td><b>촬영자가 팀 내부</b></td><td>둘 다 수신호를 아는 사람이라 실제 초보 학습자보다 정확하게 했을 수 있다.</td></tr>
+      <tr><td><b>통계적 확정은 아님</b></td><td>210시도에서 오분류 0건 — 95% 신뢰 상한 <b>1.8%</b>로 목표 3% 아래다(105시도 때는 3.5%로 목표를 넘었다). 그러나 정답률(하한 약 91.5%)·미판정률(상한 약 8.5%)·치명 오분류(정지 30시도, 상한 11.4%)는 신뢰구간이 목표선에 걸려 <b>잠정 달성</b>이다. 강한 정황이지 증명은 아니다.</td></tr>
+      <tr><td><b>모르는 자세 19%가 샌다</b></td><td>(게이트 튜닝 때 105시도 측정) 새어나간 것들은 정지와 닮은 정도가 <span class="mono">0.99</span> — 손가락 4개를 편 자세처럼 기하학적으로 거의 같은 입력이다. 거리로는 원리적으로 못 가른다.</td></tr>
+      <tr><td><b>촬영자가 팀 내부</b></td><td>3명 모두 수신호를 아는 사람이라 실제 초보 학습자보다 정확하게 했을 수 있다.</td></tr>
     </table></div>
   </div>
 </div></section>
@@ -1504,10 +1510,10 @@ bars(document.getElementById("aucBars"),[
   {name:"마할라노비스",v:.898,val:"0.898"},
   {name:"확신도(τ)",v:.594,val:"0.594",state:"fail"}
 ],{min:.5,max:1,loLab:"0.5 무작위",hiLab:"1.0 완벽"});
-/* 집계 단위 비교 */
+/* 집계 단위 비교 — 최종 KPI(210시도) 이전 105시도 측정값(최빈값 규칙) */
 bars(document.getElementById("unitBars"),[
-  {name:"자체 · 테이크",v:97.1,val:"97.1%",win:true},
-  {name:"자체 · 프레임",v:95.6,val:"95.6%"},
+  {name:"자체 · 테이크(105시도)",v:97.1,val:"97.1%",win:true},
+  {name:"자체 · 프레임(105시도)",v:95.6,val:"95.6%"},
   {name:"공개 · 프레임",v:88.7,val:"88.7%"}
 ],{min:85,max:100,loLab:"85%",hiLab:"100%"});
 /* 누수 */

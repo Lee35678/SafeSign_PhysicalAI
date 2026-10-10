@@ -21,9 +21,9 @@ RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
 ## 디렉터리
 
 - `src/aihand/controller.py` — `target_signal`(정지/서행/...) -> micro:bit `G{n}` 제스처 매핑
-  (`GESTURE_MAP`). 10_PRD.md §3.2 표 순서와 동일하되, 우회전_유도(G4)는 문서상 "엄지+약지"이나
-  실제 펌웨어는 "엄지+소지"로 구현되어 있고 펌웨어 쪽이 최종 확정판이다(2026-09-21 팀 확인,
-  문서 갱신 필요). `DEFAULT_SERVO_ANGLES`는 실제 구동에는 쓰이지 않는 참고용 스키마 예시값.
+  (`GESTURE_MAP`). 10_PRD.md §3.2 표 순서와 동일하다. 우회전_유도(G4)는 한때 문서상 "엄지+약지"였으나
+  펌웨어의 "엄지+소지"가 최종 확정판이고(2026-09-21 팀 확인), PRD 표도 "엄지+소지"로 정정되어 지금은
+  일치한다(아래 체크리스트). `DEFAULT_SERVO_ANGLES`는 실제 구동에는 쓰이지 않는 참고용 스키마 예시값.
 - `src/microbit/ble_bridge.py` — `bleak` 기반 BLE 브릿지(RPi5 쪽 Python). 연결/재연결, `G{n}`/
   `correct`·`incorrect`/`P<current><total>` 전송과 응답 대기를 담당 (UUID·재연결 정책은 아래
   "공통 전제" 참고)
@@ -94,11 +94,14 @@ AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모�
 
 ```bash
 cd services/actuation
-python -m pytest tests -q        # 29개
+python -m pytest tests -q
 ```
 
+테스트 개수는 적지 않는다 — 서비스별 현재 수는 `document/16_통합테스트_KPI_CI.md` §1.1.
+
 A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, **하드웨어 없이도 매핑·프로토콜이
-어긋나지 않았는지** 확인할 수 있게 만든 테스트입니다 (`tests/test_controller.py`). 실제 BLE는
+어긋나지 않았는지** 확인할 수 있게 만든 테스트입니다 (`tests/test_controller.py`, HTTP 응답 형식은
+`tests/test_http.py` — FastAPI TestClient). 실제 BLE는
 건드리지 않습니다. `pytest-asyncio` 없이 돌도록 `asyncio.run()`으로 감쌌습니다.
 
 주요 항목:
@@ -199,15 +202,9 @@ A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, *
 실행하세요. 두 모드 모두 `correct`/`incorrect`(LED O/X, 부저 없음), `progress`(수신
 확인만) 입력을 테스트할 수 있습니다. `bleak` 사용, RX/TX UUID는 위 "공통 전제" 참고.
 
----
-
-## `aihand_finger_test.ts` (손가락별 개별 테스트)
-
-**용도**: 손가락 1개씩 개별 채널을 격리해서 테스트하는 진단 도구. 버튼 단독 사용과 BLE(`IDX`) 겸용을 모두 지원합니다.
-
-**언제 쓰나**:
-- 특정 서보가 무반응/이상 동작할 때 하드웨어(보드 채널) 문제인지 서보 자체 문제인지 구분할 때
-- **서보 스왑 테스트** 절차: 의심되는 채널에 정상 작동 중인 다른 서보를 연결해 반응을 확인 (반전 방향으로 움직이면 채널은 정상, 서보 쪽이 원인)
+> 📌 예전 `aihand_finger_test.ts`(손가락별 개별 테스트)·`aihand_production.ts`·`aihand_named_control.ts`는
+> 2026-09-21 `aihand_control.ts` 하나로 통합되어 **현재 없다**(`document/15_개발로그.md`). 손가락 하나만
+> 움직여 볼 때는 `TEST_MODE = true`의 `IDX:번호,각도`를 쓴다.
 
 ---
 
@@ -231,15 +228,17 @@ RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서
 
 ## 다음 단계
 
-1. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
-   검증 (`scripts/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
+1. ~~실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
+   검증 (`scripts/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)~~ →
+   2026-09-21 완료(위 "아직 확정 안 된 것" 체크리스트)
 2. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
    연동~~ → `state_machine.py`에 구현 완료(2026-09-21, `services/web/README.md` 참고)
 3. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
    완료(2026-09-21, LED 표시 없이 수신 확인만)
 4. ~~BTN(버튼 입력) 프로토콜 필요 여부 검토~~ → 버튼 A를 web 확인 버튼 대용으로 쓰기로 하고 펌웨어·
    `ble_bridge`·`GET /button` 구현(2026-09-28, mock 테스트만), 03 §5-3·`shared/schemas/microbit_protocol.md` 반영 완료.
-   남은 것: 펌웨어 재플래시 후 실물 확인, web 폴링(이동혁)
+   ~~남은 것: 펌웨어 재플래시 후 실물 확인, web 폴링(이동혁)~~ → web 연동(`100ea66`)·실물 확인 모두
+   2026-09-29 완료(`document/11_하드웨어설계서.md` §9.1)
 
 ## 로컬 실행
 

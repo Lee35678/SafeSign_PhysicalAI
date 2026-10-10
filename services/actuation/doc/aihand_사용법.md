@@ -194,7 +194,7 @@ micro:bit 스캔 중... (5초)
 > 손모양별 기대 입력값은 [`aihand_gesture_checklist_final.md`](aihand_gesture_checklist_final.md) 참고.
 
 ### 2-4. 여기까지 되면 성공
-- 숫자 1~7 입력 → 손가락이 **하나씩 순차로**(0.2초 간격) 움직이고 `[수신] OK{n}`이 찍힌다
+- 숫자 1~7 입력 → 손가락이 **하나씩 순차로**(0.15초 간격 출발) 움직이고 `[수신] OK{n}`이 찍힌다
 - `correct` → LED에 O, `incorrect` → LED에 X
 - `loop` 35회 동안 끊김·패닉 없음
 
@@ -222,7 +222,8 @@ micro:bit 스캔 중... (5초)
   설명은 2026-09-22 정리했습니다.
 - ~~`correct`/`incorrect` 처리 중 LED 표시 동안 다른 BLE 명령이 처리되지 않는다~~ → **2026-09-23 해소.**
   LED 표시를 백그라운드로 돌려 표시 중에도 다음 명령을 바로 받습니다(이전엔 result 직후 명령이 1.4초
-  밀렸음). 재검증 대기 — `aihand_test.py --auto`에서 result·progress가 300ms를 넘으면 🔴로 표시됩니다.
+  밀렸음). **재검증 통과**(2026-09-25, result 직후 명령 1424ms → 36~39ms — `document/11_하드웨어설계서.md` §4.5·§9.1).
+  다시 확인할 때는 `aihand_test.py --auto`에서 result·progress가 300ms를 넘으면 🔴로 표시됩니다.
 
 ---
 

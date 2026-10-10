@@ -28,7 +28,7 @@ Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
 - **소속 게이트**가 "7종이 아닌 손모양"을 막는다. τ만으로는 못 막는 구조적 한계가 있어서다
   (같은 문서 §2-3).
 - **손 방향 축(69차원)은 구현돼 있지만 꺼져 있다.** 손을 기울여도 100%가 나와 켤 근거가 없다.
-- **모델이 없어도 서비스는 뜬다.** 데이터·카메라가 아직 없으므로 기본 동작은 "항상 미판정"이다
+- **모델이 없어도 서비스는 뜬다.** 모델 번들(`models/svm_classifier.joblib`, git 제외)이 없으면 기본 동작은 "항상 미판정"이다
   (`reason: model_not_loaded`). 배선·통합 검증을 먼저 하라는 PRD 우선순위(10_PRD §11)에 맞춘 설계.
 - **왜 이런 알고리즘/전처리인지**는 [`MODEL_TRAINING.md`](MODEL_TRAINING.md)에 정리했다.
 
@@ -39,7 +39,8 @@ src/
 ├── app.py                    FastAPI 진입점 (/health, /latest, /predict, /reset)
 ├── perception/
 │   ├── capture.py            카메라 → MediaPipe LIVE_STREAM 콜백 → landmark_frame (+ /health 카메라 상태)
-│   └── camera_source.py      CSI(picamera2) · USB(OpenCV) 카메라 열기 — 촬영·확인 도구와 공용
+│   ├── camera_source.py      CSI(picamera2) · USB(OpenCV) 카메라 열기 — 촬영·확인 도구와 공용
+│   └── preview.py            라이브 영상(/stream·/snapshot.jpg) — 보는 화면이 있을 때만 JPEG 인코딩
 └── cognition/
     ├── normalize.py          21 keypoints → 63차원(+방향 6) 특징벡터 (학습·추론 공용, 05 §3-5)
     ├── classify.py           SVM 추론 + τ 판정 + match_score → judgment_result
@@ -52,10 +53,10 @@ training/
 scripts/
 ├── webcam_check.py              웹캠/CSI 카메라로 학습된 모델을 눈으로 확인 (--source csi, --log 로 진단 로그)
 ├── run_rpi5.sh                  RPi5 에서 CSI 카메라로 서비스 실행
-├── camera_source.py             (호환용) src/perception/camera_source.py 를 다시 내보냄
 ├── record_dataset.py            KPI 측정용 평가 데이터 촬영 (카운트다운 + 테이크 관리)
 ├── evaluate_kpi.py              자체 촬영 데이터로 KPI 5개 지표 계산
 ├── analyze_log.py               webcam_check 로그 분석 (오판정 원인 추적)
+├── add_match_calibration.py     기존 번들에 클래스별 일치율 보정만 추가 — 재학습 없음, 판정·KPI 불변 (2026-09-30)
 └── make_dummy_dataset.py        (데이터 오기 전) 예행연습용 더미 데이터 생성기
 models/                          학습된 번들을 넣는 자리
 tests/                           카메라 없이 도는 단위 테스트 (정규화 불변성 + 분류 경로)
@@ -187,12 +188,11 @@ curl http://localhost:8001/latest      # 손을 대면 predicted_class 가 바�
 
 ```bash
 cd services/vision
-python tests/test_normalize.py      # 정규화 불변성 + 방향 축 + 관절 특징 21개
-python tests/test_classify.py       # 모델 없이도 안전하게 미판정하는지 4개
-python tests/test_gate.py           # 소속 게이트 분기 7개
-python tests/test_capture.py        # 캡처 루프 배선 3개 (가짜 카메라 — BGR→RGB, 타임스탬프, 카메라 실패 시 버티기)
-# pytest가 있으면: python -m pytest tests -q
+python -m pytest tests -q                       # 전체 (정규화·분류·게이트·캡처·HTTP·리셋 등)
+python -m pytest tests/test_normalize.py -q     # 파일 하나만 — 정규화 불변성 + 방향 축 + 관절 특징
 ```
+
+테스트 개수는 적지 않는다 — 서비스별 현재 수는 `document/16_통합테스트_KPI_CI.md` §1.1.
 
 **② 웹캠 확인 — 학습한 모델을 실제 손으로** (사람이 눈으로 판단)
 
@@ -237,9 +237,13 @@ python scripts/record_dataset.py --subject-id ext01     # 촬영 (팀원 안내:
 python scripts/evaluate_kpi.py                          # KPI 5개 지표 계산
 ```
 
-**현재 실측** (촬영자 1명 · 35시도): 정답률 100%, 오분류 0, 미판정 0, 치명 0.
-🔴 표본이 작고 촬영자가 1명이라 **아직 KPI 달성으로 볼 수 없다**(95% 신뢰 상한 8.6%).
-팀원 촬영분이 들어오면 같은 명령으로 다시 계산한다.
+**최종 실측** (2026-09-30, 팀원 3명 ext01~03 · 210시도 · RPi5 Camera Module 3, 공식 규칙 3연속):
+정답률 **95.2%** · 오분류 **0.0%** · 미판정 **4.8%** · Macro F1 **0.974** · 치명 오분류 **0건** — 5개 지표 모두 목표 달성(정답률·미판정률·치명은 "잠정 달성" 표기 — 05 §7-3).
+원자료: `document/results/kpi_offline_final_20260930.json`, 상세는 `document/05_모델카드.md` §7-3.
+
+> ~~중간 실측 (촬영자 1명 · 35시도): 정답률 100%, 오분류 0, 미판정 0, 치명 0. 표본이 작고 촬영자가 1명이라
+> 아직 KPI 달성으로 볼 수 없다(95% 신뢰 상한 8.6%). 팀원 촬영분이 들어오면 같은 명령으로 다시 계산한다.~~
+> → 위 최종 실측으로 대체.
 
 ### 데이터 없이 파이프라인만 돌려보기
 
@@ -255,11 +259,11 @@ python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 �
 - [x] ~~실제 수신호 데이터 확보 후 학습 → `models/svm_classifier.joblib` 배치~~ (2026-09-21 완료)
 - [x] ~~촬영 도구~~ → `scripts/record_dataset.py` (2026-09-22)
 - [x] ~~손 방향 축 A/B 판단~~ → **보류 확정**. 기울여도 100%라 켤 근거 없음 (2026-09-22)
-- [ ] **팀원 촬영분 확보** (2명) — KPI 측정의 유일한 경로. 회의 안건 1
-- [ ] 팀원 데이터 확보 후 **τ 재결정** — 지금은 잠정값 0.75
+- [x] ~~**팀원 촬영분 확보** (2명) — KPI 측정의 유일한 경로. 회의 안건 1~~ → 팀원 3명(ext01~03) 210시도 촬영 완료 (2026-09-30)
+- [x] ~~팀원 데이터 확보 후 **τ 재결정** — 지금은 잠정값 0.75~~ → **0.75 유지** (최종 KPI에서 τ가 막은 시도 0건 — 05 §7-3)
 - [ ] 게이트가 못 막는 25%(정지와 매우 닮은 자세) — negative 학습(안건 2 B) 전환 검토
-- [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — **RPi5 실물 확인 대기**
-- [ ] RPi5 실물에서 `result_fps` · 판정 지연 P95 측정 (mediapipe aarch64 휠 설치 여부 포함)
+- [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — RPi5 CSI 실물 확인 완료 (`webcam_check` 2026-09-24, 최종 KPI 촬영도 RPi5 CSI)
+- [x] ~~RPi5 실물에서 `result_fps` · 판정 지연 P95 측정~~ → 온라인 판정 지연 P95 **0.046초** (정답 91시도, 2026-10-02 — `document/06_테스트·평가리포트.md` 2부)
 - [x] ~~`hand_landmarker.task` 모델 번들 다운로드 → `models/`~~ (git 에 포함)
 - [x] ~~05_모델카드 §7-3 실측 표 채우기~~ → ✅ 2026-09-30 최종 KPI(팀원 3명 210시도, RPi5 CSI) 5개 달성. τ는 0.75 유지(최종 KPI에서 τ가 막은 시도 0건)
 - [ ] 기울인 손 게이트 과차단(최종 KPI 미판정 10건 중 7건 우기울임) — 개발용 데이터로 조정 후 **새 평가 데이터로** 재측정

@@ -53,7 +53,7 @@ SafeSign_PhysicalAI/
 - **서보 각도 초기값**: 펴짐=170°, 굽힘=10°, 손목중립=90°
 - **수신호 등록(실시간 추가) 기능은 범위에서 제외** — 경량 분류기(SVM)는 고정 클래스만 예측 가능해
   재학습 없는 실시간 등록이 성립하지 않음. DB 템플릿은 `services/data/src/seed_templates.py`로
-  오프라인 시드
+  오프라인 시드할 계획(현재 `NotImplementedError` 미구현 stub)
 
 ## 3. 로컬 실행 (개발 PC, mock)
 
@@ -75,7 +75,7 @@ docker compose up --build
 
 ```bash
 docker compose --profile tools run --rm data-tools python src/init_db.py
-docker compose --profile tools run --rm data-tools python src/seed_templates.py
+docker compose --profile tools run --rm data-tools python src/seed_templates.py   # 미구현 stub — 실행하면 NotImplementedError
 ```
 
 > ⚠️ Windows Docker Desktop은 CSI 카메라·GPIO·I2C·BLE 장치 전달을 지원하지 않으므로, 개발 PC에서는
@@ -280,7 +280,7 @@ AI Hand 시범 → (3초 보기) → 학습자가 따라 하기 → 판정 → p
 ### 4.5 모니터링 · 종료
 
 ```bash
-# RPi5 — 온도·스로틀링 (2026-09-25 86.2°C 기록, 액티브 쿨러 필요)
+# RPi5 — 온도·스로틀링 (2026-09-25 86.2°C 기록 → 2026-10-03 쿨러 없이 선풍기 운용 확정, 시연·측정 때 선풍기 필수 — 11 §2.1)
 watch -n2 'vcgencmd measure_temp; vcgencmd get_throttled'   # get_throttled=0x0 이어야 정상
 ```
 
@@ -300,7 +300,7 @@ picar는 끝나면 배터리 스위치를 내린다(정상 종료가 필요하�
 | vision `model_not_loaded`로 화면이 계속 대기 | 모델 파일 없음 | 4.1 ④ |
 | vision `camera.error: picamera2…` | apt 미설치 또는 venv를 `--system-site-packages` 없이 만듦 | 4.1 ③ 다시 |
 | picar가 안 움직임 | web의 `PICAR_URL` 누락, 또는 AP 끊김 | 4.2 터미널 4 · `ping 192.168.50.10` |
-| `get_throttled`가 `0x0`이 아님 | RPi5 과열 | 쿨러·통풍, 온도 확인 |
+| `get_throttled`가 `0x0`이 아님 | RPi5 과열 | 선풍기 켜기(쿨러 없이 선풍기 운용, 11 §2.1), 온도 확인 |
 
 더 자세한 내용: [services/actuation/README.md](services/actuation/README.md)(BLE 문제 해결) ·
 [services/vision/README.md](services/vision/README.md)(카메라) · [services/picar/README.md](services/picar/README.md)(모터·LED·속도) ·

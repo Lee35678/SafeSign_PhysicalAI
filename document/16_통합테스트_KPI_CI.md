@@ -1,7 +1,7 @@
-# 통합 테스트 · KPI 측정 · CI 계획서 (v1.0 — 제출본)
+# 통합 테스트 · KPI 측정 · CI 계획서 (v1.1 — 제출본 이후 갱신)
 
 **팀명**: 심기일전 · **작성자**: 송승호 (하드웨어·로봇동작 R, 팀장)
-**최초 작성**: 2026-09-28(월) · **기준 커밋**: `dev` `b5e83a5`(버튼 A) — 줄번호는 이 커밋 기준. **v0.8**: web 백엔드 병합(`c8f1fd3` → `dev` `1da641b`) 상태만 갱신. **v0.10 상태 기준**: `dev` `41ef97c` + `feature/picar` `edb5da9`(①-b 화면, `dev` 병합 전) — 줄번호는 갱신하지 않음. **v0.12**: ①-b `dev` 병합 완료(`db4cd41`, fast-forward, `origin/dev` 반영) — 전체 158 · web 49 회귀 재확인. **v0.15**: ⑥ 전 구간 실물 재시험 통과(쿨러 없이) — 재시험 중 발견한 결함 2건 당일 수정, 전체 162 통과 (14 §7). **v0.17**: 재수정(`cb8a25b`, 전체 170 통과) 실물 재검증 통과 — web 전 구간 실물 검증 종료. **v0.18**(2026-09-30, 이동혁): 오프라인 최종 KPI(팀원 3명 210시도) 반영 — 판정 성능 5개 달성. **v1.0**(2026-10-04, 송승호): 제출 시점 상태로 정리 — 상태 기준 `dev` `60231a6`, 단위 테스트 320개 통과(§0.1), §6을 완료 / 제출 후 과제 / 폐기로 분류
+**최초 작성**: 2026-09-28(월) · **기준 커밋**: `dev` `b5e83a5`(버튼 A) — 줄번호는 이 커밋 기준. **v0.8**: web 백엔드 병합(`c8f1fd3` → `dev` `1da641b`) 상태만 갱신. **v0.10 상태 기준**: `dev` `41ef97c` + `feature/picar` `edb5da9`(①-b 화면, `dev` 병합 전) — 줄번호는 갱신하지 않음. **v0.12**: ①-b `dev` 병합 완료(`db4cd41`, fast-forward, `origin/dev` 반영) — 전체 158 · web 49 회귀 재확인. **v0.15**: ⑥ 전 구간 실물 재시험 통과(쿨러 없이) — 재시험 중 발견한 결함 2건 당일 수정, 전체 162 통과 (14 §7). **v0.17**: 재수정(`cb8a25b`, 전체 170 통과) 실물 재검증 통과 — web 전 구간 실물 검증 종료. **v0.18**(2026-09-30, 이동혁): 오프라인 최종 KPI(팀원 3명 210시도) 반영 — 판정 성능 5개 달성. **v1.0**(2026-10-04, 송승호): 제출 시점 상태로 정리 — 상태 기준 `dev` `60231a6`, 단위 테스트 320개 통과(§0.1), §6을 완료 / 제출 후 과제 / 폐기로 분류. **v1.1**(2026-10-10, 송승호): 단위 테스트 수를 `feature/picar` `996b67b` 기준 **331개 통과**로 갱신(§0·§0.1·§1.1), `.gitignore` 줄번호 인용을 규칙 문구로 바꿈, §3.2 파일 구성을 실제(`requirements-test.txt`는 있음, `requirements-hw.txt`·`jsonschema`는 계획만)와 맞춤
 **일정**: W4 테스트·보완 마감 2026-10-04(일, 종료) · 제출 2026-10-08(목) · 최종 발표 2026-10-12(월)
 
 > **이 문서의 범위**: 서비스 4개(web·vision·actuation·picar)를 **엮어서** 검증하는 방법과, 그 결과로
@@ -26,7 +26,7 @@
 
 | 영역 | 상태 | 막는 것 |
 | --- | --- | --- |
-| 단위 테스트 | ✅ **320개 통과 · 실패 0** — web 124 · vision 78 · actuation 54 · picar 52 · portal 12 · data 0 (2026-10-04 `60231a6`, 저장소 루트 `python -m pytest`, 호스트 Python 3.13). 고정 버전 3.11 서비스별 가상환경 통과는 2026-10-03(`c55ea15`, 15 10-03). 이전 기록: 09-29 170개 → 10-03 320개 | 없음 |
+| 단위 테스트 | ✅ **331개 통과 · 실패 0** — web 129 · vision 80 · actuation 56 · picar 53 · portal 13 · data 0 (2026-10-10 `feature/picar` `996b67b`, 저장소 루트 `python -m pytest`, 호스트 Python 3.13). 고정 버전 3.11 서비스별 가상환경 통과는 2026-10-03(`c55ea15`, 15 10-03). 이전 기록: 09-29 170개 → 10-03 320개 → 10-10 331개(재점검 버그 수정 회귀 테스트, 15 10-10) | 없음 |
 | 계약 테스트 | ⬜ **수행 안 함 → 제출 후 과제**(§0.1) | `jsonschema` 테스트 의존성 없음(`httpx`는 2026-10-03 `c560bbd`에서 `requirements-test.txt`에 추가) |
 | mock 통합 테스트 | ⬜ **수행 안 함 → 제출 후 과제**(§0.1) — 단, **docker compose(mock) 빌드·기동은 2026-09-28 확인**(§2.3) | mock 카메라가 손 미검출만 발행 → **판정이 한 번도 안 일어남** (실행으로 확인). 판정 주입 방식 미결(§6.2) |
 | 실물 E2E — web 없는 전 구간 | ✅ 2026-09-25 **7/7 성공** (데모 스크립트, 반응 시작 25~47ms) | — |
@@ -39,7 +39,7 @@
 
 **핵심 결론**
 
-1. ~~**단위 테스트와 CI unit job은 이번 주 안에 된다.**~~ → ✅ 단위 테스트 **320개 통과**(2026-10-04), `ci.yml` unit job 작성(2026-10-03 `c55ea15`). **GitHub 첫 실행만** 저장소 관리자의 Actions 허용을 기다린다(§3.1).
+1. ~~**단위 테스트와 CI unit job은 이번 주 안에 된다.**~~ → ✅ 단위 테스트 **320개 통과**(2026-10-04 → 2026-10-10 **331개**), `ci.yml` unit job 작성(2026-10-03 `c55ea15`). **GitHub 첫 실행만** 저장소 관리자의 Actions 허용을 기다린다(§3.1).
 2. **mock 통합은 "판정 주입" 수단이 먼저다.** 추천은 가짜 vision 서버(stub)다(§2.3). vision 코드를 건드리지 않는다. → 제출 전에는 하지 않았다 — **제출 후 과제**(§0.1).
 3. ~~**지연의 가장 큰 문제는 호출 순서와 재시도다.**~~ → ✅ **2026-09-28 `c8f1fd3`로 해소** — 호출 순서가 `/picar` → `/result` → `/command` → `/progress`로 바뀌어 micro:bit·picar가 0.85초 늦던 문제가 없어졌고, 읽기 타임아웃 재시도 금지로 이중 동작도 막혔다(§4). 실물에서는 ⑥ 재시험(09-29)과 KPI 온라인 측정(10-02, 물리 피드백 시작 P95 0.089초)으로 확인했다.
 4. ~~**KPI는 재는 방법에 구멍이 있다.**~~ → ✅ **09-30 회의 + 10-01 결정 D1~D6으로 확정하고 10-02 측정 완료**(§5.6). 판정 지연이 실제보다 작게 기록되는
@@ -56,7 +56,7 @@
 
 | 항목 | 결과 | 근거 |
 | --- | --- | --- |
-| 단위 테스트 | **320개 통과**, 실패 0 — web 124 · vision 78 · actuation 54 · picar 52 · portal 12 (data는 테스트 없음). 2026-10-04 `60231a6`에서 저장소 루트 `python -m pytest`(호스트 Python 3.13). 고정 버전 Python 3.11 서비스별 가상환경 통과는 2026-10-03 | §1.1, 15 10-03 |
+| 단위 테스트 | **331개 통과**, 실패 0 — web 129 · vision 80 · actuation 56 · picar 53 · portal 13 (data는 테스트 없음). 2026-10-10 `feature/picar` `996b67b`에서 저장소 루트 `python -m pytest`(호스트 Python 3.13. 제출 시점 2026-10-04 `60231a6`은 320개). 고정 버전 Python 3.11 서비스별 가상환경 통과는 2026-10-03 | §1.1, 15 10-03 |
 | 실물 E2E — web 없는 전 구간 | 2026-09-25 7/7 성공 (데모 스크립트) | §0 표 |
 | 실물 E2E — web 전 구간 ⑥ | 2026-09-29 재시험 통과. 재시험 중 나온 결함 2건(SC-04 재시도, 시도 횟수 상한)도 같은 날 고쳐 실물 재검증(`cb8a25b`) | 14 §6.2·§7 |
 | KPI 판정 성능 5개 (오프라인) | 2026-09-30, 팀원 3명 **210시도**(RPi5 CSI·카메라 거치대) — 5개 모두 점추정 달성(정답률·미판정률·치명 오분류는 신뢰구간 기준 잠정 달성) | 05 §7-3, [`results/kpi_offline_final_20260930.json`](results/kpi_offline_final_20260930.json) |
@@ -93,17 +93,17 @@
 
 ### 1.1 서비스별 테스트 수
 
-**현재 (2026-10-04, `60231a6`)** — 서비스별 `python -m pytest services/<svc> --collect-only -q`로 센 수. 저장소 루트 전체 실행은 **320개 통과**(호스트 Python 3.13).
+**현재 (2026-10-10, `feature/picar` `996b67b`)** — 서비스별 `python -m pytest services/<svc> --collect-only -q`로 센 수. 저장소 루트 전체 실행은 **331개 통과**(호스트 Python 3.13). 2026-10-04 `60231a6`(320개) 대비 +11 — 재점검 버그·비ASCII 입력 500 수정의 회귀 테스트와 상수 대조 추가(15 10-10).
 
 | 서비스 | 수 | 테스트 파일 (파일별 수) |
 | --- | --- | --- |
-| web | 124 | `test_members.py` 28 · `test_judging_timing_spec.py` 27 · `test_state_machine.py` 22 · `test_microbit_button_confirm.py` 17 · `test_aggregate_kpi.py` 16 · `test_constants_sync.py` 8 · `test_target_score.py` 4 · `test_camera_proxy.py` 2 |
-| vision | 78 | `test_normalize.py` 21 · `test_evaluate_kpi.py` 14 · `test_gate.py` 7 · `test_model_store_swap.py` 6 · `test_classify.py`·`test_class_probabilities.py`·`test_constants_sync.py`·`test_match_score.py`·`test_preview.py`·`test_reset.py` 각 4 · `test_capture.py`·`test_http.py` 각 3 |
-| actuation | 54 | `test_controller.py` 50 · `test_http.py` 4 |
-| picar | 52 | `test_controller.py` 48 · `test_http.py` 4 |
-| portal | 12 | `test_portal.py` 12 |
+| web | 129 | `test_members.py` 29 · `test_judging_timing_spec.py` 27 · `test_state_machine.py` 24 · `test_microbit_button_confirm.py` 17 · `test_aggregate_kpi.py` 16 · `test_constants_sync.py` 10 · `test_target_score.py` 4 · `test_camera_proxy.py` 2 |
+| vision | 80 | `test_normalize.py` 21 · `test_evaluate_kpi.py` 15 · `test_gate.py` 7 · `test_model_store_swap.py` 7 · `test_classify.py`·`test_class_probabilities.py`·`test_constants_sync.py`·`test_match_score.py`·`test_preview.py`·`test_reset.py` 각 4 · `test_capture.py`·`test_http.py` 각 3 |
+| actuation | 56 | `test_controller.py` 52 · `test_http.py` 4 |
+| picar | 53 | `test_controller.py` 49 · `test_http.py` 4 |
+| portal | 13 | `test_portal.py` 13 |
 | data | 0 | — |
-| **합계** | **320** | |
+| **합계** | **331** | |
 
 **2026-09-29 기준선 (기록 — 무엇을 검증하는지 설명)**
 
@@ -193,7 +193,7 @@ actuation BLE 전송 실패 경로(`timeout`·`write_failed`·`microbit_unreacha
 | --- | --- |
 | `MOCK_CAMERA=true`면 **손 미검출 프레임만** 발행 → 판정 단계에서 손 미검출 25회 연속(약 5초 — 09-28 점검 당시는 15회·3초) 뒤 SC-04로 넘어갈 뿐 판정이 없음 | `capture.py:191-207` |
 | `/predict`는 `/latest`를 갱신하지 않음 → 밖에서 판정을 넣을 방법이 없음 | vision `app.py:96-99` |
-| 모델 번들 `svm_classifier.joblib`이 저장소에 없음(gitignore) | `.gitignore:42` |
+| 모델 번들 `svm_classifier.joblib`이 저장소에 없음(gitignore) | `.gitignore`의 `services/vision/models/*.joblib` 규칙 |
 | actuation·picar mock은 `mocked`만 돌려주고 **호출을 받았는지 확인할 수단이 없음** | `ble_bridge.py:203`, picar `controller.py` |
 | compose에 healthcheck가 없음 → `docker compose up --wait`가 "실행됨"만 확인하고 "준비됨"은 보장하지 않음 | `docker-compose.yml` |
 
@@ -378,7 +378,7 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.**(→ 2026-10-04: 제�
 | Settings → Actions 허용 | 저장소 관리자(Lee35678) |
 | 브랜치 보호: `dev`·`main` PR 머지 전 unit job 통과 필수 | 저장소 관리자 |
 | 비공개 저장소면 무료 한도 월 2,000분 → integration job은 PR·수동 실행 때만 | 팀 합의 |
-| ✅ ~~미커밋 파일 커밋~~ → `conftest.py`·`pytest.ini`·`test_judging_timing_spec.py`·이 문서는 `dev`에 반영(2026-09-28 `67ef27b`·`a8f7640`·`d2503de`). `.claude/agents/`는 `.gitignore:54`(`.claude/`)에 걸려 **공유되지 않는다** — 공유하려면 `.gitignore`를 `.claude/*` + `!.claude/agents/`로 바꿀지 팀이 정한다 | 송승호 |
+| ✅ ~~미커밋 파일 커밋~~ → `conftest.py`·`pytest.ini`·`test_judging_timing_spec.py`·이 문서는 `dev`에 반영(2026-09-28 `67ef27b`·`a8f7640`·`d2503de`). `.claude/agents/`는 `.gitignore`의 `.claude/` 규칙에 걸려 **공유되지 않는다** — 공유하려면 `.gitignore`를 `.claude/*` + `!.claude/agents/`로 바꿀지 팀이 정한다 | 송승호 |
 | `.pytest_cache/`는 조치 불필요 — 폴더 안의 자체 `.gitignore`가 스스로를 무시한다(v0.2의 "`.gitignore`에 추가" 항목은 틀린 내용이었다) | — |
 
 ### 3.2 파일 구성
@@ -387,12 +387,12 @@ S1·S5·S7은 web 구현과 무관하게 **지금 쓴다.**(→ 2026-10-04: 제�
 .github/workflows/ci.yml            # unit job + integration job
 docker-compose.ci.yml               # vision → stub 교체 + 4개 서비스 전부 healthcheck
 tests/integration/                  # S1~S7, stubs/vision_stub.py
-services/*/requirements-test.txt    # -r requirements.txt + pytest, httpx, jsonschema
-services/picar/requirements-hw.txt  # gpiozero, lgpio, smbus2 분리 (Dockerfile은 둘 다 설치)
+services/*/requirements-test.txt    # -r requirements.txt + pytest (+ httpx: actuation·picar·vision — web·portal은 requirements.txt에 이미 있음) — ✅ 5개 있음(2026-10-03 c55ea15). jsonschema는 계획(미추가, 계약 테스트와 함께)
+services/picar/requirements-hw.txt  # 계획(미생성) — picar는 requirements-test.txt에서 gpiozero·lgpio를 빼고 적는 방식으로 대신
 ```
 
 - 이름을 `requirements-test.txt`로 하는 이유: vision에 웹캠 스크립트용 `requirements-dev.txt`(opencv, pillow)가 이미 있다.
-- 현재 pytest는 어느 requirements에도 없고, httpx는 web에만 있다. `requirements-test.txt`가 없으면 워크플로가 돌지 않으므로 **워크플로보다 먼저** 만든다.
+- ~~현재 pytest는 어느 requirements에도 없고, httpx는 web에만 있다. `requirements-test.txt`가 없으면 워크플로가 돌지 않으므로 **워크플로보다 먼저** 만든다.~~ → ✅ 해결(2026-10-03 `c55ea15`): 서비스별 `requirements-test.txt` 5개(actuation·picar·portal·vision·web)에 `pytest`, TestClient용 `httpx==0.27.2`는 actuation·picar·vision에 추가(web·portal은 `requirements.txt`에 이미 있음). `jsonschema`는 아직 어디에도 없다(계약 테스트 §2.2와 함께 추가할 계획).
 - 루트 `tests/integration/`을 수집하려면 `pytest.ini` `testpaths`에 `tests`를 추가한다.
 
 ### 3.3 워크플로 초안
@@ -796,6 +796,7 @@ micro:bit·picar가 반응을 시작한다(판정 후 약 0.85초). web 없는 �
 
 | 버전 | 일자 | 내용 |
 | --- | --- | --- |
+| v1.1 | 2026-10-10 | 송승호 — 재점검 버그 수정·리팩토링(15 10-10) 뒤 단위 테스트 수 갱신: **331개 통과**(web 129 · vision 80 · actuation 56 · picar 53 · portal 13, `feature/picar` `996b67b`) — §0·§0.1·§1.1. §2.3·§3.1의 `.gitignore:42`·`:54` 줄번호 인용을 규칙 문구로(줄번호가 바뀌어 틀린 줄을 가리켰다). §3.2: `requirements-test.txt` 해결 반영, `requirements-hw.txt`·`jsonschema`는 계획(미생성)으로 표시 |
 | v1.0 | 2026-10-04 | 송승호 — **제출 시점 정리.** 머리말 "초안"·D-day 표기 정리. **§0.1 제출 시점 결론** 신설(수행한 것 / 수행하지 않은 것과 사유 / 미시험 범위와 대응 — 03 §7·08 연결). 단위 테스트 수를 2026-10-04 `60231a6` 실행 결과(**320개 통과** — web 124 · vision 78 · actuation 54 · picar 52 · portal 12)로 §0·§1.1에 반영(파일별 수 표 추가, 09-29 표는 기준선 기록으로 유지), §1.1 "테스트가 없는 곳" 정정. §0 portal 행(12개·CI matrix 포함·교육장 연동 10-04 확인)·회원 DB 행·계약/mock 통합 행(제출 후 과제)·결론 1~3. §2.1 조종 모드 불채택 표시. §2.3·§2.4 SC-04 진입을 현행 25회(약 5초, `CAMERA_FAIL_STREAK_THRESHOLD`, 09-29 조은수 결정)로. §2.4 종료 시 정지 10-04 실물 확인·배터리 11~12V·서보 반복 상한 D4. §4.3 완료 기준 실측 1.089초, §4.7 #5 미해결 표시. §5.1 미판정률 집계 결정, §5.2 `--out` 반영, §5.4 실제 시행 규모. **§6을 완료 / 제출 후 과제 / 폐기로 분류**(분류표 + 행 표시, 경과한 목표일 → 제출 후 과제). 수치(KPI·지연) 변경 없음 |
 | v0.22 | 2026-10-04 | 송승호 — **RPi5 선풍기 운용 확정(10-03)** 반영: §0 실물 E2E(web) 행, §2.4 당일 절차 1번(선풍기 기록), §4.6 열 행에 10-01·10-02 선풍기 측정(17 §10 인용), §4.7 #7, §6.1 #11. 물리 피드백 "시작" 판정·"완료" 병기, 판정 지연 "현행(마지막 프레임) + 한계"를 §4.1·§4.7 #3·#4에 반영(09-30 회의). §2.4 안전·복구 "주행 중 프로세스 종료" — picar 종료 신호 시 정지·LED 소등(`899f6ba`, 실물 미검증, `kill -9`·전원 차단 제외). §6.1 #9 완료(`899f6ba`·`d81948b`), §0 단위 테스트·#5에 현재 320개. §6.3·§6.4 담당 표기를 09-30 재배정 확정으로(②-b·06 2부·⑥ 송승호, ⑦·⑧ 조은수), §6.4 BLE 회신 대조 결정 완료. §5.1 치명 오분류 정의 09-30 A안, §6.4 조종 모드 09-30 불채택(#13-b 해당 없음), §6.1 #13-a 일부 진행(`899f6ba`·`d81948b`·`c560bbd`)·남은 항목 정리 |
 | v0.21 | 2026-10-03 | 기술 부채 정리 반영(송승호) — CI `ci.yml`·`requirements-test.txt` 작성(§0·§3·§3.4·§6 할 일 #2·#3), 고정 버전(3.11) 첫 통과(320개), §1.3 BLE 회신 대조·picar 형식 오류 해결, §6 리스크 2행 상태 갱신 |
