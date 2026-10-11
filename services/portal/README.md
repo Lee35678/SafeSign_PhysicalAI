@@ -105,7 +105,7 @@ ngrok http 8100
 직접 서버에서 돌릴 때(Docker):
 
 ```bash
-docker build -f portal/Dockerfile -t safesign-portal services
+docker build -f services/portal/Dockerfile -t safesign-portal services   # 저장소 루트에서(-f는 현재 폴더 기준)
 docker run -d --restart unless-stopped -p 8100:8100 --env-file .env safesign-portal
 ```
 

@@ -1,5 +1,5 @@
 # 회사 사이트(portal) — 빌드 문맥은 services/ 폴더 (교육장 web의 회원 모듈을 함께 넣는다)
-#   docker build -f portal/Dockerfile -t safesign-portal services
+#   docker build -f services/portal/Dockerfile -t safesign-portal services   (저장소 루트에서 — -f는 현재 폴더 기준)
 FROM python:3.11-slim
 WORKDIR /srv
 COPY portal/requirements.txt ./requirements.txt
