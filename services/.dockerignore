@@ -1,0 +1,11 @@
+# portal 이미지 전용 — 빌드 컨텍스트가 services/ 전체다(render.yaml `dockerContext: ./services`,
+# portal/README의 `docker build -f portal/Dockerfile ... services`). 그대로 두면 picar/reference(SD 카드 이미지
+# 약 15GB)·web/data(로컬 모드 회원 기록)까지 컨텍스트로 실린다. portal/Dockerfile의 COPY 대상만 허용한다 —
+# COPY를 늘리면 여기에도 추가할 것. compose는 서비스별 컨텍스트(services/<서비스>)라 이 파일을 읽지 않는다.
+*
+!portal/Dockerfile
+!portal/requirements.txt
+!portal/app/
+!portal/frontend/
+!web/backend/members.py
+**/__pycache__/

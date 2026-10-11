@@ -343,7 +343,6 @@ $("tab-login").addEventListener("click", () => setAuthTab("login"));
 $("tab-signup").addEventListener("click", () => setAuthTab("signup"));
 
 // 인증 요청 공통: 버튼 잠금·진행 문구 → 실패 문구 표시 → 버튼 복원. 성공하면 응답, 실패하면 null.
-// onFail(res)은 서버가 거절했을 때(status !== "ok")만 불린다.
 async function authCall(path, body, errorEl, submitBtn, busyText, onFail) {
   const idle = submitBtn.textContent;
   submitBtn.disabled = true;
@@ -532,7 +531,7 @@ function renderCurriculumList(curriculum) {
     const li = document.createElement("li");
     li.className = `sign-card${self ? " self" : ""}`;
     li.innerHTML = `${firstOfGroup ? `<span class="sr-only">${groupName}: </span>` : ""}
-      <span class="sign-card-no">${String(i + 1).padStart(2, "0")}</span>
+      <span class="sign-card-no">${pad2(i + 1)}</span>
       <p class="sign-card-name">${esc(signLabel(item.signal))}</p>
       <div class="sign-card-figure"><span class="hand-fig">${handSvg(item.signal)}</span>${fingerPattern(item.signal)}</div>
       <p class="sign-card-hand">${esc(aihandText(item.aihand))}</p>
