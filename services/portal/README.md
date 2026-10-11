@@ -109,6 +109,9 @@ docker build -f portal/Dockerfile -t safesign-portal services
 docker run -d --restart unless-stopped -p 8100:8100 --env-file .env safesign-portal
 ```
 
+빌드 문맥이 `services/` 전체라 `services/.dockerignore`가 Dockerfile의 COPY 대상(`portal/`·`web/backend/members.py`)만 보낸다 —
+없으면 `picar/reference`(SD 카드 이미지 약 15GB)·`web/data`(로컬 회원 기록)까지 실린다. COPY를 늘리면 그 파일에도 추가할 것.
+
 반드시 **HTTPS 뒤에** 둔다(비밀번호가 오간다). 이미지는 `--proxy-headers`로 앞단의 HTTPS를 인식하고, 호스팅이 주는 `$PORT`를 쓴다.
 
 ## 테스트
