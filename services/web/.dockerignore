@@ -1,0 +1,11 @@
+# 이미지에는 requirements.txt·backend/·frontend/만 들어간다(Dockerfile COPY). 나머지는 빌드 컨텍스트로 보낼 필요가 없다.
+# data/(로컬 모드 회원·학습 기록 — 개인정보)와 logs/는 컨텍스트에도 실리지 않게 한다.
+data/
+logs/
+kpi_out/
+tests/
+scripts/
+supabase/
+**/__pycache__/
+.pytest_cache/
+.venv/

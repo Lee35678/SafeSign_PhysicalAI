@@ -1,0 +1,9 @@
+# 이미지에는 requirements.txt·src/·models/만 들어간다(Dockerfile COPY) — models/는 빼면 안 된다.
+# training/의 특징 캐시(npz)·tests/·scripts/·web/(설명 문서)는 빌드 컨텍스트로 보낼 필요가 없다.
+tests/
+scripts/
+training/
+web/
+**/__pycache__/
+.pytest_cache/
+.venv/

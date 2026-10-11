@@ -293,6 +293,15 @@ class _EchoClient:
         asyncio.get_running_loop().create_task(_reply())
 
 
+def _send_gesture_real(n: int) -> dict:
+    """실물 경로(mock=False)로 G{n}을 한 번 보낸다. 회신 이벤트는 실행할 이벤트 루프 안에서 새로 만든다."""
+    async def _run():
+        ble_bridge._reply_event = asyncio.Event()
+        return await ble_bridge.send_gesture(n, mock=False)
+
+    return asyncio.run(_run())
+
+
 def test_concurrent_sends_each_get_their_own_reply(monkeypatch):
     """회신 칸이 하나뿐이라 잠금 없이 동시에 보내면 뒤 요청이 앞 요청의 대기 이벤트를 지우고
     회신을 가로챈다 — web이 actuation을 병렬로 호출하면 '엉뚱한 OK'나 timeout이 난다."""
@@ -389,11 +398,7 @@ class _SlowGestureClient:
 def test_press_during_gesture_keeps_the_real_ack(fresh_bridge, monkeypatch):
     monkeypatch.setattr(ble_bridge, "_client", _SlowGestureClient())
 
-    async def _run():
-        ble_bridge._reply_event = asyncio.Event()
-        return await ble_bridge.send_gesture(4, mock=False)
-
-    result = asyncio.run(_run())
+    result = _send_gesture_real(4)
     assert result["status"] == "ok"
     assert result["reply"] == "OK4", f"버튼 알림을 회신으로 받았다: {result}"
     assert ble_bridge.button_state()["seq"] == 1
@@ -460,11 +465,7 @@ class _StaleThenRealClient:
 def test_late_reply_of_a_previous_command_is_not_taken_as_ack(fresh_bridge, monkeypatch):
     monkeypatch.setattr(ble_bridge, "_client", _StaleThenRealClient())
 
-    async def _run():
-        ble_bridge._reply_event = asyncio.Event()
-        return await ble_bridge.send_gesture(5, mock=False)
-
-    result = asyncio.run(_run())
+    result = _send_gesture_real(5)
     assert result["status"] == "ok"
     assert result["reply"] == "OK5"
     assert result["ignored"] == ["OK3"]
@@ -481,11 +482,7 @@ def test_only_wrong_replies_end_in_timeout(fresh_bridge, monkeypatch):
     monkeypatch.setattr(ble_bridge, "_client", _WrongOnly())
     monkeypatch.setattr(ble_bridge, "ACK_TIMEOUT_S", 0.1)
 
-    async def _run():
-        ble_bridge._reply_event = asyncio.Event()
-        return await ble_bridge.send_gesture(5, mock=False)
-
-    result = asyncio.run(_run())
+    result = _send_gesture_real(5)
     assert result == {"status": "timeout", "sent": "G5", "ignored": ["OK3"]}
 
 
@@ -507,11 +504,7 @@ def test_write_os_error_reconnects_and_retries(fresh_bridge, monkeypatch):
     monkeypatch.setattr(ble_bridge, "_client", _FailsOnce())
     monkeypatch.setattr(ble_bridge, "connect", _reconnect)
 
-    async def _run():
-        ble_bridge._reply_event = asyncio.Event()
-        return await ble_bridge.send_gesture(4, mock=False)
-
-    assert asyncio.run(_run())["status"] == "ok"
+    assert _send_gesture_real(4)["status"] == "ok"
     assert _FailsOnce.calls == 2
 
 

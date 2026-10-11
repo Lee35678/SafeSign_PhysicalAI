@@ -218,8 +218,12 @@ function renderMember() {
   $("member-code").textContent = member.guest ? "GUEST" : member.member_code;
   $("member-name").textContent = member.guest ? "게스트" : `${member.name} 님`;
   // 교육 중에는 로그아웃을 숨긴다 — 기록이 시작한 사람에게 저장되더라도 화면이 헷갈리지 않게
-  const training = $("screen-training").classList.contains("active") || $("screen-camera-fail").classList.contains("active");
-  $("logout-btn").classList.toggle("hidden", training);
+  $("logout-btn").classList.toggle("hidden", isTrainingScreen());
+}
+
+// 교육 중 화면(학습 SC-03·카메라 조정 SC-04)인지 — 로그아웃 숨김과 자동 로그아웃 정지가 같은 기준을 쓴다
+function isTrainingScreen() {
+  return $("screen-training").classList.contains("active") || $("screen-camera-fail").classList.contains("active");
 }
 
 // 장치 하나의 이상 사유(표시 전용). 빈 문자열 = 정상. 상단 스트립·SC-01 패널·요약이 모두 이 한 기준을 쓴다
@@ -338,7 +342,9 @@ function passwordProblem(pw, pw2) {
 $("tab-login").addEventListener("click", () => setAuthTab("login"));
 $("tab-signup").addEventListener("click", () => setAuthTab("signup"));
 
-async function submitAuth(path, body, errorEl, submitBtn, busyText) {
+// 인증 요청 공통: 버튼 잠금·진행 문구 → 실패 문구 표시 → 버튼 복원. 성공하면 응답, 실패하면 null.
+// onFail(res)은 서버가 거절했을 때(status !== "ok")만 불린다.
+async function authCall(path, body, errorEl, submitBtn, busyText, onFail) {
   const idle = submitBtn.textContent;
   submitBtn.disabled = true;
   submitBtn.textContent = busyText;
@@ -347,11 +353,10 @@ async function submitAuth(path, body, errorEl, submitBtn, busyText) {
     const res = await apiPost(path, body);
     if (res.status !== "ok") {
       errorEl.textContent = res.message || "요청을 처리하지 못했습니다.";
-      if (res.reason === "offline") $("guest-btn").focus();
+      onFail?.(res);
       return null;
     }
-    member = res.member;
-    return res.member;
+    return res;
   } catch (err) {
     errorEl.textContent = "서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
     return null;
@@ -359,6 +364,15 @@ async function submitAuth(path, body, errorEl, submitBtn, busyText) {
     submitBtn.disabled = false;
     submitBtn.textContent = idle;
   }
+}
+
+// 로그인·가입: 성공하면 현재 회원으로 두고 회원 정보를 돌려준다. 회원 DB가 오프라인이면 게스트 버튼으로 안내
+async function submitAuth(path, body, errorEl, submitBtn, busyText) {
+  const res = await authCall(path, body, errorEl, submitBtn, busyText,
+    (r) => { if (r.reason === "offline") $("guest-btn").focus(); });
+  if (!res) return null;
+  member = res.member;
+  return res.member;
 }
 
 $("login-form").addEventListener("submit", async (event) => {
@@ -402,27 +416,6 @@ $("goto-reset").addEventListener("click", () => {
   $("reset-email").focus();
 });
 document.querySelectorAll(".back-to-login").forEach((b) => b.addEventListener("click", () => setAuthTab("login")));
-
-async function authCall(path, body, errorEl, submitBtn, busyText) {
-  const idle = submitBtn.textContent;
-  submitBtn.disabled = true;
-  submitBtn.textContent = busyText;
-  errorEl.textContent = "";
-  try {
-    const res = await apiPost(path, body);
-    if (res.status !== "ok") {
-      errorEl.textContent = res.message || "요청을 처리하지 못했습니다.";
-      return null;
-    }
-    return res;
-  } catch (err) {
-    errorEl.textContent = "서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-    return null;
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = idle;
-  }
-}
 
 $("find-id-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -480,8 +473,7 @@ let lastInputAt = Date.now();
   document.addEventListener(ev, () => { lastInputAt = Date.now(); }, { passive: true }));
 setInterval(() => {
   if (!member) return;
-  const training = $("screen-training").classList.contains("active") || $("screen-camera-fail").classList.contains("active");
-  if (training) {
+  if (isTrainingScreen()) {
     lastInputAt = Date.now();
     return;
   }
@@ -1318,7 +1310,7 @@ $("finish-btn").addEventListener("click", () => logout());             // 다음
 // ---- 상단 관제 시계 ----
 function tickClock() {
   const d = new Date();
-  $("sys-clock").textContent = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+  $("sys-clock").textContent = [d.getHours(), d.getMinutes(), d.getSeconds()].map(pad2).join(":");
 }
 tickClock();
 setInterval(tickClock, 1000);
