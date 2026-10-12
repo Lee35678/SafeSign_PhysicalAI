@@ -22,19 +22,6 @@ GESTURE_MAP = {
     "주의": 7,
 }
 
-# 실물 캘리브레이션 전 잠정치(펴짐=170/굽힘=10/손목중립=90, 03_인터페이스계약서 §5-1).
-# 현재 구동에는 쓰이지 않지만, 다른 서비스(web)가 스키마에 맞는 요청 본문을 만들 때 참고용으로 남긴다.
-DEFAULT_SERVO_ANGLES = {
-    "정지": {"thumb": 170, "index": 170, "middle": 170, "ring": 170, "pinky": 170, "wrist_rotation": 90},
-    "서행": {"thumb": 10, "index": 170, "middle": 170, "ring": 10, "pinky": 10, "wrist_rotation": 90},
-    "좌회전_유도": {"thumb": 170, "index": 170, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
-    "우회전_유도": {"thumb": 170, "index": 10, "middle": 10, "ring": 10, "pinky": 170, "wrist_rotation": 90},
-    # 2026-09-20 팀 확정: 엄지만 펴기 → 주먹(전부 굽힘). 2026-09-25 펌웨어 gesture5도 주먹으로 맞췄다(저장소·플래시 모두).
-    "확인_완료": {"thumb": 10, "index": 10, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
-    "후진": {"thumb": 10, "index": 170, "middle": 10, "ring": 10, "pinky": 10, "wrist_rotation": 90},
-    "주의": {"thumb": 10, "index": 10, "middle": 10, "ring": 10, "pinky": 170, "wrist_rotation": 90},
-}
-
 
 async def execute(aihand_command: dict, mock: bool = True) -> dict:
     target_signal = aihand_command.get("target_signal")

@@ -1,42 +1,44 @@
-# models/ — 학습된 모델 파일이 놓이는 곳
+# models/ — vision 모델 파일
 
-**로컬 학습이 기본이라(2026-09-21) 대부분 직접 만들면 된다.**
+이 폴더에는 파일 2개가 들어간다.
+
+| 파일 | 내용 | 받는 곳 | 없으면 |
+| --- | --- | --- | --- |
+| `hand_landmarker.task` | MediaPipe Hand Landmarker 모델. 영상에서 손 관절 21개를 찾는다 (Apache License 2.0) | git에 포함 | 실물 카메라로 실행할 때 캡처가 멈추고 `/health`의 `camera.state`가 `error`가 된다 |
+| `svm_classifier.joblib` | 수신호 7종 판정 모델 번들 | git에 없음. 제품과 별도로 제공 | 서비스는 뜨지만 모든 판정이 미판정(`reason: model_not_loaded`) |
+
+## svm_classifier.joblib 배치
+
+제공받은 파일을 RPi5의 `services/vision/models/`에 복사한다. 파일이 있는 PC에서:
 
 ```bash
-cd services/vision
-pip install -r requirements.txt
-python training/train_svm.py      # svm_classifier.joblib + sign_templates.json 자동 생성
+scp svm_classifier.joblib <사용자>@<RPi5 주소>:~/git/SafeSign_PhysicalAI/services/vision/models/
 ```
 
-| 파일 | 어디서 나오나 | 없으면 어떻게 되나 |
-| --- | --- | --- |
-| `svm_classifier.joblib` | [`../training/train_svm.py`](../training/train_svm.py) (또는 Colab 노트북) | vision 서비스는 뜨지만 항상 `negative`/`is_reject=true` (reason=`model_not_loaded`) |
-| `sign_templates.json` | 같은 스크립트 | 데이터 담당의 `seed_templates.py` 입력용. 없어도 `match_score`는 번들 centroid로 폴백된다 |
-| `hand_landmarker.task` | MediaPipe 공식 모델 번들 (05_모델카드 §1의 다운로드 URL) | 카메라 실물 연동 시 Perception이 기동 실패 — `MOCK_CAMERA=true`로는 무관 |
-| `cmp_*.joblib` | `train_svm.py --out models/cmp_....joblib` | 없어도 무방. `evaluate_kpi.py --compare`·`analyze_log.py`가 함께 평가해 비교표를 낸다 (최종 KPI 측정에는 쓰지 않는다) |
-| `svm_classifier.bak-*.joblib` | `scripts/add_match_calibration.py`가 번들을 고치기 전에 남긴 원본 | 없어도 무방 (되돌릴 때 이름만 바꾸면 된다) |
+루트 [README](../../../README.md) §4.1 ④와 같은 절차다.
 
-> **2026-09-30 — 일치율 클래스별 보정 추가.** `python scripts/add_match_calibration.py`로 기존 번들에
-> `match_score_calibration.per_class`만 넣었다(재학습 없음, 판정·τ·게이트 그대로 — 공개 데이터 27,735건 예측 동일 확인).
-> 확인_완료·주의·후진이 정답인데도 일치율이 50~70점대로 나오던 문제를 고친다. **RPi5의 번들도 이 파일로 다시 복사해야 한다**
-> (복사하지 않으면 예전 공통 구간으로 계속 계산된다 — 판정에는 영향 없음).
+## 교체
 
-## 넣은 뒤 확인
+같은 이름으로 덮어쓰면 된다. 서비스가 파일 수정 시각을 보고 다음 판정부터 새 파일을 읽으므로
+재시작하지 않아도 된다. 다만 번들의 N프레임 수는 서비스 시작 때 한 번만 읽으므로, 이 값이 바뀐 번들이면
+서비스를 다시 시작한다.
+
+교체 후 확인:
 
 ```bash
-docker compose up --build vision
 curl http://localhost:8001/health
-# -> "model": {"loaded": true, "classes": [...], "tau": 0.xx, "metadata": {...}}
+# "model": {"loaded": true, "path": ..., "sha256": ..., "classes": [...], "tau": ..., "metadata": {...}}
 ```
 
-경로를 바꾸고 싶으면 `SVM_MODEL_PATH` 환경변수로 덮어쓸 수 있다.
-파일을 교체하면 **서비스 재시작 없이도** 다음 판정부터 새 모델이 적용된다(mtime 감지).
+- `sha256`으로 제공받은 파일과 같은 파일이 적재됐는지 대조할 수 있다.
+- 파일을 다른 곳에 두려면 `SVM_MODEL_PATH` 환경변수로 경로를 지정한다.
 
 ## 주의
 
-- `svm_classifier.joblib`에는 모델뿐 아니라 **τ(임계값)·match_score 보정값·학습 메타데이터**가 함께
-  들어 있다. 모델만 바꾸고 τ를 따로 관리하면 둘이 어긋나므로, 항상 번들 파일 하나로 교체한다.
-- 학습에 쓴 `normalize.py`와 서비스의 `normalize.py`가 **같은 커밋**이어야 한다. 로컬 학습은 같은
-  저장소의 `src/`를 직접 import하므로 자동으로 맞는다 (05_모델카드 §3-5, MODEL_TRAINING.md §7).
-- 번들 메타데이터의 **`feature_mode`** 가 63차원(`landmark63`)인지 69차원(`landmark63+orient6`)인지
-  알려준다. `classify.py`가 이 값을 따라 특징을 만들므로 손대지 말 것 (MODEL_TRAINING.md §2-1).
+- `svm_classifier.joblib` 하나에 모델과 함께 τ(판정 임계값), N프레임 수, 일치율 환산값, 소속 게이트 값,
+  메타데이터(`feature_mode`, `sklearn_version` 등)가 들어 있다. 항상 파일 하나를 통째로 교체한다.
+- 번들의 `feature_mode`에 따라 특징값을 만든다. 서비스 코드(`src/cognition/normalize.py`)는 번들을 만든
+  코드와 같은 버전이어야 한다.
+- 번들을 만든 scikit-learn과 설치된 scikit-learn의 major.minor가 다르면 기동 로그에 경고가 나온다.
+  예측이 어긋나거나 파일을 못 읽을 수 있으므로 `requirements.txt` 범위대로 설치한다.
+- `hand_landmarker.task`는 교체할 일이 없다. 다른 경로의 파일을 쓰려면 `HAND_LANDMARKER_MODEL` 환경변수로 지정한다.

@@ -88,7 +88,6 @@ I2C_ADDR = int(os.getenv("RASPBOT_I2C_ADDR", "0x16"), 16)
 
 REG_MOTOR = 0x01  # [좌_방향, 좌_속도, 우_방향, 우_속도]
 REG_STOP = 0x02   # 0x00 한 바이트
-REG_SERVO = 0x03  # [서보ID, 각도] — 주행에는 미사용
 
 DIR_BACKWARD = 0
 DIR_FORWARD = 1

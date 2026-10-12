@@ -38,13 +38,12 @@
 
     숫자키로 "지금 내가 하려는 동작"을 찍어두면, 그게 정답 라벨이 되어 오판정을 셀 수 있다.
     로그에는 **원본 랜드마크 21개**가 함께 들어가므로 나중에 다른 특징 모드로 다시 계산해
-    비교할 수 있다. 분석은 `python scripts/analyze_log.py <로그파일>`.
+    비교할 수 있다. 분석 도구(analyze_log.py)는 개발 브랜치(dev)에 있다.
 
 모델이 아직 없어도 실행된다 — 그 경우 랜드마크만 그려주므로 **카메라·MediaPipe 배선 확인**에는
-지금 당장 쓸 수 있다(판정은 계속 model_not_loaded). 모델을 만들려면
-`python training/train_svm.py` (로컬, 16초).
+지금 당장 쓸 수 있다(판정은 계속 model_not_loaded). 모델 파일은 제품과 별도로 제공된다(README §4.1 ④).
 
-**평가 데이터를 모으는 것은 이 스크립트가 아니라 `record_dataset.py`다.** 여기는 눈으로 보는 확인만.
+여기는 눈으로 보는 확인만 한다.
 """
 from __future__ import annotations
 
@@ -281,11 +280,10 @@ def main() -> None:
     else:
         print(f"[주의] 분류기 모델이 없습니다: {info['path']}")
         print("       랜드마크는 그려지지만 판정은 계속 'model_not_loaded'입니다.")
-        print("       `python training/train_svm.py` 로 학습하면 이 경로에 생깁니다.")
+        print("       제공받은 svm_classifier.joblib을 이 경로에 두세요 (README §4.1 ④).")
     print(f"판정 설정: tau={classify.effective_tau()}  N={smoothing.N_FRAMES}프레임")
     if not model_store.get_match_score_calibration() or not templates.available_signs():
-        print("[참고] 템플릿 DB가 비어 있어 match_score는 0으로 나옵니다 "
-              "(services/data의 seed_templates.py 담당: 김지훈). 판정 자체와는 무관합니다.")
+        print("[참고] 일치율 환산값·대표값이 없어 match_score는 0으로 나옵니다. 판정 자체와는 무관합니다.")
 
     landmarker_path = ensure_landmarker(Path(args.landmarker), allow_download=not args.no_download)
 

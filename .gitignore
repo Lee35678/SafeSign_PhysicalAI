@@ -5,69 +5,26 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Node (web frontend에서 빌드 도구 사용 시)
-node_modules/
-dist/
-
 # 환경변수 · 비밀 키 (Supabase service_role, portal 쿠키 서명 키) — 어느 폴더에 있어도 올리지 않는다
 .env
 .env.*
 !.env.example
 *.env
 
-# 데이터 (원본 촬영본은 용량이 크므로 git 대신 별도 공유 스토리지 사용 권장)
-services/data/datasets/raw/*
-!services/data/datasets/raw/.gitkeep
-services/data/datasets/processed/*
-!services/data/datasets/processed/.gitkeep
-# 공개 데이터셋(Kaggle) 원본 사진 — 각자 내려받아 사용 (services/data/README.md §5)
-services/data/datasets/raw_public/
-
-# MediaPipe 모델 번들 (7.8MB, 실행 시 자동 다운로드)
-services/data/models/*.task
-
-# 학습 파이프라인 예행연습용 더미 데이터 (scripts/make_dummy_dataset.py가 언제든 재생성)
-services/vision/training/_dummy_dataset/
-
-# 웹캠 진단 로그 (원본 랜드마크 포함 — 용량이 크고 일회성이라 공유하지 않는다)
-services/vision/logs/
-
-# web 시행 로그 CSV (web_판정_타이밍_스펙 §7.1 — 결과 정리 후 필요한 것만 문서에 붙인다)
-services/web/logs/
-
-# 측정 작업 폴더 (RPi에서 받아 온 시행·모니터 CSV) — 보존할 원본은 document/results/에 둔다
-/log/
-
-# web 회원·결과 로컬 파일 (개인정보 — 로컬 모드 회원, Supabase 전송 대기열, 게스트 결과)
-services/web/data/
-
-# 비교용 모델 (train_svm.py --out models/cmp_*.joblib)
-services/vision/models/cmp_*
-
-# 학습 특징벡터 캐시 (train_svm.py가 언제든 재생성. JSON 27,735건 적재 5분을 아끼는 용도)
-services/vision/training/.feature_cache*.npz
-
-# 학습된 모델 가중치: 2026-09-21부터 **로컬 학습이 기본**이라 각자 만들 수 있다.
-#   cd services/vision && python training/train_svm.py
-# 팀 전체가 같은 모델을 공유해야 할 시점(시연 직전 등)이 오면 아래 두 줄을 지우고 커밋할 것.
-# (라이선스상 외부 공개는 하지 않는다 — 회의안건_2026-09-21 안건 5)
+# 판정 모델 가중치 — 저장소에 포함하지 않고 제품과 별도로 제공한다 (README §4.1 ④)
 services/vision/models/*.joblib
-services/vision/models/*.task
 
-# DB 파일
+# 실행 중 생기는 로그 · 개인정보 파일
+services/vision/logs/
+services/web/logs/
+# web 회원·결과 로컬 파일 (로컬 모드 회원, Supabase 전송 대기열, 게스트 결과)
+services/web/data/
 *.sqlite3
 *.db
 
-# OS/IDE
+# OS · 편집기
 .DS_Store
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .claude/
-
-# picar 구동 조사용 벤더 자료 (Raspbot 공식 이미지 등). 원본은 Yahboom 배포처에서 받는다.
-# Raspbot_rpi4B.img 하나가 15GB라 git에 올릴 수 없다 — 필요한 내용은 문서로 옮길 것.
-services/picar/reference/
-
-# 논문 자료 저작권 문제로 업로드 불가
-/document/archive/논문/

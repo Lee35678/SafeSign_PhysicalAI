@@ -2,13 +2,9 @@
 
 담당: 이동혁 (vision) · 처음 작성: 송승호 (RPi4B + Camera Module 3 실측, 2026-09-23)
 
-서비스(`perception/capture.py`)와 `scripts/`의 도구들(record_dataset.py, webcam_check.py)이
+서비스(`perception/capture.py`)와 카메라 점검 도구(`scripts/webcam_check.py`)가
 노트북 웹캠과 RPi5의 Camera Module 3 양쪽에서 그대로 돌아가도록, 카메라를 여는 부분만 여기로
 모았다. 어느 쪽이든 `read()`가 **BGR ndarray**를 돌려주므로 호출부는 차이를 몰라도 된다.
-
-위치: 원래 `scripts/camera_source.py` 였다. 서비스(Docker 이미지에는 `src/` 만 들어간다)도 써야
-해서 `src/perception/` 으로 옮겼다. 확인·촬영 도구(`scripts/webcam_check.py`, `record_dataset.py`)도
-`perception.camera_source` 를 직접 import한다(재수출용 `scripts/camera_source.py` 는 2026-10-02 삭제).
 
 왜 CSI는 따로 다뤄야 하는가:
     Camera Module 3는 libcamera 스택이라 `/dev/video0`에 raw Bayer로만 올라온다.
@@ -37,8 +33,6 @@ DEFAULT_FPS = 30
 
 class CsiCamera:
     """Camera Module 3 (CSI) → picamera2 → BGR 프레임."""
-
-    device_tag = "rpi5_csi_module3"      # 데이터셋 source.device 에 남는 값
 
     def __init__(self, size: Tuple[int, int], fps: int = DEFAULT_FPS, camera_num: int = 0,
                  swap_rb: bool = False, autofocus: bool = True) -> None:
@@ -98,8 +92,6 @@ class CsiCamera:
 
 class UsbCamera:
     """USB/내장 웹캠 → OpenCV VideoCapture → BGR 프레임."""
-
-    device_tag = "laptop_webcam"         # 기존에 모은 데이터와 값을 맞춰 둔다
 
     def __init__(self, index: int = 0, size: Optional[Tuple[int, int]] = None) -> None:
         import cv2

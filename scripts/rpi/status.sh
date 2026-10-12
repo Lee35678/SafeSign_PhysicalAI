@@ -5,7 +5,7 @@
 #   watch -n5 bash scripts/rpi/status.sh      # 시연 중 계속 보기
 #
 # 읽기만 한다 — 장치를 움직이는 요청은 보내지 않는다.
-# 자세한 사용법·문제 해결: document/17_실물실행_스크립트_사용법.md
+# 자세한 사용법·문제 해결: README.md §4
 set -u -o pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 

@@ -1,5 +1,5 @@
-# RPi5 — web(교육장 화면·상태머신). 주소 3개를 명시한다 — 루트 .env(.env.example 복사본)에는 docker용
-# http://vision:8000 등이 들어 있어, 비워 두면 그 값이 채워진다(start_all.sh와 같은 이유).
+# RPi5 — web(교육장 화면·상태머신). 주소 3개를 명시한다 — 루트 .env 내용과 상관없이 이 값이 쓰이게
+# 하려는 것이다(start_all.sh와 같은 이유).
 [Unit]
 Description=SafeSign web (station UI + state machine)
 After=network-online.target safesign-actuation.service safesign-vision.service

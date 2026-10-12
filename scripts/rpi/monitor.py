@@ -8,7 +8,7 @@
 읽기만 한다 — 장치를 움직이는 요청은 보내지 않는다(vision `/health`, web `/api/state` GET만).
 표준 라이브러리만 쓴다(RPi5에 추가 설치 없음). 서비스 프로세스는 명령줄의 `--port`로 찾는다(start_all.sh 기준
 web 8000 · vision 8001 · actuation 8002). 프로세스 CPU%는 코어 1개 = 100%, 전체 CPU%는 모든 코어 합 = 100%.
-자세한 사용법: document/17_실물실행_스크립트_사용법.md §10
+자세한 사용법: README.md §4.5
 """
 from __future__ import annotations
 

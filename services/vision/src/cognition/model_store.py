@@ -1,9 +1,7 @@
 """학습된 경량 분류기(SVM) 번들을 로드한다.
 
-학습은 **로컬에서 수행하는 것이 기본**이다(`training/train_svm.py`). 전체 27,735건 기준 단일
-학습이 13초 정도라 GPU가 필요 없다 — 처음에 Colab을 전제했으나 실측 후 로컬로 되돌렸다
-(2026-09-21). Colab 노트북(`training/train_svm_colab.ipynb`)은 같은 파이프라인의 대체 경로로
-남겨둔다. 어느 쪽에서 만들든 `svm_classifier.joblib` 하나를 `services/vision/models/`에 두면 된다.
+모델 파일(`svm_classifier.joblib`)은 저장소에 포함하지 않고 제품과 별도로 제공한다.
+`services/vision/models/`에 두면 된다. 학습 파이프라인은 개발 브랜치(dev)의 `services/vision/training/`에 있다.
 
 모델 파일이 아직 없으면 **서비스는 죽지 않고** "모델 없음" 상태로 동작한다 — 이 경우 classify는
 항상 negative/reject를 돌려주므로 카메라·Actuation 배선 검증은 모델 없이도 계속할 수 있다.
@@ -33,9 +31,8 @@ import hashlib
 import logging
 import os
 import threading
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +101,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
             if not _loaded:
                 logger.warning(
                     "분류기 모델이 없습니다: %s — negative/reject만 반환합니다. "
-                    "services/vision에서 `python training/train_svm.py`로 학습하면 이 경로에 생성됩니다.",
+                    "모델 파일은 제품과 별도로 제공된다 — 받은 svm_classifier.joblib을 이 경로에 두세요(README §4.1 ④).",
                     MODEL_PATH,
                 )
                 _loaded = True
@@ -134,7 +131,7 @@ def load_bundle(force: bool = False) -> Optional[dict]:
         except Exception:
             logger.exception(
                 "모델 번들을 읽지 못했습니다: %s — negative/reject만 반환합니다. "
-                "`python training/train_svm.py`로 다시 만드세요.",
+                "제공받은 모델 파일로 다시 교체하세요(README §4.1 ④).",
                 MODEL_PATH,
             )
             _bundle, _loaded, _loaded_mtime, _failed_key = None, True, None, (MODEL_PATH, mtime)
@@ -153,28 +150,6 @@ def load_bundle(force: bool = False) -> Optional[dict]:
             (_bundle.get("metadata") or {}).get("trained_at"),
         )
         return _bundle
-
-
-@contextmanager
-def swapped_bundle(model_path: Optional[Path]) -> Iterator[Optional[dict]]:
-    """MODEL_PATH를 잠시 model_path로 바꿔 번들을 다시 읽고, 끝나면 원래 모델로 되돌린다.
-
-    오프라인 비교 도구(evaluate_kpi·analyze_log)가 **운영과 같은 classify.predict 경로**로 다른 모델을
-    판정할 때 쓴다. model_path가 None이면 현재 MODEL_PATH를 강제로 다시 읽기만 한다.
-    번들을 읽지 못하면 None을 넘긴다.
-
-    **오프라인 전용.** 전역 MODEL_PATH·_bundle을 _lock 밖에서 바꾸므로, vision 서비스 프로세스
-    (_cognition_loop가 도는 중)에서 부르면 그동안의 실제 판정이 비교 모델로 나간다.
-    """
-    global MODEL_PATH
-    original = MODEL_PATH
-    try:
-        if model_path is not None:
-            MODEL_PATH = model_path
-        yield load_bundle(force=True)
-    finally:
-        MODEL_PATH = original
-        load_bundle(force=True)
 
 
 def get_model():

@@ -6,7 +6,7 @@
 # 순서: picar에 정지 명령 → web → vision → actuation → picar(RPi4B) 에 Ctrl+C → 세션 정리
 # kill -9는 쓰지 않는다 — actuation이 BLE를 끊지 못하고 죽으면 다음 실행 때 micro:bit가 안 보인다.
 # 주행 중에 프로세스를 끝내면 모터는 마지막 명령을 유지하므로 정지 명령을 가장 먼저 보낸다.
-# 자세한 사용법·문제 해결: document/17_실물실행_스크립트_사용법.md
+# 자세한 사용법·문제 해결: README.md §4
 set -u -o pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 

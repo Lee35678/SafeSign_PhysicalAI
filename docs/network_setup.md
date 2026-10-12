@@ -1,0 +1,798 @@
+# 네트워크 설정 — RPi5 AP ↔ RPi4B(picar)
+
+교육장에 SafeSign을 설치할 때 네트워크를 구성하는 절차다. RPi5(학습자 앞 고정 스테이션)가 Wi-Fi AP를 띄우고,
+RPi4B(picar 차체)가 그 AP에 고정 IP `192.168.50.10`으로 붙는다. 운영자 PC는 RPi5에 랜선(UTP)으로 연결해
+브라우저로 교육 화면을 연다.
+
+서비스 설치·실행(가상환경 포함)은 [루트 README](../README.md) §4.1(최초 1회 준비)·§4.2(실행)를 따른다.
+구성 전체 그림은 같은 문서 §4.0, 실행 중 자주 겪는 문제는 §4.6에 있다.
+
+**작업 순서**: 준비(§2, 공유기에 붙은 상태에서) → RPi5 AP 켜기(§3) → RPi4B를 AP로 전환(§4) → 재부팅 검증(§5.1) → 현장 접속(§5.2~§5.4)
+
+---
+
+## 목차
+
+1. [개요](#1-개요)
+2. [시작 전 준비](#2-시작-전-준비)
+3. [RPi5를 AP로 설정](#3-rpi5를-ap로-설정)
+4. [RPi4B(picar)를 AP에 연결](#4-rpi4bpicar를-ap에-연결)
+5. [확인과 현장 접속](#5-확인과-현장-접속)
+6. [문제 해결](#6-문제-해결)
+
+---
+
+## 1. 개요
+
+### 1.1 전체 토폴로지
+
+```mermaid
+graph LR
+    subgraph PC["운영자 PC"]
+        PCWIFI["Wi-Fi<br/>④ 필요할 때: safesign AP DHCP 192.168.50.x"]
+        PCETH["이더넷<br/>①②: 192.168.10.2~ 고정<br/>③: 공유기 DHCP"]
+    end
+
+    subgraph RPi5["RPi5 (고정 스테이션)"]
+        ETH0["eth0<br/>①②: 192.168.10.1 고정 demo-link<br/>③: 공유기 DHCP Wired connection 1"]
+        WLANAP["wlan0 - AP safesign-ap<br/>SSID safesign, 5GHz ch36 (안 되면 2.4GHz ch6)<br/>192.168.50.1/24, powersave off"]
+        ETH0 --- WLANAP
+    end
+
+    subgraph RPi4B["RPi4B picar"]
+        WLANC["wlan0 - client safesign<br/>192.168.50.10/24 고정<br/>gw dns 192.168.50.1, powersave off"]
+    end
+
+    PCETH ==>|"① UTP / ② 허브 / ③ 공유기+허브"| ETH0
+    WLANAP -.->|"Wi-Fi AP-client"| WLANC
+    PCWIFI ==>|"④ Wi-Fi: ssh 192.168.50.1 / .10 직접"| WLANAP
+    PCETH -.->|"ssh rpi5"| ETH0
+    PCETH ==>|"ssh picar (ProxyJump rpi5)"| WLANC
+```
+
+- 실선(`==`)은 SSH가 실제로 지나가는 경로, 점선(`-.`)은 물리 Wi-Fi 링크 또는 참고용 경로다.
+- **`wlan0`(AP)과 `eth0`은 RPi5 안에서 서로 다른 인터페이스다.** AP를 켜도 유선 SSH 경로는 그대로 살아 있다.
+- ③ 구성에서는 RPi5 `eth0`이 인터넷에 나가고, `ipv4.method shared`(NAT)가 그 인터넷을 `wlan0` 너머 picar에도
+  넘겨준다. ④에서 `eth0`에 인터넷 유선을 꽂으면 AP에 붙은 PC도 같은 NAT로 나간다.
+
+### 1.2 핵심 원리
+
+- RPi5의 **Wi-Fi(`wlan0`)를 AP(액세스 포인트)로** 띄우고, picar(RPi4B)가 거기에 접속한다.
+- AP 모드가 쓰는 것은 **`wlan0`뿐**이다. **유선 랜(`eth0`)은 그대로 살아 있으므로** PC는 유선으로 RPi5에 SSH할 수 있다.
+- picar는 달리는 차에 실려 있으므로 **반드시 Wi-Fi**로 연결한다. 유선·허브에는 연결할 수 없다.
+- PC가 유선(①~③)일 때 PC에서 picar로 가려면 **RPi5를 거쳐(`ProxyJump`)** 들어간다.
+- **④ 필요할 때**: PC를 AP `safesign`에 Wi-Fi로 붙이면 RPi5(`192.168.50.1`)·picar(`.10`) 모두 고정 주소로 **바로**
+  닿는다(ProxyJump 불필요). 현장 유선이 마땅치 않을 때나 picar에 직접 들어가 봐야 할 때 쓴다(§5.3).
+
+### 1.3 IP 배정
+
+`wlan0` 쪽 주소는 찾는 값이 아니라 **정해서 넣는 고정값**이다.
+
+| 장치 | 인터페이스 | IP | 비고 |
+| --- | --- | --- | --- |
+| RPi5 | `wlan0` (AP) | **192.168.50.1/24** | SSID `safesign` |
+| RPi4B (picar) | `wlan0` (클라이언트) | **192.168.50.10/24** | web의 `PICAR_URL` 대상 |
+| RPi5 | `eth0` (운영) | 예) 192.168.10.1/24 | PC 직결·허브 — **현장마다 다름** |
+| 운영자 PC | 이더넷 | 예) 192.168.10.2/24~ | web 화면 — **현장마다 다름** |
+| 운영자 PC (④ 필요할 때) | Wi-Fi | AP DHCP `192.168.50.x` | `.10`은 picar 예약(§6.5). 브라우저 `http://192.168.50.1:8000` |
+
+> 🔴 `eth0`·PC 대역은 예시다. 조건은 하나 — **picar AP 대역 `192.168.50.x`와 겹치지 않을 것.**
+> web은 `0.0.0.0`에 뜨므로 PC 브라우저는 그 현장의 RPi5 `eth0` 주소(`ip -4 addr show eth0`)로 접속하면 된다.
+> 주소를 모르면 `safesign-rpi5.local`(§2.1).
+
+```
+PICAR_URL=http://192.168.50.10:8000
+```
+
+- 실행 스크립트(`scripts/rpi/common.sh`)도 같은 주소를 쓴다 — `PICAR_HOST` 기본값 `192.168.50.10`,
+  `PICAR_URL` 기본값 `http://${PICAR_HOST}:8000`. RPi5에서 picar로 SSH하는 대상 `PICAR_SSH`의 기본값은
+  `PICAR_HOST`와 같다(계정명을 따로 적지 않으므로 RPi5 계정명으로 접속한다). RPi4B 계정명이 RPi5와 다르면
+  `PICAR_SSH=<rpi4b 계정>@192.168.50.10 bash scripts/rpi/start_all.sh`처럼 지정한다.
+- 이 값들은 설정 직후 한 번, 재부팅 후 한 번만 확인하면 된다.
+
+### 1.4 PC 접속 구성 4가지
+
+RPi4B 쪽(`RPi5 ··· Wi-Fi AP ··· RPi4B 192.168.50.10`)은 네 구성 모두 같다. 달라지는 것은 PC ↔ RPi5 쪽뿐이다.
+
+```
+④ PC도 AP에 무선 접속 (필요할 때)
+   PC ··Wi-Fi safesign·· RPi5 wlan0 (192.168.50.1) ··Wi-Fi·· RPi4B (192.168.50.10)
+   (선택) 인터넷 유선 ── RPi5 eth0  → NAT로 PC·picar도 인터넷
+
+① UTP 직결 (운영, PC 1대)
+   PC ──UTP── RPi5 eth0 (192.168.10.1)
+
+② 스위칭 허브만 (운영, PC 2대 이상)
+   PC  ─┐
+   PC2 ─┼─ 스위칭 허브 ── RPi5 eth0 (192.168.10.1)
+
+③ 공유기 + 허브 (인터넷이 필요할 때)
+   공유기(인터넷) ── 스위칭 허브 ─┬─ RPi5 eth0 (공유기 DHCP)
+                                 └─ PC       (공유기 DHCP)
+```
+
+| 구성 | 인터넷 | 주소 방식 | 용도 |
+| --- | --- | --- | --- |
+| ① UTP 직결 | ❌ | 전부 고정 | 운영 (PC 1대) |
+| ② 허브만 | ❌ | 전부 고정 (허브에는 DHCP 없음) | 운영 (PC 2대 이상) |
+| ③ 공유기 + 허브 | ✅ RPi5·picar 모두 | `eth0`·PC는 공유기 DHCP | 인터넷이 필요할 때 (`pip install` 등) |
+| ④ PC도 AP | `eth0`에 인터넷 유선을 꽂으면 ✅, 아니면 ❌ | 전부 고정 주소로 닿음 (PC만 AP DHCP) | 필요할 때 (유선이 없을 때, picar 직접 접속) |
+
+- ③에서는 RPi5가 `eth0`으로 인터넷에 나가고, AP 설정(`ipv4.method shared`)이 NAT를 해 주므로
+  **picar도 RPi5를 거쳐 인터넷에 나간다**(`pip install` 가능). picar에 인터넷이 필요해도 RPi4B를 공유기로 되돌리지
+  않는다(§6.4).
+- **유선(①~③)이 기본이다.** 대신 현장마다 RPi5 `eth0` 주소가 달라지므로, 도착하면 먼저 **RPi5 IP를 찾는다**(§2.1·§5.2).
+- ④는 주소를 찾을 필요가 없지만 대가가 두 가지다. PC 브라우저 영상과 picar 명령이 **같은 무선 채널을 나눠 쓰고**,
+  PC가 AP DHCP를 받으므로 **`.10` 충돌을 막아야** 한다(§6.5). 그래서 필요할 때만 쓴다.
+- 교육장 운영은 외부 장비에 기대지 않도록 ① 또는 ②로 한다.
+- 요즘 랜 포트는 자동 MDI-X라 **PC 1대는 허브 없이 직결**해도 된다.
+
+---
+
+## 2. 시작 전 준비
+
+> 🔴 **AP를 켜는 순간 RPi5는 공유기 Wi-Fi에서 빠진다.** Wi-Fi로 SSH 중이었다면 세션이 끊기고,
+> 유선 경로가 없으면 모니터·키보드를 직접 꽂는 수밖에 없다. **반드시 이 절을 먼저 끝낼 것.**
+
+### 2.1 RPi5 IP 찾기 — 호스트 이름(mDNS)
+
+> 설치 장소가 바뀌었을 때 **가장 먼저 하는 일**이 RPi5 주소 찾기다. 현장 순서는 §5.2.
+
+**문제.** 장소가 바뀌면 PC ↔ RPi5 유선 대역이 현장마다 다르다. AP 전환 전(§2~§4.5)에는 RPi5·RPi4B가 모두
+**공유기 DHCP**로 주소를 받는다. 장소(공유기)가 바뀔 때마다 주소가 달라지고, 모니터 없이는 몇 번인지 알 수 없다.
+③ 구성의 RPi5 `eth0`도 공유기 DHCP라 같은 문제가 있다.
+
+**해결.** 두 보드에 고정 호스트 이름을 붙인다. Raspberry Pi OS에는 mDNS 데몬(Avahi)이 기본으로 켜져 있어서,
+**같은 망 안이면** IP 대신 `<이름>.local`로 바로 찾아진다.
+
+| 보드 | 호스트 이름 | 접속 이름 |
+| --- | --- | --- |
+| RPi5 | `safesign-rpi5` | `safesign-rpi5.local` |
+| RPi4B (picar) | `safesign-picar` | `safesign-picar.local` |
+
+**설정** (보드마다 한 번, 모니터를 꽂거나 이미 아는 주소로 SSH 한 상태에서)
+
+```bash
+systemctl is-active avahi-daemon                  # active 여야 한다
+sudo raspi-config nonint do_hostname safesign-rpi5   # RPi4B에서는 safesign-picar
+sudo reboot                                        # /etc/hostname·/etc/hosts가 함께 바뀌고 재부팅 후 적용
+```
+
+> 💡 SD 카드를 새로 굽는다면 Raspberry Pi Imager **OS 설정(고급 옵션)**에서 호스트 이름·Wi-Fi·SSH를 미리 넣는다.
+> 그러면 **첫 부팅부터** `.local`로 찾을 수 있어 모니터가 아예 필요 없다.
+
+**PC에서 확인·접속** (PC가 보드와 같은 공유기/같은 유선에 붙어 있을 것)
+
+```powershell
+ping safesign-rpi5.local            # 응답 주소 = 지금 현장의 RPi5 IP
+ssh <rpi5 계정>@safesign-rpi5.local
+ssh <rpi4b 계정>@safesign-picar.local   # AP 전환 전(공유기에 붙어 있을 때)만
+```
+
+- 이름을 바꾼 뒤 첫 접속에서 호스트 키 확인을 한 번 묻는다(`known_hosts`가 이름 기준). 키 자체는 그대로이므로 `yes`.
+- 브라우저도 같다: `http://safesign-rpi5.local:8000`.
+
+**`.local`이 안 풀릴 때** (공유기가 mDNS를 막거나 기기 간 통신을 격리하는 회사·공용망)
+
+| 순서 | 방법 |
+| --- | --- |
+| 1 | 공유기 관리 화면의 **DHCP 클라이언트 목록**에서 `safesign-rpi5`·`safesign-picar` 이름 옆 IP를 본다 |
+| 2 | PC에서 대역을 한 번 훑고 ARP 표에서 **Raspberry Pi MAC 접두사**를 찾는다 (아래) |
+| 3 | 모니터·키보드를 꽂고 `hostname -I` |
+| 4 | 공유기를 포기하고 ① UTP 직결 — RPi5 `demo-link` `192.168.10.1` 고정이라 찾을 필요가 없다(§2.3·§5.4) |
+
+```powershell
+# PC(PowerShell) — 대역은 ipconfig의 PC 주소에 맞춰 바꾼다 (예: 192.168.0.x). 약 30초
+1..254 | ForEach-Object { ping -n 1 -w 100 192.168.0.$_ > $null }
+arp -a | Select-String "2c-cf-67|d8-3a-dd|dc-a6-32|e4-5f-01|28-cd-c1|b8-27-eb"
+```
+
+**AP 전환 후에는 이름을 쓰지 않는 곳이 있다.** RPi5 ↔ picar 링크(`192.168.50.10`, `PICAR_URL`, ProxyJump 대상)는
+**고정 IP를 그대로 쓴다.** 이름 해석이 한 단계 끼면 Avahi 상태에 따라 가끔 실패할 수 있고, 1:1 링크라 얻는 것이 없다.
+이름은 **PC → RPi5 입구**를 찾는 데만 쓴다.
+
+| 구간 | 무엇으로 부르나 |
+| --- | --- |
+| **PC → RPi5 (유선 ③, AP 전환 전, 장소가 바뀐 뒤)** | **`safesign-rpi5.local`** |
+| PC → RPi4B (AP 전환 전) | `safesign-picar.local` |
+| PC → RPi5 (①·② 운영 구성) | `192.168.10.1` 고정 (`.local`도 같이 됨) |
+| RPi5 → picar (AP 전환 후), web `PICAR_URL` | `192.168.50.10` 고정 — **바꾸지 않는다** |
+| PC → picar (PC가 유선 ①~③) | `ssh picar` (RPi5 경유 ProxyJump, §2.5) |
+| PC → RPi5 · picar (④ PC를 AP에 붙였을 때) | `192.168.50.1` · `192.168.50.10` 고정 (직접) |
+
+### 2.2 인터넷이 필요한 작업을 먼저 끝낸다
+
+①·② 구성에서는 AP 전환 후 인터넷이 없다. [루트 README](../README.md) §4.1(① 코드 받기, ② RPi4B I2C·가상환경,
+③ RPi5 apt·가상환경 3개)을 **RPi5·RPi4B 양쪽 모두** 미리 끝낸다. `pip`은 반드시 가상환경 안에서 실행하고
+`--break-system-packages`는 쓰지 않는다. (③ 구성이면 생략 가능)
+
+### 2.3 RPi5 `eth0` 설정
+
+**③ 구성**이면 기본 DHCP 프로파일을 그대로 쓴다. 공유기 관리 화면에서 RPi5 MAC에 **IP 예약**을
+걸어 두면 SSH 주소가 바뀌지 않는다.
+
+**①·② 운영 구성**용 고정 IP 프로파일은 지금 만들어 두되 **평소엔 꺼 둔다**:
+
+```bash
+# RPi5 — 공유기로 접속된 상태에서 실행
+nmcli connection show                # 기존 유선 프로파일 이름 확인 (보통 "Wired connection 1")
+
+sudo nmcli connection add type ethernet ifname eth0 con-name demo-link \
+     ipv4.method manual ipv4.addresses 192.168.10.1/24 \
+     connection.autoconnect no
+```
+
+전환 방법은 §5.4 참고.
+
+### 2.4 PC 유선 고정 IP (①·② 구성일 때)
+
+Windows **설정 → 네트워크 및 인터넷 → 이더넷 → IP 할당 → 편집 → 수동 → IPv4 켜기**
+
+| 항목 | 값 |
+| --- | --- |
+| IP 주소 | `192.168.10.2` (두 번째 PC는 `.3`, …) |
+| 서브넷 마스크 | `255.255.255.0` |
+| 게이트웨이 | **비워 둔다** — 비워야 PC 인터넷은 기존 Wi-Fi로 계속 나간다 |
+
+또는 관리자 PowerShell:
+
+```powershell
+netsh interface ipv4 set address name="이더넷" static 192.168.10.2 255.255.255.0
+```
+
+### 2.5 PC SSH 설정 (`C:\Users\<사용자>\.ssh\config`)
+
+**기본 (PC가 유선 ①~③)** — 이름으로 적어 두면 장소가 바뀌어도 고칠 것이 없다:
+
+```
+Host rpi5
+    HostName safesign-rpi5.local   # 이름이 안 풀리는 현장이면 §2.1로 찾은 IP (①② 고정이면 192.168.10.1)
+    User <rpi5 계정>
+
+Host picar
+    HostName 192.168.50.10
+    User <rpi4b 계정>
+    ProxyJump rpi5
+```
+
+**④ PC를 AP에 붙였을 때** — 주소가 고정이고 picar도 직접 닿는다:
+
+```
+Host rpi5-ap
+    HostName 192.168.50.1
+    User <rpi5 계정>
+
+Host picar-ap
+    HostName 192.168.50.10
+    User <rpi4b 계정>
+```
+
+- 이후 `ssh rpi5`, `ssh picar`(AP에 붙었으면 `-ap`)로 바로 접속한다. VS Code Remote-SSH도 이 설정을 그대로 쓴다.
+- `ProxyJump`는 RPi5를 **TCP 경유지**로만 쓰므로 RPi5에 라우팅(IP 포워딩) 설정이 필요 없다.
+- 설정 파일 없이 한 번만: `ssh -J <rpi5 계정>@<rpi5 IP> <rpi4b 계정>@192.168.50.10`
+
+### 2.6 현재 접속 경로 확인
+
+```bash
+# RPi5에서
+ip -4 addr show eth0     # 여기 IP로 SSH 중이어야 안전
+ip -4 addr show wlan0    # 여기 IP로 SSH 중이면 → 2.3~2.5를 먼저 끝낼 것
+```
+
+---
+
+## 3. RPi5를 AP로 설정
+
+> 기준: Raspberry Pi OS **Bookworm** (NetworkManager). 모든 명령은 **RPi5**에서 실행한다.
+
+### 3.1 환경 확인
+
+```bash
+cat /etc/os-release | grep VERSION_CODENAME   # bookworm
+systemctl is-active NetworkManager            # active
+nmcli device status                           # wlan0 이 wifi 로 보이는지
+```
+
+NetworkManager가 `active`가 아니면(구버전 dhcpcd 방식) 이 문서의 명령이 동작하지 않는다.
+
+### 3.2 국가 코드 · 무선 차단 해제
+
+국가 코드가 없으면 AP가 안 뜨거나 5GHz 채널이 막힌다.
+
+```bash
+sudo raspi-config nonint do_wifi_country KR
+iw reg get | head -3            # country KR 확인
+rfkill list                     # "Wireless LAN ... Soft blocked: yes" 이면 ↓
+sudo rfkill unblock wifi
+```
+
+### 3.3 AP 지원 · 5GHz 사용 가능 여부 확인
+
+```bash
+iw list | grep -A8 "Supported interface modes"   # "* AP" 가 있어야 함
+iw list | grep -A20 "Band 2" | grep MHz          # 5GHz 채널 목록
+```
+
+- 채널 옆에 `no IR` 또는 `disabled`가 붙은 채널로는 AP를 띄울 수 없다.
+- **36번(5180 MHz)** 이 깨끗하면 5GHz, 아니면 2.4GHz(`band bg`, `channel 6`)를 쓴다.
+- 어느 쪽을 썼는지 체크리스트(§5.6)에 적어 둔다.
+
+### 3.4 AP 연결 프로파일 생성
+
+`hotspot` 단축 명령 대신 **이름과 설정을 직접 지정**한다.
+(`hotspot`은 프로파일 이름이 `Hotspot`으로 고정되고, 기본 주소가 **10.42.0.1**로 잡힌다 — §6.2 참고)
+
+```bash
+sudo nmcli connection add type wifi ifname wlan0 con-name safesign-ap \
+     autoconnect yes ssid safesign \
+     802-11-wireless.mode ap \
+     802-11-wireless.band a \
+     802-11-wireless.channel 36 \
+     802-11-wireless.powersave 2 \
+     wifi-sec.key-mgmt wpa-psk \
+     wifi-sec.psk '<8자 이상 비밀번호>' \
+     ipv4.method shared \
+     ipv4.addresses 192.168.50.1/24 \
+     ipv6.method disabled \
+     connection.autoconnect-priority 100
+```
+
+| 설정 | 의미 |
+| --- | --- |
+| `mode ap` | 클라이언트가 아닌 AP로 동작 |
+| `band a` / `channel 36` | 5GHz 36번. 3.3에서 안 되면 **`band bg` / `channel 6`** |
+| **`powersave 2`** | **Wi-Fi 절전 끄기.** 켜 두면 패킷이 묶여 picar 명령 지연 예산(500ms)을 잡아먹는다(수십~수백 ms는 추정 — 이 구성에서 절전을 켜고 잰 적은 없다) |
+| `wpa-psk` / `psk` | WPA2 비밀번호 (8자 이상) |
+| `ipv4.method shared` | DHCP·DNS·NAT를 NetworkManager가 처리 (③ 구성에서 picar 인터넷 공유) |
+| `ipv4.addresses 192.168.50.1/24` | RPi5 AP 주소 |
+| `autoconnect-priority 100` | 부팅 시 다른 Wi-Fi 프로파일보다 먼저 선택 |
+
+> 🔒 **비밀번호를 저장소(문서·코드)에 적지 말 것.** 문서에는 `<8자 이상 비밀번호>` 자리표시만 둔다.
+> 실제 비밀번호는 설치 현장에서 정하고 따로 보관한다. RPi4B(§4.3)와 ④ PC 접속(§5.3)에 같은 값이 필요하다.
+
+### 3.5 기존 공유기 Wi-Fi 프로파일의 자동 연결 끄기
+
+```bash
+nmcli -f NAME,TYPE,AUTOCONNECT connection        # 기존 wifi 프로파일 이름 확인
+sudo nmcli connection modify "<공유기 프로파일>" connection.autoconnect no
+```
+
+- 끄지 않으면 부팅 시 `wlan0`이 공유기에 먼저 붙어 AP가 안 뜬다.
+- 프로파일은 **지우지 않는다** — 되돌릴 때(§6.7) 필요하다.
+- Raspberry Pi Imager로 Wi-Fi를 설정했다면 `preconfigured` 프로파일이 있을 수 있다. **`safesign-ap`을 제외한 모든 wifi 프로파일**을 끈다.
+
+### 3.6 AP 켜기
+
+```bash
+sudo nmcli connection up safesign-ap
+```
+
+Wi-Fi로 SSH 중이었다면 여기서 끊긴다(그래서 §2를 먼저 한다).
+
+### 3.7 동작 확인
+
+```bash
+nmcli device status              # wlan0  wifi  connected  safesign-ap
+ip -4 addr show wlan0            # inet 192.168.50.1/24
+ip route | grep 192.168.50       # 192.168.50.0/24 dev wlan0 ...
+iw dev wlan0 info                # type AP / channel 36 (5180 MHz)
+iw dev wlan0 get power_save      # Power save: off
+ps aux | grep [d]nsmasq          # --dhcp-range=192.168.50.x,... ← DHCP 범위 확인
+```
+
+- 휴대폰 Wi-Fi 목록에 `safesign`이 보이고 접속되면 AP 정상이다. §6.5 예약을 걸기 전이면 **확인 후 휴대폰 연결은 끊는다**
+  (`.10`을 받아 가면 picar와 충돌할 수 있다). PC를 AP에 붙이는 ④를 쓸 거라면 **§6.5 예약을 먼저** 건다.
+- `dnsmasq`의 `--dhcp-range`가 **`192.168.50.10`부터** 시작하는지 적어 둔다(§6.5).
+
+---
+
+## 4. RPi4B(picar)를 AP에 연결
+
+> 목표: 부팅하면 **RPi5 AP에 자동으로 붙고**, 주소는 **항상 192.168.50.10**, 공유기가 근처에 있어도
+> **AP만** 잡는다.
+>
+> 전제: §3의 RPi5 AP가 켜져 있을 것. 표시가 없는 명령은 **RPi4B**에서 실행한다.
+
+### 4.0 순서가 중요한 이유
+
+RPi4B는 지금 공유기 Wi-Fi로 SSH 중일 것이다. **AP에 붙는 순간 공유기에서 빠지므로 그 세션은 반드시
+끊긴다.** 이후에는 RPi5를 거쳐서만 들어갈 수 있다. 그래서 다음 순서로 한다.
+
+1. 공유기에 붙은 상태에서 **설정만 미리 만든다** (아직 켜지 않음) — 4.3
+2. 실패에 대비해 **자동 복구를 예약한다** — 4.4
+3. AP로 **전환**한다 — 4.5
+4. **RPi5에서** 접속해 확인하고 예약을 취소한다 — 4.6
+
+### 4.1 환경 확인
+
+```bash
+cat /etc/os-release | grep VERSION_CODENAME   # bookworm
+systemctl is-active NetworkManager            # active
+sudo raspi-config nonint do_wifi_country KR   # RPi5와 같은 국가 코드
+rfkill list                                    # 막혀 있으면 sudo rfkill unblock wifi
+```
+
+### 4.2 AP가 보이는지 확인
+
+```bash
+sudo nmcli device wifi rescan
+nmcli device wifi list | grep safesign
+```
+
+```
+   safesign   Infra  36  54 Mbit/s  80  ▂▄▆_  WPA2
+```
+
+안 보이면 RPi5 AP가 꺼졌거나 5GHz 채널 문제다. RPi5를 `band bg channel 6`으로 바꿔 본다.
+
+### 4.3 연결 프로파일 생성 (아직 켜지 않음)
+
+`nmcli device wifi connect`는 **실행 즉시 전환**되므로 쓰지 않는다. `connection add`로 설정만 만든다.
+
+```bash
+sudo nmcli connection add type wifi ifname wlan0 con-name safesign \
+     autoconnect yes ssid safesign \
+     802-11-wireless.powersave 2 \
+     wifi-sec.key-mgmt wpa-psk \
+     wifi-sec.psk '<RPi5 AP와 같은 비밀번호>' \
+     ipv4.method manual \
+     ipv4.addresses 192.168.50.10/24 \
+     ipv4.gateway 192.168.50.1 \
+     ipv4.dns 192.168.50.1 \
+     ipv6.method disabled \
+     connection.autoconnect-priority 100 \
+     connection.autoconnect-retries 0
+```
+
+| 설정 | 의미 |
+| --- | --- |
+| `ipv4.method manual` | **고정 IP** — DHCP로 받지 않는다 |
+| `ipv4.addresses 192.168.50.10/24` | picar 주소 (`PICAR_URL` 대상) |
+| `ipv4.gateway 192.168.50.1` | 외부로 나가는 출구 = RPi5 (③ 구성에서 인터넷) |
+| `ipv4.dns 192.168.50.1` | 이름 조회를 RPi5에 맡긴다 (`shared` 모드가 DNS를 중계). 없으면 인터넷이 IP로만 됨 |
+| **`powersave 2`** | **절전 끄기.** picar는 명령을 **받는 쪽**이라 절전 시 수신이 늦어질 수 있다(수백 ms는 추정, 실측 없음). 가장 중요 |
+| `autoconnect yes` | 부팅 시 자동 연결 |
+| `autoconnect-priority 100` | 부팅 시 공유기(기본 0)보다 먼저 선택 |
+| **`autoconnect-retries 0`** | **무한 재시도.** 기본은 4회 실패 후 약 5분간 재시도를 멈춘다 — RPi5 부팅이 늦으면 picar가 한참 오프라인으로 남는다 |
+
+#### 우선순위(priority)의 한계
+
+- priority는 **"처음 고를 때"만** 쓰인다. 이미 연결된 상태에서는 더 높은 쪽으로 **갈아타지 않는다.**
+- 그래서 RPi5 AP가 잠깐 꺼진 사이 RPi4B가 공유기로 넘어가면, AP가 다시 떠도 **공유기에 그대로 머문다**(§6.4).
+- 따라서 priority만으로는 막을 수 없고, **공유기 프로파일의 자동 연결을 꺼야 한다**(4.5).
+
+### 4.4 안전장치 — 자동 복구 예약
+
+전환이 실패하면(비밀번호 오타 등) RPi4B에 **접속할 경로가 사라진다.** 전환 전에 "N분 뒤 공유기로
+되돌리기"를 예약한다.
+
+```bash
+nmcli -f NAME,TYPE,AUTOCONNECT connection      # 공유기 프로파일 이름 확인
+sudo systemd-run --on-active=5min nmcli connection up "<공유기 프로파일>"
+# → Running timer as unit: run-r1234abcd.timer   ← 이 이름을 적어 둔다
+```
+
+- **5분**으로 둔다. 3분으로 했을 때 확인하기 전에 먼저 발동해 공유기로 돌아간 적이 있다(§6.3).
+- 성공하면 4.6에서 취소한다. 실패하면 5분 뒤 자동으로 공유기로 돌아오므로 공유기 IP로 다시 SSH한다.
+
+### 4.5 공유기 자동 연결 끄기 → AP로 전환
+
+```bash
+sudo nmcli connection modify "<공유기 프로파일>" connection.autoconnect no
+# preconfigured 등 다른 wifi 프로파일이 있으면 모두 같은 방식으로 끈다
+sudo nmcli connection up safesign
+```
+
+여기서 SSH 세션이 **끊기는 것이 정상**이다.
+
+### 4.6 확인 (5분 안에, **RPi5 터미널에서**)
+
+> ⚠️ **PC에서 바로 `ssh 192.168.50.10`을 하면 `No route to host`가 나는 것이 정상이다.** PC는 `192.168.50.x`
+> 망을 모른다. RPi5에서 하거나 `ssh picar`(ProxyJump)를 쓴다.
+
+```bash
+# RPi5에서
+iw dev wlan0 station dump | grep Station   # RPi4B MAC이 보여야 함
+ping -c3 192.168.50.10
+ssh <rpi4b 계정>@192.168.50.10
+```
+
+접속되면 **RPi4B 안에서** 상태를 확인하고 **예약을 취소**한다:
+
+```bash
+ip -4 addr show wlan0          # inet 192.168.50.10/24
+ip route                       # default via 192.168.50.1
+iw dev wlan0 get power_save    # Power save: off
+iw dev wlan0 link              # SSID: safesign / freq: 5180(5GHz일 때) / signal
+nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY connection
+#   safesign  yes  100
+#   <공유기>  no   0      ← 반드시 no
+ping -c3 8.8.8.8               # ③ 구성이면 성공, ①·②면 실패가 정상
+
+systemctl list-timers | grep run-
+sudo systemctl stop run-r1234abcd.timer    # ← 4.4 예약 취소 (잊지 말 것!)
+```
+
+> 🔴 **예약을 취소하지 않으면 5분 뒤 공유기로 돌아간다.** 공유기 자동 연결을 꺼 뒀어도 이 예약은
+> 연결을 **직접 켜는** 명령이라 실행된다.
+
+마지막으로 picar 서비스가 RPi5에서 보이는지 확인한다. RPi4B에서 picar를 [루트 README](../README.md)
+§4.2 **터미널 1**대로 띄운 뒤(가상환경 활성화 + `--host 0.0.0.0` 필수 — 없으면 RPi5에서 접속할 수 없다):
+
+```bash
+# RPi5
+curl http://192.168.50.10:8000/health     # "status":"ok", hardware.i2c.reachable: true
+```
+
+---
+
+## 5. 확인과 현장 접속
+
+### 5.1 재부팅 검증
+
+두 경우를 **각각** 확인한다. 둘 다 통과해야 교육 당일 전원을 켜는 순서를 신경 쓰지 않아도 된다.
+
+| 시나리오 | 방법 | 통과 기준 |
+| --- | --- | --- |
+| **RPi4B만 재부팅** | RPi4B `sudo reboot` → RPi5에서 30초~1분 뒤 `ping -c3 192.168.50.10` | 응답 옴 |
+| **RPi5만 재부팅** | RPi5 `sudo reboot` → AP가 뜬 뒤 1분 대기 → RPi5에서 `ping -c3 192.168.50.10` | 응답 옴, RPi4B가 **공유기로 가지 않음** |
+
+RPi5 쪽 AP 주소가 유지되는지도 확인한다:
+
+```bash
+# RPi5 재부팅 후
+nmcli device status              # wlan0 → safesign-ap
+ip -4 addr show wlan0            # 192.168.50.1/24
+```
+
+### 5.2 장소가 바뀌었을 때 — RPi5 IP부터 찾는다
+
+AP·picar 쪽(`192.168.50.x`)은 어디서든 같다. 바뀌는 것은 **PC ↔ RPi5 유선 주소뿐**이므로 이것만 찾으면 된다.
+
+1. PC와 RPi5 `eth0`을 **같은 망**에 붙인다 — 현장 공유기·허브(③) 또는 UTP 직결(①).
+2. PC에서 이름으로 찾는다.
+
+   ```powershell
+   ping safesign-rpi5.local     # 응답 주소 = 이 현장의 RPi5 IP
+   ssh rpi5                     # §2.5 기본 설정이면 이름으로 바로 들어간다
+   ```
+
+3. 안 풀리면 §2.1 대안표 순서대로 한다(공유기 DHCP 목록 → ARP 훑기 → 모니터 `hostname -I` → ① 직결 `192.168.10.1`).
+4. RPi5에 들어가면 `bash scripts/rpi/start_all.sh` — 마지막 줄에 PC 브라우저 주소(`eth0` 기준)가 나온다.
+
+> 교육장처럼 **미리 정해진 곳**이면 ①·② 고정 구성(`demo-link` `192.168.10.1`, §5.4)으로 두어 찾는 일 자체를 없앤다.
+
+### 5.3 PC를 AP에 직접 붙이기 (④ 필요할 때)
+
+현장 유선이 마땅치 않거나 picar에 직접 붙어 봐야 할 때 쓴다.
+
+1. **§6.5 `.10` 예약이 걸려 있는지 먼저 확인한다** — 안 걸려 있으면 PC가 `.10`을 받아 picar와 충돌할 수 있다.
+2. PC Wi-Fi 목록에서 `safesign`에 접속한다(비밀번호는 §3.4의 PSK). PC는 `192.168.50.x`를 자동으로 받는다.
+3. 브라우저 `http://192.168.50.1:8000`, SSH `ssh rpi5-ap` · `ssh picar-ap`(§2.5).
+4. 다 쓰면 PC Wi-Fi를 원래 망으로 돌린다.
+
+- PC 인터넷은 **RPi5 `eth0`에 인터넷 유선이 꽂혀 있을 때만** 된다(NAT, §1.1). Windows는 이 Wi-Fi를 기본 경로로 잡으므로,
+  인터넷 유선이 없으면 PC 인터넷도 끊긴다고 보면 된다. 이때 web 회원 로그인·가입은 안 되고(게스트로 진행), 학습 결과는
+  RPi5에 쌓였다가 연결되면 다시 보낸다(`services/web/backend/members.py` "인터넷이 끊겼을 때").
+- PC 브라우저 영상과 picar 명령이 같은 채널을 쓴다. 붙인 상태에서 RPi5에서 한 번 확인한다:
+
+```bash
+iw dev wlan0 station dump | grep -E "Station|signal"  # picar + PC
+cat /var/lib/NetworkManager/dnsmasq-wlan0.leases      # PC 주소가 .10이 아닌지
+ping -c 10 192.168.50.10                              # 지연·손실 — 늘었으면 PC를 유선으로
+```
+
+### 5.4 유선 구성(①~③) 전환
+
+PC를 유선으로 붙일 때는 RPi5 `eth0`만 바꾸면 된다. `wlan0`(AP)과 RPi4B는 그대로다.
+
+```bash
+# 운영: 고정 192.168.10.1 (①·② 구성)
+sudo nmcli connection up demo-link
+
+# 공유기 DHCP로 복귀 (③ 구성)
+sudo nmcli connection up "Wired connection 1"     # 기본 유선 프로파일 이름 (nmcli connection show로 확인)
+```
+
+교육 당일 부팅 때부터 고정 IP로 올라오게 하려면:
+
+```bash
+sudo nmcli connection modify demo-link connection.autoconnect yes
+sudo nmcli connection modify "Wired connection 1" connection.autoconnect no
+```
+
+> 전환하면 RPi5의 유선 주소가 바뀐다. PC `~/.ssh/config`의 `rpi5`를 `safesign-rpi5.local`(§2.5 기본)로 적어 두었다면
+> 고칠 것이 없다. IP로 적었다면 `HostName`도 함께 바꾼다.
+
+서비스 실행은 두 구성 모두 같다 — [루트 README](../README.md) §4.2를 따른다. `eth0` 전환은 `wlan0`(picar)
+경로에 영향을 주지 않는다.
+
+### 5.5 설정값 요약
+
+| 보드 | 프로파일 | 핵심 설정 | autoconnect |
+| --- | --- | --- | --- |
+| RPi5 | `safesign-ap` | `mode ap`, SSID `safesign`, 5GHz ch36(안 되면 2.4GHz ch6), `shared`, `192.168.50.1/24`, `powersave 2`, priority 100 | yes |
+| RPi5 | `demo-link` | `eth0`, `manual`, `192.168.10.1/24` | no (운영 구성에서는 yes) |
+| RPi5 | `Wired connection 1` | `eth0`, DHCP (③) | yes (운영 구성에서는 no) |
+| RPi5 | 기존 공유기 Wi-Fi | — | **no** |
+| RPi5 | (dnsmasq) `dnsmasq-shared.d/safesign-picar.conf` | `dhcp-host=<picar MAC>,192.168.50.10` — `.10` 예약 (§6.5) | — |
+| PC | `safesign` Wi-Fi (④ 필요할 때) | AP DHCP `192.168.50.x` | 선택 |
+| RPi4B | `safesign` | SSID `safesign`, `manual 192.168.50.10/24`, gw·dns `192.168.50.1`, `powersave 2`, priority 100, `autoconnect-retries 0` | yes |
+| RPi4B | 기존 공유기 Wi-Fi | — | **no** |
+
+### 5.6 체크리스트
+
+설치할 때마다 새로 채운다.
+
+**준비**
+- [ ] 호스트 이름 `safesign-rpi5`·`safesign-picar` 설정, PC에서 `ping <이름>.local` 응답
+- [ ] 인터넷이 필요한 설치 작업 완료 (RPi5·RPi4B)
+- [ ] RPi5 `eth0` 유선 접속 경로 확보, `demo-link` 프로파일 생성
+- [ ] PC `~/.ssh/config`에 `rpi5` / `picar`(ProxyJump) 등록
+
+**RPi5 AP**
+- [ ] 국가 코드 `KR`, `rfkill` 해제
+- [ ] 사용 대역·채널 기록 (5GHz ch36 / 2.4GHz ch6)
+- [ ] `safesign-ap` 생성·기동, `wlan0 = 192.168.50.1/24`, `Power save: off`
+- [ ] 공유기 Wi-Fi 프로파일 autoconnect `no`
+- [ ] dnsmasq DHCP 범위 기록 (`.10` 포함 여부)
+- [ ] `.10` picar 예약(§6.5) 적용, PC를 AP에 붙였을 때 `.10`을 받지 않음
+
+**RPi4B**
+- [ ] `safesign` 생성 (고정 IP, 절전 off, priority 100, retries 0)
+- [ ] 공유기 Wi-Fi 프로파일 전부 autoconnect `no`
+- [ ] 전환 후 RPi5에서 `ping` / `ssh` 성공
+- [ ] **자동 복구 예약(`run-*.timer`) 취소**
+- [ ] `curl http://192.168.50.10:8000/health` → `ok`
+
+**장소 이동 · ④**
+- [ ] 다른 망(현장 공유기 등)에서 `ping safesign-rpi5.local` → `ssh rpi5` 성공
+- [ ] (④ 쓸 때) PC가 `safesign`에 붙어 `192.168.50.1`·`.10` 모두 `ping`·`ssh` 성공, 영상 켠 상태 `ping` 지연 기록
+
+**재부팅**
+- [ ] RPi4B만 재부팅 → 자동 복귀
+- [ ] RPi5만 재부팅 → RPi4B가 공유기로 가지 않고 AP로 복귀
+
+---
+
+## 6. 문제 해결
+
+### 6.1 증상별 조치표
+
+| 증상 | 원인 / 조치 |
+| --- | --- |
+| RPi5 `connection up`에서 `No suitable device` | `rfkill` 차단 → `sudo rfkill unblock wifi` |
+| 5GHz로 AP가 안 뜸 / 휴대폰에 안 보임 | 채널 규제 → `band bg channel 6`으로 바꾸고 `down` → `up` |
+| AP가 켜졌다가 곧 꺼짐 | 공유기 프로파일이 `wlan0`을 가져감 → §3.5 |
+| 휴대폰은 붙는데 IP를 못 받음 | `ipv4.method shared` 누락 → `journalctl -u NetworkManager -b \| grep -i dnsmasq` |
+| **PC에서** `ssh 192.168.50.10` → `No route to host` | **정상.** PC는 50.x 망을 모름 → RPi5에서 하거나 `ssh picar` |
+| **RPi5에서** `No route to host` | §6.2 · §6.3 순서로 진단 |
+| RPi4B가 AP에 못 붙음, 로그에 `secrets were required` 반복 후 실패 | 비밀번호 불일치 → `sudo nmcli connection modify safesign wifi-sec.psk '<비밀번호>'` |
+| RPi4B가 AP에 붙었는데 `.10`이 응답 없음 | 고정 IP 오타 또는 DHCP로 받음 → §6.6 |
+| 가끔 끊겼다 붙음 | `.10` 주소 충돌(§6.5) 또는 신호 약함 → `iw dev wlan0 link`의 signal |
+| ④(PC를 AP에)에서 PC 영상을 켜면 picar 반응이 늦어짐 | 무선 채널을 나눠 씀 → RPi5에서 `ping -c 10 192.168.50.10`, 늘었으면 PC를 유선으로(§5.3) |
+| 인터넷이 IP로는 되는데 이름으로는 안 됨 | RPi4B `ipv4.dns 192.168.50.1` 누락 |
+| picar 응답이 들쭉날쭉 느림 | `iw dev wlan0 get power_save`가 `on` → `powersave 2` 재적용 후 `down`/`up` |
+| **RPi5 재부팅 후 RPi4B가 공유기로 붙음** | §6.4 |
+| PC에서 `safesign-rpi5.local`이 안 풀림 | PC·RPi5가 같은 망(같은 공유기/유선)인지 확인 → 같은데도 안 되면 망이 mDNS를 막는 것 → §2.1 대안표 |
+
+설정을 바꾼 뒤에는 `sudo nmcli connection down <프로파일> && sudo nmcli connection up <프로파일>`로
+다시 적용한다. **RPi4B에서 이 명령을 칠 때도 SSH가 끊길 수 있으니 §4.4 예약을 먼저 건다.**
+
+서비스 실행 중 생기는 문제(장치 상태 unreachable 등)는 [루트 README](../README.md) §4.6을 본다.
+
+### 6.2 RPi5 AP 주소가 192.168.50.1이 아님 (10.42.0.1)
+
+- **원인**: `nmcli device wifi hotspot`으로 AP를 만들면 기본 주소가 **10.42.0.1**이다.
+  이후 `ipv4.addresses`를 바꿔도 **`down` → `up`을 하지 않으면 옛 주소가 남는다.** RPi5가 50.x 망에
+  없으므로 `No route to host`가 난다.
+- **확인**: RPi5에서 `ip -4 addr show wlan0`
+- **조치**:
+  ```bash
+  nmcli connection show                         # AP 프로파일 이름 (Hotspot 또는 safesign-ap)
+  sudo nmcli connection modify <AP 프로파일> ipv4.method shared ipv4.addresses 192.168.50.1/24
+  sudo nmcli connection down <AP 프로파일> && sudo nmcli connection up <AP 프로파일>
+  ```
+
+### 6.3 AP 접속은 성공했는데 확인 전에 공유기로 돌아감
+
+- **증상**: RPi5·PC에서 `ssh 192.168.50.10` → `No route to host`. 나중에 공유기로 RPi4B에 접속해 로그를 보면
+  `Connected to wireless network "safesign"`(AP 접속 성공)과 `set 'safesign' (wlan0) as default for IPv4`(고정 IP·게이트웨이
+  적용)가 찍힌 뒤 몇 분 지나 공유기 access point로 돌아간 기록이 남아 있다.
+- **원인**: AP 접속 자체는 성공했지만, 확인하기 전에 **자동 복구 예약(3분)이 먼저 발동**했다.
+  그 사이의 SSH 실패는 PC에서 직접 시도했거나(§6.1), RPi5 AP 주소 문제(§6.2)였다.
+- **조치**: 예약을 **5분**으로 늘리고, 확인은 **RPi5 터미널에서** 한다.
+- **진단 명령** (RPi4B, 공유기로 접속한 상태):
+  ```bash
+  journalctl -u NetworkManager -b | grep -iE "safesign|secrets|fail" | tail -20
+  ```
+
+### 6.4 RPi5 재부팅 후 RPi4B가 기존 공유기에 자동 연결됨
+
+- **원인**:
+  1. RPi5 재부팅 → AP 사라짐 → RPi4B 연결 끊김
+  2. NetworkManager가 **자동 연결이 켜진, 지금 보이는 다른 Wi-Fi**(공유기)에 붙음
+  3. RPi5 AP가 다시 떠도 **이미 연결된 상태라 갈아타지 않음** (priority는 처음 고를 때만 적용)
+- **조치** (RPi4B, 공유기로 접속한 상태):
+  ```bash
+  nmcli -f NAME,TYPE,AUTOCONNECT,AUTOCONNECT-PRIORITY connection   # safesign 외 wifi는 전부 no여야 함
+  sudo nmcli connection modify "<공유기 프로파일>" connection.autoconnect no      # 다른 wifi 프로파일도 모두
+  sudo nmcli connection modify safesign connection.autoconnect-retries 0
+  sudo systemd-run --on-active=5min nmcli connection up "<공유기 프로파일>"       # 안전장치
+  sudo nmcli connection up safesign
+  # → RPi5에서 접속 확인 후 예약 취소 (§4.6)
+  ```
+- **트레이드오프**: 공유기 자동 연결을 끄면 **RPi5 AP가 꺼져 있을 때 RPi4B는 네트워크가 전혀 없다**
+  (SSH도 불가). **교육 운영에는 이것이 올바른 동작**이다. 차가 엉뚱한 망에 붙어 조용히 사라지는 것보다
+  AP만 기다리는 편이 낫다. picar에 인터넷이 필요하면 RPi4B를 공유기로 되돌리지 말고 **③ 구성**을 쓴다.
+
+### 6.5 `.10` 주소 충돌
+
+- `ipv4.method shared`에서는 NetworkManager가 dnsmasq로 DHCP를 돌린다. §3.7에서 본 `--dhcp-range`가
+  **`192.168.50.10`부터** 시작하면 다음 일이 생길 수 있다:
+  > picar가 꺼진 동안 휴대폰이 AP에 붙음 → 휴대폰이 `.10`을 받음 → picar 켜짐 → **같은 주소 2대** →
+  > picar 통신이 끊겼다 붙었다 함
+- AP에 **picar만** 붙인다면 그대로 써도 된다. **PC를 AP에 붙이는 ④(§5.3)를 쓸 거면 아래 예약을 먼저 건다.**
+- **예약(주소 변경 없음 — 권장)**: dnsmasq에 "`.10`은 picar MAC 전용"이라고 알려 두면 다른 기기에 `.10`을 내주지 않는다.
+
+```bash
+# RPi4B — picar Wi-Fi MAC 확인
+cat /sys/class/net/wlan0/address
+
+# RPi5 — NetworkManager의 shared 모드 dnsmasq가 읽는 폴더
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+echo 'dhcp-host=<picar MAC>,192.168.50.10' | sudo tee /etc/NetworkManager/dnsmasq-shared.d/safesign-picar.conf
+sudo nmcli connection down safesign-ap && sudo nmcli connection up safesign-ap   # picar가 잠깐 끊겼다 다시 붙는다
+ps aux | grep [d]nsmasq      # --conf-dir=/etc/NetworkManager/dnsmasq-shared.d 가 보이면 적용된 것
+```
+
+  > ⬜ 이 예약 절차는 실물에서 아직 확인하지 않았다. 적용 후 PC를 붙였다 떼기를 몇 번 해서 PC가 `.10`을 받지 않는지
+  > 확인하고 체크리스트(§5.6)에 적는다. 예약이 안 먹었는지는 `cat /var/lib/NetworkManager/dnsmasq-wlan0.leases`에
+  > `.10`이 있는지로 안다(picar는 고정 IP라 원래 없다).
+- 예약이 안 되면 picar를 **범위 밖 주소**(예: `192.168.50.200`)로 옮긴다. 이 경우 4.3의 `ipv4.addresses`,
+  web 실행 시 `PICAR_URL`, 실행 스크립트의 `PICAR_HOST`(§1.3)를 함께 바꾼다.
+
+### 6.6 RPi4B가 AP에는 붙었는데 주소를 모를 때 (RPi5에서)
+
+```bash
+iw dev wlan0 station dump | grep -E "Station|signal"   # 붙어 있는 기기
+ip neigh show dev wlan0                                # 주소 ↔ MAC 대응 (FAILED는 응답 없음)
+cat /var/lib/NetworkManager/dnsmasq-wlan0.leases       # DHCP로 받아 간 기기
+```
+
+| station dump | ip neigh / leases | 원인 |
+| --- | --- | --- |
+| 비어 있음 | — | RPi4B가 AP에 접속 못 함 → §6.3 진단 명령 |
+| 기기 있음 | leases에 기기 있음 | 고정 IP가 아닌 **DHCP**로 받음 → leases의 IP로 접속해 `ipv4.method manual` 재설정 |
+| 기기 있음 | `.10` FAILED, leases 비어 있음 | 고정 IP **오타** → 설정 확인 |
+
+RPi4B에서 설정 확인·수정:
+
+```bash
+nmcli -f ipv4.method,ipv4.addresses,ipv4.gateway connection show safesign
+sudo nmcli connection modify safesign ipv4.method manual \
+     ipv4.addresses 192.168.50.10/24 ipv4.gateway 192.168.50.1 ipv4.dns 192.168.50.1
+sudo nmcli connection down safesign && sudo nmcli connection up safesign
+```
+
+### 6.7 되돌리기 (공유기로 복귀)
+
+> 순서: **RPi4B를 먼저** 되돌린다. RPi5 AP를 먼저 끄면 RPi4B에 접속할 경로가 사라진다.
+
+**RPi4B** — RPi5를 거쳐 접속한 상태에서:
+
+```bash
+sudo nmcli connection modify "<공유기 프로파일>" connection.autoconnect yes
+sudo nmcli connection modify safesign connection.autoconnect no
+sudo nmcli connection up "<공유기 프로파일>"      # 여기서 세션 끊김 → 공유기 IP로 재접속
+```
+
+**RPi5**:
+
+```bash
+sudo nmcli connection down safesign-ap
+sudo nmcli connection up "<공유기 프로파일>"
+# 부팅 때도 공유기를 쓰려면
+sudo nmcli connection modify safesign-ap connection.autoconnect no
+sudo nmcli connection modify "<공유기 프로파일>" connection.autoconnect yes
+```

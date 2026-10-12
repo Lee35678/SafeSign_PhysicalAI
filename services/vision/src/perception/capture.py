@@ -46,9 +46,6 @@ logger = logging.getLogger(__name__)
 MOCK_CAMERA = os.getenv("MOCK_CAMERA", "true").lower() == "true"
 MODEL_PATH = os.getenv("HAND_LANDMARKER_MODEL", "models/hand_landmarker.task")
 
-# 03_인터페이스계약서 §2 확정값 (참고용 — 실제 기본값은 아래 CAPTURE_*)
-CONTRACT_WIDTH, CONTRACT_HEIGHT, CONTRACT_FPS = 1920, 1080, 60
-
 CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "csi").lower()
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 CAPTURE_SIZE = os.getenv("CAPTURE_SIZE", "1280x720")

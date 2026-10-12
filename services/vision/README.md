@@ -1,266 +1,193 @@
-# vision — Perception + Cognition (담당: 이동혁)
+# vision — 카메라 수신호 판정 (RPi5)
 
-RACI: 파이프라인·판정로직 **R**, 하드웨어·로봇동작 **A**
+Camera Module 3로 학습자의 손을 찍어, 지금 하고 있는 수신호가 7종 중 무엇인지 판정하는 서비스다.
+RPi5에서 네이티브로 실행하며 포트 8001을 쓴다. web은 이 서비스의 `/latest`를 읽어 판정을 받고,
+`/stream`을 중계해 학습 화면에 카메라 영상을 띄운다.
 
-```
-Raspberry Pi Camera Module 3 (CSI) → MediaPipe HandLandmarker (LIVE_STREAM)
-  → 정규화(좌우손·원점·스케일·회전) → 63차원 특징벡터
-  → SVM(RBF) 분류(8클래스) + τ 미달 미판정 + N프레임 연속 확인 → predicted_class, confidence
-  → 7종별 확률(class_probabilities) — web이 목표 수신호 값 × 100을 학습자 화면 '일치율'로 쓴다 (2026-09-30)
-  → (참고) 템플릿 cosine similarity → match_score(0~100, 클래스별 환산)
-  수식 전체: document/05_모델카드.md §10
-```
+판정하는 수신호 7종: 정지, 서행, 좌회전_유도, 우회전_유도, 확인_완료, 후진, 주의.
+7종이 아니거나 확신이 부족하면 `negative`(미판정)로 나온다.
 
-근거 문서: `document/05_모델카드.md`(모델 카드) · `document/02_설계문서.md` §1-1·§4 ·
-`document/03_인터페이스계약서.md` §2~4 · `document/10_PRD.md`
+## 1. 판정 원리
 
----
+1. MediaPipe Hand Landmarker가 영상에서 손 관절 21개의 좌표를 뽑는다.
+2. 좌표를 정규화(좌우 손·원점·크기·회전 맞춤)한 뒤 관절 각도·거리 23개 값으로 바꾼다.
+3. SVM이 7종별 확률을 낸다. 7종 어디에도 속하지 않는 손모양은 소속 게이트가 먼저 걸러 낸다.
+4. 가장 높은 확률이 τ(기본 0.75)보다 낮으면 미판정이다.
+5. 같은 수신호가 N프레임(기본 3) 연속으로 나와야 판정을 확정한다.
 
-## 1. 지금 바로 알아야 할 것
-
-- **학습도 추론도 로컬에서 한다** (2026-09-21 정정). 전체 27,735건 학습이 16초라 Colab이 필요
-  없었다. `python training/train_svm.py` 한 줄이면 [`models/`](models/README.md)에 번들이 생긴다.
-  Colab 노트북은 대체 경로로만 남겨둔다.
-- **학습 클래스는 7종이다.** `negative`는 학습하지 않고, τ 미달·소속 게이트 차단을 미판정으로
-  처리해 그 출력 라벨로만 쓴다 (2026-09-21 회의 안건 2 A).
-- **특징은 관절 각도·거리 23차원**(`joint23`)이다. 좌표 63차원보다 +11.1%p 낫다
-  ([`MODEL_TRAINING.md`](MODEL_TRAINING.md) §2-2).
-- **소속 게이트**가 "7종이 아닌 손모양"을 막는다. τ만으로는 못 막는 구조적 한계가 있어서다
-  (같은 문서 §2-3).
-- **손 방향 축(69차원)은 구현돼 있지만 꺼져 있다.** 손을 기울여도 100%가 나와 켤 근거가 없다.
-- **모델이 없어도 서비스는 뜬다.** 데이터·카메라가 아직 없으므로 기본 동작은 "항상 미판정"이다
-  (`reason: model_not_loaded`). 배선·통합 검증을 먼저 하라는 PRD 우선순위(10_PRD §11)에 맞춘 설계.
-- **왜 이런 알고리즘/전처리인지**는 [`MODEL_TRAINING.md`](MODEL_TRAINING.md)에 정리했다.
-
-## 2. 디렉터리
+## 2. 구성 파일
 
 ```
 src/
-├── app.py                    FastAPI 진입점 (/health, /latest, /predict, /reset)
+├── app.py                  HTTP 서버 (아래 §5 API)
 ├── perception/
-│   ├── capture.py            카메라 → MediaPipe LIVE_STREAM 콜백 → landmark_frame (+ /health 카메라 상태)
-│   └── camera_source.py      CSI(picamera2) · USB(OpenCV) 카메라 열기 — 촬영·확인 도구와 공용
+│   ├── capture.py          카메라 → MediaPipe → 손 관절 좌표
+│   ├── camera_source.py    CSI(picamera2) · USB(OpenCV) 카메라 열기
+│   └── preview.py          라이브 영상(MJPEG) 인코딩
 └── cognition/
-    ├── normalize.py          21 keypoints → 63차원(+방향 6) 특징벡터 (학습·추론 공용, 05 §3-5)
-    ├── classify.py           SVM 추론 + τ 판정 + match_score → judgment_result
-    ├── model_store.py        학습 번들(joblib) 로드 + feature_mode 확인 (없으면 안전하게 미판정)
-    ├── templates.py          템플릿 DB 조회 + cosine similarity → 0~100 매핑
-    └── smoothing.py          N프레임 연속 동일 클래스 확인 (§3-6)
-training/
-├── train_svm.py                 로컬 학습 스크립트 (기본 경로)
-└── train_svm_colab.ipynb        Colab 노트북 (대체 경로)
+    ├── normalize.py        좌표 정규화 → 특징값
+    ├── classify.py         SVM 판정 + 소속 게이트 + τ
+    ├── smoothing.py        N프레임 연속 확인
+    ├── model_store.py      판정 모델 파일 읽기
+    └── templates.py        일치율(match_score) 계산
+models/                     모델 파일 자리 → models/README.md
 scripts/
-├── webcam_check.py              웹캠/CSI 카메라로 학습된 모델을 눈으로 확인 (--source csi, --log 로 진단 로그)
-├── run_rpi5.sh                  RPi5 에서 CSI 카메라로 서비스 실행
-├── camera_source.py             (호환용) src/perception/camera_source.py 를 다시 내보냄
-├── record_dataset.py            KPI 측정용 평가 데이터 촬영 (카운트다운 + 테이크 관리)
-├── evaluate_kpi.py              자체 촬영 데이터로 KPI 5개 지표 계산
-├── analyze_log.py               webcam_check 로그 분석 (오판정 원인 추적)
-└── make_dummy_dataset.py        (데이터 오기 전) 예행연습용 더미 데이터 생성기
-models/                          학습된 번들을 넣는 자리
-tests/                           카메라 없이 도는 단위 테스트 (정규화 불변성 + 분류 경로)
+├── run_rpi5.sh             RPi5에서 서비스 실행
+└── webcam_check.py         카메라·판정을 화면으로 점검
+requirements.txt
 ```
 
-## 3. API
+학습 파이프라인과 평가 도구는 개발 브랜치 `dev`에 있다.
 
-| 엔드포인트 | 용도 |
-| --- | --- |
-| `GET /health` | 서비스 상태 + **모델 적재 여부/τ/클래스/템플릿 목록** |
-| `GET /latest` | 최신 판정 결과(judgment_result). **웹 상태머신이 폴링하는 실제 런타임 경로** |
-| `POST /predict` | landmark_frame 하나를 직접 넣어 분류기만 테스트(카메라 미사용, 개발용) |
-| `POST /reset` | 다음 수신호로 넘어갈 때 N프레임 누적 초기화 |
-| `GET /stream` | **Camera Module 3 라이브 영상 (MJPEG)** — web이 `/api/camera/stream`으로 중계해 학습 화면에 띄운다 (2026-09-29, 예시 사진 대신) |
-| `GET /snapshot.jpg` | 최신 프레임 한 장 (점검용) |
+## 3. 설치 (RPi5, 최초 1회)
 
-라이브 영상은 판정을 느리게 하지 않게 만들었다(`perception/preview.py`): 캡처 루프는 최신 프레임 참조만 넘기고, JPEG 인코딩은
-**보는 화면이 있을 때만** 스트림 쪽에서 한다. 가로 640 이하·초당 15장(`STREAM_WIDTH`·`STREAM_FPS`·`STREAM_QUALITY`).
-`/health`의 `preview.viewers`로 지금 보는 화면 수를 볼 수 있다. 카메라가 없으면 "NO CAMERA" 안내 화면이 나온다.
-
-카메라가 이 서비스에 직결되어 있어서, 런타임에는 외부가 프레임을 보내는 게 아니라 **이 서비스가 스스로
-카메라 루프를 돌며 최신 판정을 만들어 둔다**. 그래서 웹은 `/latest`만 읽으면 된다.
-
-`judgment_result`에는 `reason` 필드가 붙는다 — 웹이 **SC-04(카메라 인식 실패: `no_hand`,
-`normalize_failed`)** 와 **SC-03b(재시도 유도: `below_tau`, `awaiting_consecutive_frames`)** 를
-구분하는 근거다 (03_인터페이스계약서 §4).
-
-## 4. 하드웨어/실행 방식 확정 사항
-
-- **카메라**: Raspberry Pi Camera Module 3, CSI 직결(범용 USB 웹캠 아님), **1920×1080 @ 60fps (Binned Mode)**
-- **MediaPipe 실행 모드**: `LIVE_STREAM`(비동기 콜백) — 캡처가 추론을 기다리지 않아 실시간에 유리 (05_모델카드 §3-2)
-- **RPi5는 카메라 추론 + AI Hand/micro:bit 담당**. picar는 별도 보드(RPi4B 8GB, `services/picar`)가
-  Wi-Fi로 받아 구동한다 — picar가 움직이면 카메라도 같이 움직이는 문제 때문 (10_PRD §1.3)
-- **τ=0.75, N=3프레임**은 실측 전 초기 기본값. 학습을 돌리면 번들에 든 τ가 자동 적용된다
-  (환경변수 `CONFIDENCE_THRESHOLD`로 덮어쓰기 가능)
-
-## 5. 로컬 실행
-
-```bash
-docker compose up --build vision
-curl http://localhost:8001/health      # model.loaded, tau, n_frames 확인
-curl http://localhost:8001/latest
-```
-
-`picamera2`와 Raspberry Pi판 libcamera는 Raspberry Pi OS apt 전용이라 이 이미지에 설치되지 않는다 —
-**x86 PC뿐 아니라 RPi5에서 컨테이너로 띄워도 CSI 카메라를 쓸 수 없다**(`MOCK_CAMERA=false`로 띄우면
-`/health`의 `camera.state=error`, "picamera2를 불러올 수 없습니다"로 버티며 손 미검출만 낸다 — 2026-09-28 확인).
-그래서 Docker는 개발 PC mock·CI 전용이고, 기본값 `MOCK_CAMERA=true`로 "손 미검출" 프레임만 흘려보내며
-배선을 검증한다. **실물 카메라는 RPi5에서 네이티브로 돌린다** → 아래 [RPi5 에서 실행](#rpi5-에서-실행-camera-module-3-csi).
-
-노트북에서도 실제 캡처 경로를 확인할 수 있다 (웹캠이 CSI 대신):
-
-```bash
-MOCK_CAMERA=false CAMERA_SOURCE=usb uvicorn app:app --app-dir src --port 8001
-curl http://localhost:8001/health      # camera.state=running, capture_fps, result_fps
-```
-
-### RPi5 에서 실행 (Camera Module 3, CSI)
-
-카메라 여는 코드는 `perception/camera_source.py` 하나다 — 송승호 님이 RPi4B 에서 실물 확인한
-picamera2 경로를 촬영 도구(`record_dataset.py`) · 확인 도구(`webcam_check.py`) · 서비스(`capture.py`)가
-같이 쓴다.
-
-**1. 준비 (한 번만)**
+전체 절차는 루트 [README](../../README.md) §4.1 ③·④에 있다. vision에 해당하는 부분만 적는다.
 
 ```bash
 sudo apt update
-sudo apt install -y python3-picamera2 fonts-nanum     # picamera2 는 pip 가 아니라 apt
-rpicam-hello --list-cameras                            # imx708 (Camera Module 3) 가 보여야 한다
+sudo apt install -y python3-picamera2 fonts-nanum   # picamera2는 pip가 아니라 apt로 설치
+rpicam-hello --list-cameras                          # imx708 (Camera Module 3)이 보여야 한다
 
-cd services/vision
-python3 -m venv --system-site-packages .venv          # ⚠️ 이 옵션이 있어야 venv 안에서 picamera2 가 보인다
+cd ~/git/SafeSign_PhysicalAI/services/vision
+python3 -m venv --system-site-packages .venv         # 이 옵션이 있어야 venv 안에서 picamera2가 보인다
 source .venv/bin/activate
-pip install -r requirements-dev.txt                    # 서비스만 돌릴 거면 requirements.txt 로 충분
+pip install -r requirements.txt
 ```
 
-**2. 모델 복사** — `models/svm_classifier.joblib` 은 **git 에 없다**(.gitignore). 노트북에서:
+- `fonts-nanum`은 `webcam_check.py` 화면에 한글 수신호 이름을 표시할 때 쓴다.
+- 판정 모델 `models/svm_classifier.joblib`은 git에 없고 제품과 별도로 제공한다.
+  받은 파일을 `services/vision/models/`에 둔다. 자세한 내용은 [models/README.md](models/README.md).
+- scikit-learn은 모델을 만든 버전과 major.minor가 같아야 한다(`requirements.txt`는 1.9 이상 2.0 미만).
+  다르면 기동 로그에 버전 불일치 경고가 나온다.
+
+## 4. 실행
 
 ```bash
-scp services/vision/models/svm_classifier.joblib <user>@<rpi5-ip>:~/SafeSign_PhysicalAI/services/vision/models/
+cd ~/git/SafeSign_PhysicalAI/services/vision
+bash scripts/run_rpi5.sh                 # 0.0.0.0:8001
+PORT=8002 bash scripts/run_rpi5.sh       # 포트를 바꿀 때
 ```
 
-`hand_landmarker.task` · `sign_templates.json` 은 git 에 있어서 그대로 온다.
-scikit-learn 은 학습 때와 같은 **1.9.x** 여야 한다(`/health` 의 `model.metadata.sklearn_version` 과 비교,
-다르면 기동 로그에 경고).
+`run_rpi5.sh`는 `.venv`가 있으면 켜고, `MOCK_CAMERA=false`, `CAMERA_SOURCE=csi`(미지정 시)로
+uvicorn을 띄운다. 시작 전에 두 가지를 검사해 경고만 띄우고 실행은 계속한다.
 
-**3. 카메라 + 모델 눈으로 확인**
+- `models/svm_classifier.joblib`이 없으면: 모든 판정이 `model_not_loaded`로 나온다.
+- `picamera2`를 불러올 수 없으면: apt 설치와 `--system-site-packages` venv를 확인하라고 안내한다.
+
+환경변수는 앞에 붙여 덮어쓴다. 예: `CAPTURE_SIZE=1920x1080 CAPTURE_FPS=60 bash scripts/run_rpi5.sh`
+
+정상 기동 확인:
 
 ```bash
-python scripts/webcam_check.py --source csi                # 모니터 연결 시 — 창에 판정 표시
-python scripts/webcam_check.py --source csi --no-window    # SSH 로만 붙었을 때 — 콘솔에 판정 출력
-python scripts/webcam_check.py --list-cameras              # CSI·USB 카메라 목록
+curl http://localhost:8001/health    # camera.state가 running, capture_fps·result_fps가 0보다 커야 한다
+curl http://localhost:8001/latest    # 손을 비추면 predicted_class가 바뀐다
 ```
 
-화면이 없으면(`DISPLAY` 없음) 자동으로 `--no-window` 가 된다. 색이 뒤집혀 보이면 `--swap-rb`.
+web을 다른 기기에서 띄우면 그쪽 `VISION_URL`을 `http://<RPi5 주소>:8001`로 준다.
 
-**4. 서비스로 띄우기** (웹이 폴링하는 실제 경로)
+## 5. HTTP API
 
-```bash
-bash scripts/run_rpi5.sh               # = MOCK_CAMERA=false CAMERA_SOURCE=csi uvicorn ... --host 0.0.0.0 --port 8001
-curl http://localhost:8001/health      # camera.state 가 running, capture_fps·result_fps 가 0 보다 커야 한다
-curl http://localhost:8001/latest      # 손을 대면 predicted_class 가 바뀐다
-```
+| 엔드포인트 | 내용 |
+| --- | --- |
+| `GET /health` | 서비스 상태. `model`(적재 여부·경로·sha256·클래스·τ·메타데이터), `camera`(state·capture_fps·result_fps·error), `preview`(viewers·encoder·fps·width), `tau`, `n_frames`, `templates` |
+| `GET /latest` | 최신 판정 결과. web이 주기적으로 읽는다 |
+| `POST /reset` | N프레임 누적과 직전 판정을 초기화. web이 다음 수신호로 넘어갈 때·확인 버튼 때 호출 |
+| `GET /stream` | 카메라 라이브 영상(MJPEG). 보는 화면이 있을 때만 인코딩한다. JPEG 인코더가 없으면 503 |
+| `GET /snapshot.jpg` | 최신 프레임 한 장(점검용). 프레임이 없으면 503 |
+| `POST /predict` | 손 관절 좌표 한 프레임을 직접 넣어 판정만 해 본다(카메라 미사용, 점검용) |
 
-웹을 다른 기기에서 띄우면 그쪽 `VISION_URL=http://<rpi5-ip>:8001`.
+이 서비스는 카메라가 직결돼 있어 스스로 캡처·판정을 계속 돌리며 최신 결과를 만들어 둔다.
+그래서 web은 `/latest`만 읽으면 된다. 카메라가 없거나 열리지 않으면 `/stream`에는
+"NO CAMERA" 안내 화면이 나온다.
 
-| 환경변수 | 기본 | 뜻 |
+`/latest` 응답 필드:
+
+| 필드 | 뜻 |
+| --- | --- |
+| `predicted_class` | 판정한 수신호. 미판정이면 `negative` |
+| `confidence` | 판정 클래스의 확률(0~1) |
+| `is_reject` | `true`면 미판정 |
+| `reason` | 미판정 이유 (아래 표) |
+| `class_probabilities` | 7종별 확률. web은 목표 수신호의 확률 × 100을 학습자 화면의 일치율로 쓴다 |
+| `match_score` | 대표 손모양과의 유사도(0~100). 참고용 |
+| `latency_ms` | 캡처부터 판정까지 걸린 시간(ms) |
+| `consecutive` | 지금까지 연속으로 같은 판정이 나온 프레임 수 |
+
+| `reason` | 뜻 |
+| --- | --- |
+| `no_hand` | 손이 보이지 않음 |
+| `normalize_failed` | 관절은 잡혔지만 정규화 불가 |
+| `model_not_loaded` | 판정 모델 파일이 없음 |
+| `inference_error` | 모델 추론 실패(모델과 특징 형식 불일치 등) |
+| `out_of_distribution` | 7종 어디에도 속하지 않는 손모양 |
+| `below_tau` | 확률이 τ보다 낮음 |
+| `awaiting_consecutive_frames` | τ는 넘었지만 아직 N프레임 연속이 안 됨 |
+
+## 6. 환경변수
+
+`run_rpi5.sh`가 설정하는 값 외에는 모두 기본값으로 운영한다.
+
+| 이름 | 기본 | 뜻 |
 | --- | --- | --- |
-| `MOCK_CAMERA` | `true` | `false` 여야 실물 카메라를 쓴다 (`run_rpi5.sh` 가 설정) |
+| `MOCK_CAMERA` | `true` | `false`여야 실물 카메라를 쓴다. `run_rpi5.sh`가 `false`로 설정 |
 | `CAMERA_SOURCE` | `csi` | `csi` · `usb` · `auto`(CSI 먼저, 안 되면 USB) |
-| `CAPTURE_SIZE` / `CAPTURE_FPS` | `1280x720` / `30` | 계약값(1920x1080@60)은 MediaPipe 까지 같이 돌리기엔 무겁다 — `capture.py` 머리말 |
-| `CAMERA_MIRROR` | `true` | 좌우 반전 (촬영 도구와 같게). joint23 은 반전에 불변이라 판정엔 영향 없음 |
-| `CAMERA_SWAP_RB` / `CAMERA_AUTOFOCUS` | `false` / `true` | 색 뒤집힘 교정 / Camera Module 3 연속 AF |
-| `DB_PATH` | `/data/db/signdb.sqlite3` | 템플릿 DB(services/data). 없으면 판정은 되고 `match_score` 만 0 |
+| `CAMERA_INDEX` | `0` | 카메라 번호 |
+| `CAPTURE_SIZE` | `1280x720` | 캡처 해상도 |
+| `CAPTURE_FPS` | `30` | CSI 목표 프레임률 |
+| `CAMERA_MIRROR` | `true` | 좌우 반전. 판정 결과에는 영향 없음 |
+| `CAMERA_SWAP_RB` | `false` | 빨강·파랑이 뒤집혀 보일 때 `true` |
+| `CAMERA_AUTOFOCUS` | `true` | Camera Module 3 연속 자동초점. `false`면 끈다 |
+| `CONFIDENCE_THRESHOLD` | (없음) | τ를 직접 지정. 없으면 모델 파일의 값, 그것도 없으면 0.75 |
+| `N_FRAMES` | (없음) | 연속 확인 프레임 수. 없으면 모델 파일의 값, 그것도 없으면 3 |
+| `OPEN_SET_GATE` | (없음) | `off`·`false`·`0`·`no`면 소속 게이트를 끈다. 정상 자세가 계속 `out_of_distribution`으로 막힐 때만 |
+| `SVM_MODEL_PATH` | `models/svm_classifier.joblib` | 판정 모델 파일 경로 |
+| `HAND_LANDMARKER_MODEL` | `models/hand_landmarker.task` | MediaPipe 모델 파일 경로(실행 폴더 기준) |
+| `DB_PATH` | `/data/db/signdb.sqlite3` | 일치율 템플릿 DB. 기본 운영에서는 쓰지 않는다(아래 참고) |
+| `STREAM_FPS` | `15` | 라이브 영상 최대 프레임률 |
+| `STREAM_WIDTH` | `640` | 라이브 영상 최대 가로 픽셀 |
+| `STREAM_QUALITY` | `70` | 라이브 영상 JPEG 품질(1~100) |
+| `HOST` / `PORT` | `0.0.0.0` / `8001` | `run_rpi5.sh`의 수신 주소·포트 |
 
-**카메라가 안 열려도 서비스는 죽지 않는다** — "손 미검출"로 버티고 원인을 `/health` 의 `camera.error` 에
-남긴다. 막히면 여기부터 본다:
+- `CAPTURE_SIZE`·`CAPTURE_FPS`를 1920x1080·60으로 올릴 수 있지만, 같은 RPi5에서 MediaPipe까지 돌리기에는
+  무겁다. MediaPipe는 내부에서 영상을 줄여 쓰므로 해상도를 올려도 정확도 이득이 적다.
+- `DB_PATH` 파일이 없으면 모델 파일에 든 클래스별 대표값으로 일치율을 계산한다. 판정에는 영향이 없다.
+
+## 7. 카메라 점검 — webcam_check.py
+
+서비스를 띄우기 전에 카메라와 판정을 눈으로 확인하는 도구다. 판정 경로는 서비스와 같은 코드
+(`src/cognition/`)를 쓰고 카메라에서 영상을 받는 부분만 다르므로, 여기서 잘 맞으면 서비스에서도 같은 판정이 나온다.
+
+```bash
+cd ~/git/SafeSign_PhysicalAI/services/vision
+source .venv/bin/activate
+python scripts/webcam_check.py --list-cameras              # 잡히는 CSI·USB 카메라 목록
+python scripts/webcam_check.py --source csi                # 모니터 연결 시 — 창에 판정 표시
+python scripts/webcam_check.py --source csi --no-window    # SSH로만 접속했을 때 — 콘솔에 판정 출력
+```
+
+- 기본 `--source`는 `usb`이므로 Camera Module 3를 볼 때는 `--source csi`를 붙인다.
+- 화면이 없으면(`DISPLAY` 없음) 자동으로 `--no-window`로 바뀐다.
+- 창에는 판정 수신호, confidence, match_score, N프레임 진행, 지연(ms), FPS가 표시된다.
+  `q`·`ESC` 종료, `r` 누적 초기화.
+- 모델 파일이 없어도 실행된다. 관절은 그려지고 판정만 `model_not_loaded`로 나오므로 카메라와 MediaPipe만 따로 확인할 수 있다.
+- 그 밖의 옵션: `--camera N`(카메라 번호), `--size`, `--fps`, `--swap-rb`(색 뒤집힘), `--no-autofocus`,
+  `--no-mirror`, `--max-frames N`(N프레임 후 종료), `--log`(진단 로그를 `logs/`에 JSONL로 기록).
+- `models/hand_landmarker.task`가 없으면 MediaPipe 공식 주소에서 자동으로 받는다(`--no-download`로 끔).
+
+## 8. 문제 해결
+
+카메라가 열리지 않아도 서비스는 꺼지지 않는다. "손 미검출"로 계속 응답하고, 원인을 `/health`의
+`camera.state`(`error`)와 `camera.error`에 남긴다. 아래 표와 루트 [README](../../README.md) §4.6도 함께 본다.
 
 | 증상 | 원인 · 조치 |
 | --- | --- |
-| `camera.error: picamera2를 불러올 수 없습니다` | apt 설치 안 됨, 또는 venv 를 `--system-site-packages` 없이 만듦 → venv 다시 생성 |
-| `numpy.dtype size changed` 류 오류 | apt picamera2(시스템 numpy)와 venv 의 pip numpy 가 충돌 → `pip install --upgrade simplejpeg` 후 재시도 |
-| `rpicam-hello` 에 카메라가 없음 | 케이블 방향 · 커넥터(RPi5 는 22핀 미니 커넥터 — 전용 케이블) 확인 |
-| `result_fps` 가 `capture_fps` 보다 한참 낮음 | MediaPipe 가 밀리는 중. LIVE_STREAM 이 알아서 프레임을 버리므로 정상이지만, 판정 지연 KPI 가 안 나오면 `CAPTURE_SIZE=960x540` 으로 낮춰 본다 |
-
-### 확인 방법 두 가지 (용도가 다름)
-
-**① 단위 테스트 — 카메라 없이, 로직만** (CI/머지 전 검증용)
-
-```bash
-cd services/vision
-python tests/test_normalize.py      # 정규화 불변성 + 방향 축 + 관절 특징 21개
-python tests/test_classify.py       # 모델 없이도 안전하게 미판정하는지 4개
-python tests/test_gate.py           # 소속 게이트 분기 7개
-python tests/test_capture.py        # 캡처 루프 배선 3개 (가짜 카메라 — BGR→RGB, 타임스탬프, 카메라 실패 시 버티기)
-# pytest가 있으면: python -m pytest tests -q
-```
-
-**② 웹캠 확인 — 학습한 모델을 실제 손으로** (사람이 눈으로 판단)
-
-```bash
-cd services/vision
-python -m venv .venv && .venv\Scripts\activate    # mediapipe가 numpy를 내릴 수 있어 venv 권장
-pip install -r requirements-dev.txt
-
-python scripts/webcam_check.py                    # 기본 카메라
-python scripts/webcam_check.py --list-cameras     # 카메라 인덱스 확인
-python scripts/webcam_check.py --camera 1
-python scripts/webcam_check.py --no-window --max-frames 60   # 창 없이 콘솔만
-```
-
-- 화면에 **예측 클래스 / confidence / match_score / N프레임 진행도 / 지연·FPS** 가 표시된다.
-  `q`·`ESC` 종료, `r` 누적 초기화.
-- 추론 경로는 **운영 코드와 동일**(`cognition/*`)하고 웹캠 캡처 부분만 다르다. 여기서 잘 맞히면
-  RPi5에서도 같은 판정이 나온다.
-- `hand_landmarker.task`가 없으면 공식 URL에서 **자동으로 받아온다**(`--no-download`로 끌 수 있음).
-- **분류기가 아직 없어도 실행된다** — 랜드마크는 그려지고 판정만 `model_not_loaded`로 나오므로,
-  데이터·모델이 오기 전에도 카메라·MediaPipe 배선을 확인할 수 있다.
-
-### ③ 분류기 학습 (로컬)
-
-```bash
-cd services/vision
-pip install -r requirements.txt
-python training/train_svm.py --dry-run     # 데이터 분포만 확인
-python training/train_svm.py               # 학습 → models/ 에 번들 + 템플릿 생성
-```
-
-처음 한 번만 JSON 적재에 100초쯤 걸리고, 이후엔 캐시로 0.7초다. 주요 옵션은
-[`MODEL_TRAINING.md`](MODEL_TRAINING.md) §6-0 참고.
-
-**공개 데이터 기준** (세션 단위 5겹): 정답률 88.68% / Macro F1 0.879 / 치명 오분류 4건.
-🔴 이 수치는 **KPI 근거가 아니다** — 촬영자 정보가 없어 인물 단위 분할이 불가능하다.
-
-### ④ KPI 측정 (자체 촬영 데이터)
-
-```bash
-python scripts/record_dataset.py --subject-id ext01     # 촬영 (팀원 안내: document/archive/촬영안내_KPI데이터.md)
-python scripts/evaluate_kpi.py                          # KPI 5개 지표 계산
-```
-
-**현재 실측** (촬영자 1명 · 35시도): 정답률 100%, 오분류 0, 미판정 0, 치명 0.
-🔴 표본이 작고 촬영자가 1명이라 **아직 KPI 달성으로 볼 수 없다**(95% 신뢰 상한 8.6%).
-팀원 촬영분이 들어오면 같은 명령으로 다시 계산한다.
-
-### 데이터 없이 파이프라인만 돌려보기
-
-```bash
-python scripts/make_dummy_dataset.py                          # 합성 데이터 생성
-python training/train_svm.py --data training/_dummy_dataset   # 그걸로 한 바퀴
-```
-
-> 합성 좌표라 정확도 수치는 아무 의미가 없다. **형식과 배선 확인용**이다.
-
-## 6. 남은 일
-
-- [x] ~~실제 수신호 데이터 확보 후 학습 → `models/svm_classifier.joblib` 배치~~ (2026-09-21 완료)
-- [x] ~~촬영 도구~~ → `scripts/record_dataset.py` (2026-09-22)
-- [x] ~~손 방향 축 A/B 판단~~ → **보류 확정**. 기울여도 100%라 켤 근거 없음 (2026-09-22)
-- [ ] **팀원 촬영분 확보** (2명) — KPI 측정의 유일한 경로. 회의 안건 1
-- [ ] 팀원 데이터 확보 후 **τ 재결정** — 지금은 잠정값 0.75
-- [ ] 게이트가 못 막는 25%(정지와 매우 닮은 자세) — negative 학습(안건 2 B) 전환 검토
-- [x] ~~`perception/capture.py`의 picamera2 연동~~ → `camera_source.py` 공용화 (2026-09-24) — **RPi5 실물 확인 대기**
-- [ ] RPi5 실물에서 `result_fps` · 판정 지연 P95 측정 (mediapipe aarch64 휠 설치 여부 포함)
-- [x] ~~`hand_landmarker.task` 모델 번들 다운로드 → `models/`~~ (git 에 포함)
-- [x] ~~05_모델카드 §7-3 실측 표 채우기~~ → ✅ 2026-09-30 최종 KPI(팀원 3명 210시도, RPi5 CSI) 5개 달성. τ는 0.75 유지(최종 KPI에서 τ가 막은 시도 0건)
-- [ ] 기울인 손 게이트 과차단(최종 KPI 미판정 10건 중 7건 우기울임) — 개발용 데이터로 조정 후 **새 평가 데이터로** 재측정
-- [ ] `/latest` 폴링 → WebSocket 전환 검토 (지연 KPI 여유 없을 때)
+| `camera.state`가 `mock` | `MOCK_CAMERA=false` 없이 uvicorn을 직접 띄움 → `bash scripts/run_rpi5.sh`로 실행 |
+| `camera.error`에 `picamera2를 불러올 수 없습니다` | apt 설치가 안 됐거나 venv를 `--system-site-packages` 없이 만듦 → §3대로 venv 다시 생성 |
+| `numpy.dtype size changed` 류 오류 | apt picamera2(시스템 numpy)와 venv의 pip numpy가 충돌 → `pip install --upgrade simplejpeg` 후 재시도 |
+| `rpicam-hello`에 카메라가 안 보임 | 케이블 방향·커넥터 확인. RPi5는 22핀 미니 커넥터라 전용 케이블이 필요 |
+| 판정이 계속 `model_not_loaded` | `models/svm_classifier.joblib` 없음 → [models/README.md](models/README.md) |
+| `camera.state`가 `error`, `캡처 루프 중단` | MediaPipe 모델(`models/hand_landmarker.task`)을 못 읽었는지 기동 로그 확인 |
+| `result_fps`가 `capture_fps`보다 한참 낮음 | MediaPipe가 밀리는 중. 밀린 프레임은 자동으로 버리므로 정상이지만, 판정이 늦으면 `CAPTURE_SIZE=960x540`으로 낮춘다 |
+| 화면 색이 뒤집혀 보임 | `CAMERA_SWAP_RB=true` (점검 도구는 `--swap-rb`) |
+| 초점이 계속 움직여 거슬림 | `CAMERA_AUTOFOCUS=false` (점검 도구는 `--no-autofocus`) |
+| 정상 자세가 계속 `out_of_distribution` | 손을 기울이면 게이트가 막는 경우가 있다. 손을 세워 다시 해 보고, 계속되면 `OPEN_SET_GATE=off` |

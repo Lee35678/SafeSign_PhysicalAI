@@ -5,7 +5,7 @@
 #   bash scripts/rpi/start_all.sh -y     # picar 안전 확인 질문 생략
 #   bash scripts/rpi/start_all.sh -h     # 이 도움말
 #
-# 자세한 사용법·문제 해결: document/17_실물실행_스크립트_사용법.md
+# 자세한 사용법·문제 해결: README.md §4
 #
 # 끝나면  tmux attach -t safesign   (창 이동 Ctrl+b 0~2, 빠져나오기 Ctrl+b d — 서비스는 계속 돈다)
 # picar   ssh -t <RPi4B> tmux attach -t picar
@@ -165,8 +165,8 @@ fi
 
 # ── 4. web (RPi5) ────────────────────────────────────────────────────────────
 step 4 "web 기동"
-# URL 3개를 모두 명시한다 — web은 기동 때 저장소 루트 .env를 읽어 빈 환경변수를 채우는데(members._load_dotenv),
-# .env.example을 복사한 .env에는 docker-compose용 http://vision:8000 · http://actuation:8000 이 들어 있다
+# URL 3개를 모두 명시한다 — web은 기동 때 저장소 루트 .env를 읽어 빈 환경변수만 채우므로(members._load_dotenv),
+# 여기서 준 값이 .env 내용과 상관없이 항상 쓰인다
 start_window web "$REPO/services/web" \
   "source .venv/bin/activate && VISION_URL=$VISION_URL ACTUATION_URL=$ACTUATION_URL PICAR_URL=$PICAR_URL uvicorn backend.app:app --host 0.0.0.0 --port 8000" \
   || abort "web 창을 만들지 못했습니다"

@@ -1,296 +1,107 @@
-# actuation — AI Hand + micro:bit (담당: 송승호)
+# actuation — AI Hand + micro:bit 제어
 
-RACI: 하드웨어·로봇동작 **R**, 파이프라인·판정로직 **A**
+교육장에서 학습자 앞에 고정해 두는 **Raspberry Pi 5**에서 실행하는 서비스다.
+web(교육 진행 화면)의 요청을 받아 micro:bit v2에 **BLE**로 명령을 보내고, micro:bit가 AI Hand의
+손가락 서보 5개를 움직인다. 판정 결과(O/X)는 micro:bit LED에 표시한다.
 
-> **이 서비스는 Raspberry Pi 5(카메라·AI Hand·micro:bit 고정 스테이션)에서 실행됩니다.**
-> picar는 더 이상 이 서비스가 담당하지 않습니다 — 별도 서비스 [`services/picar`](../picar/README.md)가
-> **Raspberry Pi 4B 8GB**에서 담당합니다 (2026-09-18, picar가 카메라와 함께 움직이는 문제 해결).
+- 포트: **8002** (web이 `ACTUATION_URL=http://localhost:8002`로 호출)
+- picar는 이 서비스가 맡지 않는다. picar는 RPi4B의 [services/picar](../picar/README.md)가 따로 제어한다.
+- 전체 설치·실행 순서는 [루트 README](../../README.md) §4를 따른다. 이 문서는 actuation만 자세히 다룬다.
 
-`document/02_설계문서.md` §1-1·§3, `document/03_인터페이스계약서.md` §5-1·§5-3 기준 담당 범위:
+## 1. 하드웨어 연결
 
-- **AI Hand**: 손가락 서보 5개 + 손목 서보 1개 제어 (`shared/schemas/aihand_command.schema.json`)
-- **micro:bit v2**: **BLE**(Nordic UART Service)로 통신. 펌웨어(`aihand_control.ts`)는 최상단
-  `TEST_MODE` 한 줄로 운영(`false`, `G1`~`G7` 제스처 명령만 처리)/테스트(`true`, `IDX:`/`HAND:`/`G:`
-  캘리브레이션 명령까지 처리) 모드를 전환한다 — micro:bit가 하드웨어 UART를 1개만 갖고 있어 서보 초기화 시
-  USB 시리얼이 죽는 제약 때문에 애초 계획이던 USB 시리얼(`shared/schemas/microbit_protocol.md`에
-  BLE 기준으로 갱신됨)에서 BLE로 전환했다. LED 매트릭스로 판정 결과(`correct`/`incorrect` →
-  회신 먼저 → LED O/X 1초 표시)를 표시하고, 진행 표시(`P<current><total>`)는 LED 없이 수신 확인만 회신한다
-  (두 모드 공통). **부저는 BLE SoftDevice 충돌(패닉 070)로 비활성화**되어 있다(2026-09-21 실측 확정).
-  버튼 A를 누르면 `BTN:A`를 RPi5로 올린다(web 확인 버튼 대용, 2026-09-28 — web 쪽 수신은 2026-09-29 구현, 스펙 §9).
-
-## 디렉터리
-
-- `src/aihand/controller.py` — `target_signal`(정지/서행/...) -> micro:bit `G{n}` 제스처 매핑
-  (`GESTURE_MAP`). 10_PRD.md §3.2 표 순서와 동일하되, 우회전_유도(G4)는 문서상 "엄지+약지"이나
-  실제 펌웨어는 "엄지+소지"로 구현되어 있고 펌웨어 쪽이 최종 확정판이다(2026-09-21 팀 확인,
-  문서 갱신 필요). `DEFAULT_SERVO_ANGLES`는 실제 구동에는 쓰이지 않는 참고용 스키마 예시값.
-- `src/microbit/ble_bridge.py` — `bleak` 기반 BLE 브릿지(RPi5 쪽 Python). 연결/재연결, `G{n}`/
-  `correct`·`incorrect`/`P<current><total>` 전송과 응답 대기를 담당 (UUID·재연결 정책은 아래
-  "공통 전제" 참고)
-- `src/firmware/*.ts` — micro:bit(MakeCode) 쪽 펌웨어 프로젝트. Python 서비스와는 별개로 MakeCode
-  웹 에디터에서 micro:bit에 직접 플래시하는 코드라 `src/microbit/`(Python 패키지)와 폴더를
-  분리했다(2026-09-21). 아래 각 파일 설명 참고
-- `src/app.py` — FastAPI 진입점 (`/health`, `/command`, `/result`, `/progress`, `/button`). 앞의 셋은
-  `ble_bridge`를 통해 실제 BLE 전송까지 연동되어 있음(`/progress`는 LED 표시 없이 수신 확인만).
-  `/button`은 micro:bit가 올린 버튼 입력 누적값(seq)을 돌려준다
-- `scripts/vision_to_command_integration_test.py` — vision의 JudgmentResult 형태 값을
-  `/command`로 흘려보내 target_signal↔G{n} 매핑이 실제로 동작하는지 확인하는 통합 테스트
-  (MediaPipe 연동 전 단계 검증용, "다음 단계" 참고)
-
-## MOCK_HARDWARE 모드
-
-로컬 PC(Windows)에는 서보/micro:bit가 물리적으로 연결되어 있지 않으므로, 기본값
-`MOCK_HARDWARE=true`일 때는 실제 GPIO/시리얼 호출 대신 로그만 남기고 성공 응답을 반환합니다.
-실물은 **네이티브 실행**(아래 "RPi5 실물 실행 (네이티브, 가상환경)")으로 운영한다(2026-09-28 결정 — 루트 README §1).
-`docker-compose.hw.yml` 오버라이드는 미검증·선택 사항이다.
-
-## picar와의 관계
-
-이전에는 이 서비스가 picar도 함께 제어했지만(RPi5 GPIO 직결 가정), picar가 실제로 주행하면 카메라도
-함께 이동해버리는 문제가 있어 **picar 제어를 별도 보드(RPi4B 8GB)·별도 서비스(`services/picar`)로
-분리**했습니다. `services/web`의 상태머신이 AI Hand/micro:bit는 이 서비스(`ACTUATION_URL`)로,
-picar는 `services/picar`(`PICAR_URL`, Wi-Fi)로 각각 따로 호출합니다.
-
-## 아직 확정 안 된 것 (실물 테스트 필요)
-
-- [x] ~~AI Hand GPIO 핀 배정 및 연결 방식~~ → RPi5가 서보를 직접 구동하지 않음. micro:bit 펌웨어가
-  서보를 직접 제어하고 RPi5는 BLE로 `G{n}` 제스처만 지시
-- [x] ~~서보 각도 초기값(170/10/90)의 실물 캘리브레이션~~ → 손가락별 안전 가동범위 실측 완료(아래 표).
-- [x] ~~micro:bit 실제 시리얼 코드로 프로토콜 동작 검증~~ → bluetooth 방식으로 전환 완료
-- [ ] ⏸ `docker-compose.hw.yml`로 RPi5 실물 환경에서 컨테이너 BLE(BlueZ/D-Bus) 접근 검증 — **보류(시연 뒤)**.
-  2026-09-28 운영은 네이티브로 결정해 시연 전에는 검증하지 않는다. 구성(D-Bus 소켓 마운트)은 남겨 둠
-- [x] ~~RESULT(micro:bit LED 매트릭스) 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"correct"`/
-  `"incorrect"` 문자열을 받으면 회신을 먼저 보내고 LED에 O/X를 1초간 표시하고 꺼지도록 구현 완료(TEST_MODE와 무관하게
-  항상 처리). **소리는 쓰지 않는다**(부저 코드 삭제, 2026-09-22) — 아래 "절대 규칙" 참고
-- [x] ~~실물 micro:bit로 `MOCK_HARDWARE=false` BLE 검증~~ → 2026-09-21 완료. 스캔·UUID 대조·
-  `/health`(`microbit_connected: true`)·`/command` 7종·`/result`(LED O/X)·`/progress`(`OKP37`/`OKP17`
-  회신)까지 전부 확인. 손모양 육안 대조도 완료.
-  남은 것은 RPi5 컨테이너 BLE 접근 검증뿐(보류, 위 항목)
-- [x] ~~`ble_bridge.py`/`app.py`의 `/result`를 펌웨어의 `correct`/`incorrect` 명령과 연동~~ →
-  `ble_bridge.send_result()` 추가, `/result`가 `is_correct` 값을 그대로 BLE로 전송(2026-09-21)
-- [x] ~~PROGRESS 프로토콜 펌웨어 구현~~ → `aihand_control.ts`가 `"P<current><total>"`(둘 다 한 자리
-  숫자)을 받아 `"OKP<current><total>"`로 회신하도록 구현 완료. **LED 표시는 하지 않음**(2026-09-21
-  결정 — 진행 표시는 web 화면 쪽 담당, micro:bit는 수신 확인만). `ble_bridge.send_progress()` +
-  `/progress` 엔드포인트 연동까지 완료
-- [x] ~~`shared/schemas/microbit_protocol.md`를 BLE 프로토콜 기준으로 갱신~~ → `document/03_인터페이스계약서.md` §5-3과 함께 갱신 완료(2026-09-21)
-- [x] ~~`document/10_PRD.md` §3.2 표의 우회전_유도(G4) 설명을 "엄지+소지"로 정정~~ → 정정 완료.
-  PRD 표가 펌웨어와 일치함(2026-09-21 확인)
-
-# AiHand + micro:bit BLE 연동 코드
-
-AI비전으로 인식한 수신호를 micro:bit(BLE)를 거쳐 AiHand 서보모터로 재현하기 위한 코드 모음입니다.
-
-## 공통 전제
-
-- micro:bit는 하드웨어 UART가 1개뿐이라 `startbit_Init()` 실행 시 USB 시리얼이 죽습니다. **PC와의 통신은 반드시 BLE**로 합니다.
-- 이 보드는 표준 Nordic UART Service와 달리 RX/TX UUID가 **반대로 배정**되어 있습니다 (`6e400003`=쓰기용 RX, `6e400002`=indicate용 TX). 다른 프로젝트 코드를 그대로 가져다 쓰면 안 됩니다.
-- 손가락 서보는 **한꺼번에 기동하지 않습니다**(순간 전류 급증 → 전압 강하 → BLE 연결 끊김). 펌웨어는 손가락을 **150ms 간격으로 하나씩 출발**시킵니다 — 서보 이동 시간이 200ms라 인접 2개가 50ms씩 겹치지만(약 1.74A < 3A) 3개 이상은 겹치지 않습니다(2026-09-23 개정·연속 35동작 실측 통과, 종전 200ms 완전 순차).
-  - 스펙상 근거(`document/11_하드웨어설계서.md` §4.4): 7.5V 3A 어댑터 하나가 Hiwonder 확장보드를 거쳐 **micro:bit와 서보를 같은 레일에서** 먹인다. 손가락 서보(LFD-01) 구속 전류가 개당 700mA라 5개 동시 기동 시 3.5A로 어댑터 용량(3A)을 넘기고, 레일이 주저앉으면 같은 레일의 micro:bit가 브라운아웃되어 BLE가 끊긴다.
-  - ⚠️ **2026-09-21 정정**: 이전에는 "micro:bit 보드 공급 한계 300mA"를 근거로 들었으나 **틀린 설명이었다.** 서보는 micro:bit를 거치지 않고 확장보드가 어댑터에서 직접 분배한다. 결론(순차 구동)은 같지만 메커니즘이 다르다 — 실제 제약은 **어댑터 용량**이므로, 전원을 보강하면 동시 구동이 가능해질 여지가 있다(일정상 후순위).
-
----
-
-## 단위 테스트 (micro:bit 불필요)
-
-```bash
-cd services/actuation
-python -m pytest tests -q        # 29개
+```
+RPi5 (actuation :8002) ──BLE── micro:bit v2 ── StartbitV2 확장보드 ── 손가락 서보 5개 (AI Hand)
+                                                       │
+                                               7.5V 3A 어댑터
 ```
 
-A-1 실물 검증은 micro:bit가 연결돼 있어야만 돌릴 수 있어서, **하드웨어 없이도 매핑·프로토콜이
-어긋나지 않았는지** 확인할 수 있게 만든 테스트입니다 (`tests/test_controller.py`). 실제 BLE는
-건드리지 않습니다. `pytest-asyncio` 없이 돌도록 `asyncio.run()`으로 감쌌습니다.
+| 항목 | 내용 |
+| --- | --- |
+| 통신 | RPi5 ↔ micro:bit는 **BLE만** 쓴다. micro:bit는 하드웨어 UART가 1개라 확장보드 초기화(`startbit_Init()`) 뒤에는 USB 시리얼이 동작하지 않는다 |
+| 서보 채널 | 1 엄지 · 2 검지 · 3 중지 · 4 약지 · 5 소지 |
+| 서보 방향 | 엄지는 각도를 그대로, 검지~소지는 장착 방향이 반대라 펌웨어가 `180 - 각도`로 뒤집어 보낸다 |
+| 전원 | 7.5V 3A 어댑터 하나가 확장보드를 거쳐 micro:bit와 서보를 **같은 레일**에서 먹인다 |
 
-주요 항목:
-- `GESTURE_MAP`이 `aihand_command.schema.json`의 7종과 정확히 일치하는지 (어긋나면 특정 수신호에서
-  AI Hand가 침묵함)
-- G번호가 1~7 중복 없이, PRD §3.2 표 순서와 같은지
-- BLE 명령 문자열 형식: `G{n}` / `correct`·`incorrect` / `P37`(콜론·구분자 없음 — 펌웨어가
-  문자코드로 직접 파싱)
-- **RX/TX UUID가 이 보드에서 실측한 반대 배정 그대로인지** — 표준 NUS 값으로 되돌리면 통신이 죽음
-- 알 수 없는/누락된 `target_signal`에 죽지 않고 에러를 돌려주는지
-- mock 경로가 BLE 연결을 열지 않는지
-- **버튼 알림(`BTN:A`)이 명령 회신으로 잡히지 않는지** — 시범 동작 중에 눌러도 `/command`는 진짜
-  `OK{n}`을 기다리고, 버튼은 seq로만 쌓인다
+### 손가락별 가동 범위 (펌웨어에 고정)
 
-## `ble_debug_services.py`
+범위를 벗어난 값은 펌웨어가 잘라 낸다. 서보 스톨을 막기 위해 실측으로 정한 값이다.
 
-**용도**: micro:bit가 광고하는 BLE 서비스/캐릭터리스틱 UUID 전체를 스캔해서 출력하는 디버그 스크립트.
-
-**언제 쓰나**: 새 micro:bit 보드로 교체했거나, `start_notify()`에서 `characteristic does not support notifications` 에러가 날 때 실제 UUID 속성을 확인하기 위해 실행합니다.
-
-**주의**: 여기서 확인한 UUID가 위 "공통 전제"의 값과 다르면, 보드/펌웨어가 바뀐 것이니 다른 파일들의 UUID 상수도 함께 갱신해야 합니다.
-
----
-
-## `aihand_control.ts` / `aihand_control_pc.py` (운영/테스트 통합)
-
-**용도**: 기존 `aihand_named_control.ts`(캘리브레이션용)와 `aihand_production.ts`(운영용)를 하나로
-합친 펌웨어. 최상단 `const TEST_MODE = false;` **한 줄만 바꿔서** 운영/테스트 모드를 전환합니다.
-
-**버튼 A (BTN, 모드 공통, 2026-09-28)**: 누르면 `BTN:A
-`을 요청 없이 알림으로 올립니다. web 확인 버튼
-(스페이스바) 대용입니다. LED는 쓰지 않습니다 — `showString`은 몇 초간 화면을 잡아 O/X 표시와 부딪힙니다.
-회신과의 구분은 `ble_bridge._on_notify`가 합니다.
-
-**판정 결과 표시 (RESULT, 모드 공통)**: `TEST_MODE` 값과 무관하게 항상 처리됩니다.
-- `"correct"` 수신 → `OK:CORRECT\n`을 **먼저** 회신 → LED에 O 모양 1초간 표시 후 소등
-- `"incorrect"` 수신 → `OK:INCORRECT\n`을 **먼저** 회신 → LED에 X 모양 1초간 표시 후 소등
-- LED 표시는 `control.inBackground()`로 돌리므로 **표시 중에도 다음 BLE 명령을 바로 처리**합니다.
-  > ⚠️ 2026-09-23 이전에는 `showResult()`가 수신 핸들러 안에서 `pause`해 그동안 들어온 명령이 줄을
-  > 섰습니다(result 직후 명령 실측 1424ms). 또 `basic.showLeds()`는 두 번째 인자를 안 주면 **400ms를
-  > 더 쉬어** 1초가 실제로는 1.4초였습니다 — 그래서 `showLeds(.., 0)`으로 호출합니다.
-
-> 🔴 **절대 규칙 — BLE 시작 후 `music.*` 호출 금지 (2026-09-22 확정)**
->
-> micro:bit v2에서 **BLE SoftDevice와 `music` 라이브러리는 같은 하드웨어 타이머/PWM 자원을 공유**해
-> 함께 쓸 수 없습니다. `bluetooth.startUartService()` 이후 `music.*`를 호출하면 **소리가 나야 할
-> 바로 그 시점에 패닉 070(SD_ASSERT)** 이 발생하고 BLE가 끊깁니다.
->
-> - 2026-09-21 `/result` 실물 테스트에서 최초 재현("부저 울리는 순간 슬픈 얼굴 + 070, BLE 끊김"),
->   이후 부저 코드를 직접 넣어 실행하는 전용 검증으로 **확정**했습니다.
-> - **타이밍 튜닝으로 우회할 수 있는 버그가 아닙니다.** 종전 README에 있던 "비블로킹 재생·볼륨
->   저감 등을 검증하면 되살릴 수 있다"는 단서는 **철회합니다.**
-> - 전례: `StartbitV2_patched.ts:324`도 같은 이유로 `music.playTone()`을 LED로 대체해 두었는데,
->   RESULT 기능을 추가하면서 같은 호출이 다시 들어갔던 적이 있습니다(회귀).
->
-> **지켜야 할 것**
-> 1. `bluetooth.startUartService()` 이후 `music.*`를 호출하지 않습니다.
-> 2. 소리 피드백이 필요하면 `basic.showIcon()` / `basic.showLeds()` / `basic.showString()` 등
->    **LED로 대체**합니다.
->
-> 조치: 2026-09-22 `aihand_control.ts`에서 `playResultTone()`과 `BUZZER_ENABLED` 플래그를
-> **삭제**했습니다. 꺼둔 채로 남겨두면 플래그 한 줄로 패닉을 부를 수 있기 때문입니다.
-> `showResult()`는 `basic.pause(1000)`으로 LED 표시 시간 1초를 유지합니다(2026-09-23, 2초에서 단축).
-
-**진행 표시 (PROGRESS, 모드 공통)**: `TEST_MODE` 값과 무관하게 항상 처리됩니다.
-- `"P<current><total>"` 수신 (예: `"P37"` = 3/7번째) → **LED 표시는 하지 않고** `"OKP<current><total>\n"`만
-  회신 (2026-09-21 결정 — 진행 표시는 web 화면 쪽 담당). 콜론 없이 한 자리 숫자 두 개만 붙여서
-  `charCodeAt()`으로 파싱 — `G{n}`과 같은 경량화 방식.
-
-**모드별 동작**:
-- `TEST_MODE = false` (운영, 기존 `aihand_production.ts`와 동일 동작): `G1`~`G7`만 처리.
-  파싱 비용이 큰 `substr()+split()+parseInt()` 대신 `charCodeAt()` 문자 직접 비교만 수행 —
-  micro:bit의 협소한 RAM에서 힙 할당이 잦으면 불안정해지기 때문. `HAND:`/`IDX:` 형식은 지원하지 않음.
-- `TEST_MODE = true` (테스트/캘리브레이션, 기존 `aihand_named_control.ts`와 동일 동작): 아래 명령까지 처리.
-  - `IDX:번호,각도` : 개별 서보에 반전 없이 raw 각도 그대로 전달 (손가락 번호 확인·캘리브레이션용)
-  - `HAND:엄지,검지,중지,약지,소지` : 5개 서보 각도 동시 지정
-  - `G:1` ~ `G:7` : 콜론 포함 형식으로 제스처 호출 (운영 모드의 `G1`~`G7`과 별개 형식)
-  - 시작 시 LED에 `READY` 표시, 버튼 B로 `READY` 재표시
-
-**서보 방향**: 엄지는 raw 각도 그대로 사용(혼 장착 방향이 반대라 반전 불필요), 검지~소지는
-`moveInverted()`(180-각도) 적용 — 두 모드 공통.
-
-**손가락별 안전 가동범위 (스톨 방지, 두 모드 공통)**:
-
-| 손가락 | min | max |
-|---|---|---|
+| 손가락 | 최소 | 최대 |
+| --- | --- | --- |
 | 엄지 | 60 | 170 |
 | 검지 | 20 | 135 |
 | 중지 | 25 | 135 |
 | 약지 | 25 | 125 |
 | 소지 | 30 | 120 |
 
-**이동 방식**: 손가락 간 텀 150ms 순차 출발 — 인접 2개 50ms 겹침 (초기화 시 주먹 자세 포함) — 두 모드 공통. 제스처 1회 실측 약 0.80초.
+### 손가락을 하나씩 움직이는 이유
 
-**PC 쪽 (`scripts/aihand_control_pc.py`)**: micro:bit 쪽과 동일하게 최상단 `TEST_MODE` 한 줄로 운영
-(숫자 입력 → `G1`~`G7`, `loop` 내구성 테스트, `progress <current> <total>`)/테스트(`idx`/`g`/`hand`
-명령 → `IDX:`/`G:`/`HAND:`) 모드를 전환합니다. micro:bit 펌웨어의 `TEST_MODE` 값과 반드시 맞춰서
-실행하세요. 두 모드 모두 `correct`/`incorrect`(LED O/X, 부저 없음), `progress`(수신
-확인만) 입력을 테스트할 수 있습니다. `bleak` 사용, RX/TX UUID는 위 "공통 전제" 참고.
+손가락 서보(LFD-01)는 구속 전류가 개당 약 700mA라 5개를 한꺼번에 기동하면 3.5A로 어댑터 용량(3A)을 넘는다.
+레일 전압이 떨어지면 같은 레일의 micro:bit가 리셋되어 BLE가 끊긴다. 그래서 펌웨어는 손가락을 **150ms 간격으로
+하나씩** 출발시킨다(서보 이동 시간 200ms, 인접 2개만 50ms 겹침, 최악 약 1.74A). 제스처 1회는 약 0.8초 걸린다.
 
----
+## 2. 파일 구성
 
-## `aihand_finger_test.ts` (손가락별 개별 테스트)
-
-**용도**: 손가락 1개씩 개별 채널을 격리해서 테스트하는 진단 도구. 버튼 단독 사용과 BLE(`IDX`) 겸용을 모두 지원합니다.
-
-**언제 쓰나**:
-- 특정 서보가 무반응/이상 동작할 때 하드웨어(보드 채널) 문제인지 서보 자체 문제인지 구분할 때
-- **서보 스왑 테스트** 절차: 의심되는 채널에 정상 작동 중인 다른 서보를 연결해 반응을 확인 (반전 방향으로 움직이면 채널은 정상, 서보 쪽이 원인)
-
----
-
-## FastAPI 레이어 (`src/app.py`)
-
-RPi5에서 실행되며, 상태머신(web)과 micro:bit BLE 사이를 잇는 서비스 레이어입니다.
-
-| 엔드포인트 | 설명 |
+| 경로 | 내용 |
 | --- | --- |
-| `GET /health` | `mock_hardware`, `microbit_connected` 상태 확인 |
-| `POST /command` | `aihand_command.schema.json` 형식 입력 → `target_signal`을 `G{n}`으로 변환해 BLE 전송 |
-| `POST /result` | 판정 결과 LED 표시(O/X) — `is_correct`를 `correct`/`incorrect`로 변환해 BLE 전송
-  (`match_score`는 펌웨어가 쓰지 않아 전달하지 않음) |
-| `POST /progress` | 진행 표시 — `current`/`total`을 `P<current><total>`로 변환해 BLE 전송 (LED 표시는
-  펌웨어가 하지 않음, 수신 확인만) |
-| `GET /button` | 버튼 A 누적 입력 — `{"seq", "last_button", "last_at", "microbit_connected"}`. web이 폴링해
-  시범 단계 진입 때 적어 둔 seq보다 커지면 확인으로 처리한다(seq가 작아지면 actuation 재시작 → 기준값 재설정) |
-| `POST /button/simulate` | 버튼 입력 흉내(seq +1) — micro:bit 없이 web 흐름 시험용, BLE는 건드리지 않음 |
+| `src/app.py` | FastAPI 진입점 (HTTP API) |
+| `src/aihand/controller.py` | 수신호 이름(`target_signal`) → 제스처 번호 `G1`~`G7` 변환 |
+| `src/microbit/ble_bridge.py` | `bleak` 기반 BLE 연결·재연결, 명령 전송, 회신 대기, 버튼 입력 집계 |
+| `src/firmware/aihand_control.ts` | micro:bit 펌웨어 (MakeCode에서 플래시) |
+| `src/firmware/StartbitV2_patched.ts` | StartbitV2 확장 소스 수정본. BLE와 충돌하는 `music.playTone()`을 LED 표시로 바꾸고 RGB 조명 기능을 뺐다 |
+| `src/firmware/StartbitRGBLight.ts` | StartbitV2의 RGB 조명 확장 소스 (수정본에서는 쓰지 않음) |
+| `requirements.txt` | `fastapi`, `uvicorn[standard]`, `bleak==0.22.3` |
 
-`/command` 응답 예 (`MOCK_HARDWARE=true`): `{"status": "mocked", "sent": "G1", "target_signal": "정지", "gesture": 1}`
+### 수신호 ↔ 제스처
 
-## 다음 단계
+| `target_signal` | 명령 | 손 모양 (펌웨어 기준) |
+| --- | --- | --- |
+| 정지 | `G1` | 다섯 손가락 펴기 |
+| 서행 | `G2` | 검지+중지 펴기 |
+| 좌회전_유도 | `G3` | 엄지+검지 펴기 |
+| 우회전_유도 | `G4` | 엄지+소지 펴기 |
+| 확인_완료 | `G5` | 주먹 |
+| 후진 | `G6` | 검지 펴기 |
+| 주의 | `G7` | 소지 펴기 |
 
-1. 실물 micro:bit + RPi5에서 `MOCK_HARDWARE=false`로 `/command`·`/result`·`/progress` end-to-end
-   검증 (`scripts/vision_to_command_integration_test.py`로 target_signal별 `G{n}` 전송·BLE 재현 확인)
-2. ~~`services/web`의 상태머신이 vision `/latest` 판정 결과를 이 서비스의 `/command`로 호출하도록
-   연동~~ → `state_machine.py`에 구현 완료(2026-09-21, `services/web/README.md` 참고)
-3. ~~PROGRESS 프로토콜을 펌웨어(`aihand_control.ts`)에 추가해 `/progress`까지 실물 지원~~ → 구현
-   완료(2026-09-21, LED 표시 없이 수신 확인만)
-4. ~~BTN(버튼 입력) 프로토콜 필요 여부 검토~~ → 버튼 A를 web 확인 버튼 대용으로 쓰기로 하고 펌웨어·
-   `ble_bridge`·`GET /button` 구현(2026-09-28, mock 테스트만), 03 §5-3·`shared/schemas/microbit_protocol.md` 반영 완료.
-   남은 것: 펌웨어 재플래시 후 실물 확인, web 폴링(이동혁)
+## 3. 펌웨어 플래시
 
-## 로컬 실행
+1. MakeCode(makecode.microbit.org)에서 **StartbitV2 확장이 들어 있는 프로젝트**를 연다.
+2. JavaScript 보기에서 기존 내용을 모두 지우고 [`src/firmware/aihand_control.ts`](src/firmware/aihand_control.ts)를
+   **통째로** 붙여 넣는다. 일부만 고쳐 넣지 않는다 — 저장소와 micro:bit 내용이 어긋나도 동작만 보고는 알기 어렵다.
+3. micro:bit에 플래시한다. 켜지면 손이 주먹 자세가 되고 LED에 ◇가 뜬다.
 
-```bash
-docker compose up --build actuation
-curl http://localhost:8002/health
+파일 맨 위 `const TEST_MODE = false;`는 **그대로 둔다**. `true`는 서보 캘리브레이션용 모드
+(`IDX:`/`HAND:`/`G:` 명령 처리, 시작 시 `READY` 표시)이며 운영에는 쓰지 않는다.
 
-# 또는 컨테이너 없이 직접 (MOCK_HARDWARE 기본값 true):
-cd src && uvicorn app:app --reload --port 8002
-```
+### micro:bit LED 표시
 
-## RPi5 실물 실행 (Docker) — 🟡 선택 사항, 시연 미사용
-
-> 운영·시연은 아래 **네이티브**로 한다(2026-09-28 결정). 이 절은 시연 뒤 컨테이너화를 검토할 때를 위해 남겨 둔
-> 구성이며 **실물에서 한 번도 검증되지 않았다.** 보드가 2대로 나뉘어 compose 이점이 없고, 같은 RPi5의
-> vision은 CSI 카메라 때문에 어차피 네이티브라 혼합 운영이 되기 때문이다([16 §2.4](../../document/16_통합테스트_KPI_CI.md)).
-
-`docker-compose.hw.yml`이 `MOCK_HARDWARE=false`로 바꾸고 호스트의 D-Bus 소켓(`/run/dbus`)을 넘긴다.
-bleak은 HCI를 직접 만지지 않고 호스트 `bluetoothd`와 D-Bus로만 대화하므로 `network_mode: host`는 쓰지
-않는다 — 덕분에 web은 계속 `http://actuation:8000`으로 부른다.
-
-```bash
-pgrep -af uvicorn                  # 네이티브 actuation이 떠 있으면 먼저 종료 (micro:bit는 연결을 하나만 받는다)
-cd ~/git/SafeSign_PhysicalAI
-docker compose -f docker-compose.yml -f docker-compose.hw.yml up -d --build actuation
-docker compose logs -f actuation   # "micro:bit BLE 연결됨: ..." 이 보여야 한다
-curl -s http://localhost:8002/health   # microbit_connected: true
-```
-
-| 증상 | 확인 |
+| 표시 | 의미 |
 | --- | --- |
-| 로그에 `org.freedesktop.DBus.Error` / 소켓 없음 | 호스트에 `/run/dbus/system_bus_socket`이 있는지, `systemctl status bluetooth` |
-| `스캔에 안 보임` | 네이티브 서버·`bluetoothctl connect`가 micro:bit를 잡고 있지 않은지 (아래 네이티브 표와 동일) |
-| 위가 다 정상인데도 스캔/연결 실패 | 최후 수단: 오버라이드에 `network_mode: host` + `privileged: true` (포트 8002로 command 변경 필요 — 파일 주석 참고) |
+| ◇ | 전원 켜짐, BLE 연결 대기 |
+| ✓ | RPi5와 BLE 연결됨 |
+| ✗ | BLE 연결 끊김 |
+| O / X (1초) | 판정 결과 정답 / 오답 |
 
-## RPi5 실물 실행 (네이티브, 가상환경)
+버튼 A를 누르면 micro:bit가 `BTN:A`를 RPi5로 올린다. web 화면의 확인 버튼(스페이스바) 대신 쓸 수 있다.
+버튼 A는 LED를 쓰지 않는다.
 
-**운영·시연의 기준 경로**다(2026-09-28 결정). 평소 기동·종료는 `scripts/rpi/`
-([17](../../document/17_실물실행_스크립트_사용법.md))가 이 절차를 대신한다 (`document/11_하드웨어설계서.md` §9.1).
+## 4. 설치 · 실행 (RPi5, 네이티브)
 
-**최초 1회 — 가상환경 만들기**
+**최초 1회 — 가상환경** ([루트 README](../../README.md) §4.1 ③)
 
 ```bash
 cd ~/git/SafeSign_PhysicalAI/services/actuation
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip show bleak | grep Version     # → 0.22.3 (2026-09-23 RPi5 실물 검증 버전)
+pip show bleak | grep Version     # 0.22.3
 ```
 
-**매번 — 새 터미널을 열 때마다 활성화부터**
+`.venv`는 git에 포함되지 않는다. 저장소를 새로 받았거나 보드를 바꾸면 다시 만든다.
+
+**실행 — 매번**
 
 ```bash
 cd ~/git/SafeSign_PhysicalAI/services/actuation
@@ -298,22 +109,72 @@ source .venv/bin/activate          # 프롬프트 앞에 (.venv)가 붙어야 �
 MOCK_HARDWARE=false uvicorn app:app --app-dir src --host 0.0.0.0 --port 8002
 ```
 
-콘솔에 `micro:bit BLE 연결됨: BBC micro:bit [...]`이 뜨고 micro:bit LED가 ✓로 바뀌면 성공이다.
-`curl localhost:8002/health`의 `microbit_connected`가 **`true`(bool)** 여야 한다.
+콘솔에 `micro:bit BLE 연결됨: BBC micro:bit [...]`이 뜨고 micro:bit LED가 ✓로 바뀌면 정상이다.
+`curl -s localhost:8002/health`에서 `mock_hardware: false`, `microbit_connected: true`를 확인한다.
 
-> 📌 `.venv`는 git에 올라가지 않는다(`.gitignore`). `git pull`로 지워지지 않지만, 저장소를 새로 받았거나
-> 다른 보드라면 다시 만들어야 한다. **서비스마다 가상환경이 따로**다 — vision은 `scripts/run_rpi5.sh`가
-> 켜 주고, web은 `services/web`에서 같은 방식으로 만든다.
+평소에는 `scripts/rpi/start_all.sh`(tmux) 또는 systemd 유닛 `safesign-actuation`으로 다른 서비스와 함께 켠다
+([루트 README](../../README.md) §4.2).
 
-### 문제 해결
+**종료**는 `Ctrl+C`로 한다(`systemctl`로 켰다면 `sudo systemctl stop safesign-actuation`). `kill -9`로 끄거나
+SSH가 끊기면 BlueZ에 BLE 연결이 남아, 다음 실행 때 micro:bit가 스캔에 보이지 않는다(LED가 ✓ 그대로).
+이때는 micro:bit를 리셋하거나 `bluetoothctl disconnect <MAC>`을 실행한다.
+
+## 5. 환경변수
+
+| 이름 | 기본값 | 설명 |
+| --- | --- | --- |
+| `MOCK_HARDWARE` | `true` | `true`면 BLE에 연결하지 않고 성공 응답(`"status": "mocked"`)만 돌려준다. **실물 운영은 반드시 `false`** |
+| `MICROBIT_BLE_NAME` | `BBC micro:bit` | 스캔할 때 찾는 장치 이름(이 문자열이 이름에 들어 있으면 연결) |
+
+고정값(코드): BLE 스캔 5초, 명령당 회신 대기 2초.
+
+## 6. HTTP API
+
+| 메서드 · 경로 | 입력 예 | 동작 |
+| --- | --- | --- |
+| `GET /health` | — | `status`, `service`, `mock_hardware`, `microbit_connected` |
+| `POST /command` | `{"target_signal": "정지"}` | 해당 제스처 `G{n}` 전송, 회신 `OK{n}` 대기 |
+| `POST /result` | `{"is_correct": true}` | `correct`/`incorrect` 전송 → LED O/X 1초. `is_correct`가 JSON `true`일 때만 정답. `match_score`는 무시 |
+| `POST /progress` | `{"current": 3, "total": 7}` | `P37` 전송, 회신 `OKP37` 대기. LED 표시는 없다. 두 값 모두 0~9 정수만 허용 |
+| `GET /button` | — | 버튼 A 누적 입력 `{"seq", "last_button", "last_at", "microbit_connected"}` |
+| `POST /button/simulate` | `{"button": "A"}` (생략 가능) | micro:bit 없이 버튼 입력을 흉내 내 `seq`를 1 올린다. BLE는 건드리지 않는다 |
+
+**응답 `status`**
+
+| 값 | 의미 |
+| --- | --- |
+| `ok` | micro:bit가 맞는 회신을 보냄 (`reply`에 회신 내용) |
+| `mocked` | `MOCK_HARDWARE=true`라 전송하지 않음 |
+| `timeout` | 2초 안에 맞는 회신이 오지 않음. 맞지 않아 버린 회신은 `ignored`에 담긴다 |
+| `error` | `reason`: `unknown_target_signal`(모르는 수신호), `invalid_progress`(범위 밖 값), `microbit_unreachable`(연결 실패), `write_failed`(재연결 후 재전송도 실패) |
+
+- 전송 중 연결이 끊기면 한 번 재연결해 다시 보낸다.
+- 요청이 동시에 들어와도 BLE 전송은 하나씩 순서대로 처리한다.
+- `/button`의 `seq`는 서비스를 재시작하면 0부터 다시 센다. BLE가 끊긴 동안 누른 버튼은 기록되지 않는다.
+
+## 7. BLE 문제 해결
 
 | 증상 | 원인 | 조치 |
 | --- | --- | --- |
-| `uvicorn: command not found` | 가상환경이 **활성화되지 않았다** | `source .venv/bin/activate` |
-| `pip install` 시 `error: externally-managed-environment` | 가상환경 밖의 **시스템 pip**가 실행됐다(Bookworm은 시스템 Python 설치를 막는다) | 위와 같음. `ls -d .venv`로 있는지 먼저 보고, 없으면 "최초 1회"부터. 🔴 **`--break-system-packages`는 쓰지 말 것** — OS의 Python이 깨질 수 있다 |
-| `.venv`가 있어야 하는데 없다 | 다른 폴더·다른 보드에 접속했을 수 있다 | `pwd`·`hostname` 확인 — actuation은 **RPi5**에서 돈다 |
-| `micro:bit BLE 연결 실패: TimeoutError` | 다른 프로그램의 BLE 스캔이 켜져 있다(스캔엔 잡히는데 연결만 시간 초과) | `bluetoothctl show \| grep Discovering` → `yes`면 `scan on`을 친 창에서 `scan off` + `quit`, 모르면 `pkill bluetoothctl`. **`scan on`은 필요 없다** — 서버가 직접 스캔한다 (2026-09-23 실측) |
-| `micro:bit(...)가 스캔(5초)에 안 보임` | micro:bit가 이미 다른 쪽에 연결됐거나(✓ 표시) 전원·패닉 | 이전 서버가 살아 있는지 `pgrep -af uvicorn`, `bluetoothctl devices Connected`에 있으면 `disconnect <MAC>`, micro:bit 리셋 후 ◇ 확인 |
-| `/health`의 `microbit_connected`가 `{'_value': True}` | `bool()` 수정(2026-09-23) 이전 코드 | `git pull` 후 서버 재시작 |
+| `uvicorn: command not found` | 가상환경이 활성화되지 않음 | `source .venv/bin/activate` |
+| `pip install` 시 `error: externally-managed-environment` | 가상환경 밖의 시스템 pip가 실행됨 | 가상환경부터 활성화. `ls -d .venv`로 있는지 보고 없으면 "최초 1회"부터. **`--break-system-packages`는 쓰지 않는다**(OS의 Python이 깨질 수 있다) |
+| `.venv`가 없다 | 다른 폴더나 다른 보드에 접속함 | `pwd`·`hostname` 확인. actuation은 **RPi5**에서 돈다 |
+| `micro:bit BLE 연결 실패: TimeoutError` | 다른 프로그램의 BLE 스캔이 켜져 있음(스캔엔 잡히는데 연결만 시간 초과) | `bluetoothctl show \| grep Discovering`이 `yes`면 `scan on`을 켠 창에서 `scan off` 후 `quit`, 모르면 `pkill bluetoothctl`. 서버가 직접 스캔하므로 `scan on`은 필요 없다 |
+| `micro:bit(...)가 스캔(5초)에 안 보임` | micro:bit가 이미 다른 쪽에 연결됨(✓ 표시), 또는 전원 문제 | `pgrep -af uvicorn`으로 이전 서버가 살아 있는지 확인. `bluetoothctl devices Connected`에 있으면 `bluetoothctl disconnect <MAC>`. micro:bit 리셋 후 ◇ 확인 |
+| `/health`는 정상인데 `mock_hardware: true` | `MOCK_HARDWARE=false` 없이 실행함 | 서버를 끄고 4절 명령으로 다시 실행 |
+| 손이 움직일 때 BLE가 끊김 | 서보 전류로 전원 레일 전압이 떨어져 micro:bit가 리셋됨 | 7.5V 3A 어댑터를 쓰는지 확인. 펌웨어가 저장소 파일(150ms 순차 출발) 그대로인지 확인하고, 아니면 3절대로 다시 플래시 |
 
+micro:bit는 BLE 연결을 **하나만** 받는다. actuation 서버를 두 개 띄우거나 `bluetoothctl connect`로 직접 연결해 두면
+서버가 micro:bit를 찾지 못한다.
 
+## 8. 안전 · 주의
+
+- **BLE 시작 뒤 `music.*`를 호출하지 않는다.** micro:bit v2에서 BLE와 `music`(부저)은 같은 하드웨어 자원을 써서,
+  소리가 나는 순간 패닉 070이 나고 BLE가 끊긴다. 그래서 이 제품은 부저를 쓰지 않고 LED로만 피드백한다.
+  펌웨어를 고칠 때 소리가 필요하면 `basic.showIcon()`/`basic.showLeds()` 등 LED로 대신한다.
+- **손가락 출발 간격(150ms)을 줄이지 않는다.** 3개 이상이 겹쳐 움직이면 어댑터 용량을 넘을 수 있다.
+- **가동 범위(1절 표)를 넓히지 않는다.** 실측한 스톨 방지 범위다.
+- micro:bit 전원을 켜면 AI Hand가 곧바로 주먹 자세로 움직인다.
+- 서비스를 끌 때는 `Ctrl+C`(또는 `systemctl stop`)를 쓴다. `kill -9`는 BLE 연결을 남긴다.
+
+펌웨어 캘리브레이션 도구·테스트 코드 등 개발 자료는 dev 브랜치에 있다.

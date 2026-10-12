@@ -4,9 +4,9 @@ document/03_인터페이스계약서.md §4 (`match_score`), 05_모델카드 §2
 분류 결과(predicted_class)와 일치율(match_score)은 **분리 설계**다 — "무엇으로 판정했는가"는 SVM이,
 "얼마나 비슷한가"는 템플릿과의 코사인 유사도가 답한다.
 
-템플릿 DB(`sign_templates` 테이블)는 services/data의 seed_templates.py가 학습 데이터로 **오프라인
-시드**한다(수신호 등록 기능은 범위 제외 — 03_인터페이스계약서 §6). 이 모듈은 읽기 전용이다.
-DB나 템플릿이 아직 없으면 match_score=0으로 안전하게 동작한다.
+기본 운영에서는 템플릿 DB 없이 **모델 번들의 클래스 대표값(centroid)** 으로 일치율을 계산한다
+(get_template 폴백). `DB_PATH`에 sign_templates 테이블이 있는 SQLite 파일을 두면 그 값을 우선한다.
+이 모듈은 읽기 전용이다.
 """
 from __future__ import annotations
 
@@ -38,8 +38,7 @@ def _load_templates() -> dict[str, np.ndarray]:
         if not DB_PATH.exists():
             if not _warned_missing:
                 logger.warning(
-                    "템플릿 DB가 없습니다: %s — match_score는 0으로 반환됩니다. "
-                    "services/data의 init_db.py + seed_templates.py로 시드하세요.",
+                    "템플릿 DB가 없습니다: %s — 모델 번들의 클래스 대표값으로 일치율을 계산합니다.",
                     DB_PATH,
                 )
                 _warned_missing = True

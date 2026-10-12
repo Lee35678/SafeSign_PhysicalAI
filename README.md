@@ -1,100 +1,78 @@
-# SafeSign PhysicalAI — 심기일전
+# SafeSign — 산업 안전 수신호 교육 키트
 
-산업 안전 수신호 교육용 피지컬 AI (AI Hand + picar + micro:bit + Raspberry Pi 5 + Raspberry Pi 4B 8GB)
+로봇 손이 수신호를 시범하고, 카메라가 학습자의 손 모양을 판정하고, picar와 micro:bit가 결과를 몸으로 보여 주는
+피지컬 AI 교육 장비입니다. 크레인 작업 수신호 7종을 강사 없이 반복해서 익힐 수 있습니다.
 
-**개발 착수 시 반드시 먼저 읽을 문서**: [document/10_PRD.md](document/10_PRD.md) — 번호 문서를
-종합한 최신 요구사항입니다. 문서 전체 지도는 [document/README.md](document/README.md)에 있습니다.
+[![SafeSign 시연 — 로봇 손 시범, 학습자 손 판정, picar 반응](assets/demo_preview.gif)](assets/demo.mp4)
+
+▶ **[전체 시연 영상 보기 (1분 20초)](assets/demo.mp4)** — 로그인 → 수신호 시범 → 판정 → picar·LED 반응 → 학습 결과 → 수료증
 
 ---
 
-## 1. 디렉터리 구조 (담당자별 서비스 분리)
+## 1. 무엇을 하나
 
-`document/10_PRD.md` §4 시스템 아키텍처와 `document/01_프로젝트계획서.md` §역할 및 책임(RACI)을 기준으로 5개 서비스로
-나눴습니다. 각자 자기 서비스 폴더 안에서만 작업하면 다른 사람 코드와 충돌 없이 개발할 수 있고,
-개발 PC에서는 `docker compose up`(mock)으로 전부 합쳐서 통합 구동을 확인합니다.
+| 단계 | 장치 | 하는 일 |
+| --- | --- | --- |
+| ① 시범 | AI Hand(로봇 손) + micro:bit | 이번에 배울 수신호의 손 모양을 보여 준다 |
+| ② 따라 하기 | 학습자 | 시범을 보고 같은 손 모양을 만든 뒤 확인 버튼(키보드 Space 또는 micro:bit A)을 누른다 |
+| ③ 판정 | 카메라 + RPi5 | 손 관절 21개를 읽어 7종 중 무엇인지, 얼마나 확실한지 판정한다 |
+| ④ 피드백 | picar + LED + micro:bit | 정답이면 그 신호대로 picar가 움직이고 LED가 켜진다. 오답이면 micro:bit에 X가 뜨고 시범부터 다시 한다 |
 
-> 📌 **운영 방식 (2026-09-28 결정, 송승호)**: **실물 운영·시연은 네이티브**(§4), **Docker는 개발 PC mock
-> 통합·CI 전용**이다. 보드가 2대(RPi5·RPi4B)로 나뉘어 compose의 "한 번에 띄우기" 이점이 없고, vision은
-> CSI 카메라(picamera2) 때문에 컨테이너로 돌릴 수 없어 RPi5가 네이티브·Docker 혼합이 되기 때문이다.
-> 근거: [16 §2.4](document/16_통합테스트_KPI_CI.md)
+- 수신호마다 **최대 3번** 시도하고, 판정은 한 번에 **최대 10초**를 기다린다.
+- 확신이 **75% 미만**이면 정답·오답을 내지 않고 "다시 해 보세요"로 보류한다. 엉뚱한 판정보다 보류가 안전하다고 보았다.
+- 7종을 마치면 수신호별 결과와 **수료증**을 보여 준다. 회원 기록은 회원 DB(Supabase)에 남고, 회사 사이트에서 수료증을 다시 받을 수 있다.
 
-```
-SafeSign_PhysicalAI/
-├── document/              # 기획/설계/계약 문서 (README.md = 색인, 10_PRD.md = 종합본)
-├── services/
-│   ├── vision/             ← 이동혁 담당 (Perception + Cognition, 판정로직 R) — Raspberry Pi 5
-│   ├── actuation/          ← 송승호 담당 (AI Hand + micro:bit, 하드웨어 R) — Raspberry Pi 5
-│   ├── picar/              ← 송승호 담당 (picar 전용 컨트롤러, 하드웨어 R) — Raspberry Pi 4B 8GB (신규)
-│   ├── web/                ← 조은수 담당 (웹 R, 화면) — 백엔드 state_machine.py는 이동혁 (분담 document/14 §8)
-│   ├── portal/             ← 이동혁 (2026-09-30) 회사 웹사이트 — 같은 회원 DB, RPi5 없이 개발 PC + ngrok (document/19)
-│   └── data/                ← 김지훈 담당 (데이터 수집 스크립트 + 수신호 템플릿 DB, 데이터수집 R)
-├── shared/                 # 5개 서비스 공통: 03_인터페이스계약서 기반 스키마 (필드명 그대로 코드 변수명에 사용)
-├── docker-compose.yml      # 서비스 4개 통합 실행 + data-tools(--profile tools) (개발 PC mock·CI 전용)
-├── docker-compose.hw.yml   # actuation·picar 실물 오버라이드 — 미검증·선택 사항, 시연 미사용
-├── .env.example           # 비밀 값(Supabase 키 등)은 루트 .env — git 제외, 팀원에게는 파일로 전달
-└── .gitignore
-```
+### 수신호 7종
 
-담당 외 서비스도 A/C/I 역할로 참고는 하되, 실제 코드 작업은 본인 폴더 위주로 진행하고
-인터페이스는 `shared/schemas/`에 정의된 스키마로만 주고받으세요. 스키마를 바꿔야 하면
-`shared/schemas/` 파일과 `document/03_인터페이스계약서.md`를 함께 갱신하고 팀에 공유합니다.
+| # | 수신호 | 손 모양 | 정답일 때 picar |
+| --- | --- | --- | --- |
+| 1 | 정지 | 다섯 손가락 모두 펴기 | 정지 · 적색 LED |
+| 2 | 서행 | 검지 + 중지 | 감속 주행 |
+| 3 | 좌회전 유도 | 엄지 + 검지 | 좌회전 주행 |
+| 4 | 우회전 유도 | 엄지 + 소지 | 우회전 주행 |
+| 5 | 확인 완료 | 주먹 | LED 전부 점멸 |
+| 6 | 후진 | 검지만 | 후진 주행 |
+| 7 | 주의 | 소지만 | 정지 · 황색 LED |
 
-## 2. 확정된 하드웨어/아키텍처 (2026-09-18, PRD §1.3·§11 기준)
+크레인 표준신호(팔 동작)를 카메라 한 대로 판정할 수 있게 손 모양으로 바꾼 것입니다. 후진·주의는 자체 지정 신호입니다.
 
-- **보드 2대로 분리**: picar가 주행하면 카메라도 함께 이동해버리는 문제 때문에, **Raspberry Pi 5**
-  (카메라·AI Hand·micro:bit, 학습자 앞 **고정**)와 **Raspberry Pi 4B 8GB**(picar 차체에 탑재, **이동**)
-  로 나누고 **Wi-Fi(HTTP)** 로 통신합니다. `services/vision`·`services/actuation`은 RPi5에,
-  `services/picar`는 RPi4B에 배포됩니다.
-- **카메라**: Raspberry Pi Camera Module 3, **CSI** 직결 (범용 USB 웹캠 아님)
-- **picar 통신**: RPi5 → RPi4B, HTTP POST, **타임아웃 500ms + 1회 재시도**, 실패 시 picar 없이
-  AI Hand + micro:bit로 진행 (보조 출력으로 간주)
-- **MediaPipe 실행 모드**: `LIVE_STREAM`(비동기 콜백) — 개발 편의보다 실시간 성능 우선
-- **판정 임계값/프레임 수 초기값**: τ=0.75, N=3프레임 (하드웨어 제약 근거 초기값, 실물 도착 후 재검증)
-- **서보 각도 초기값**: 펴짐=170°, 굽힘=10°, 손목중립=90°
-- **수신호 등록(실시간 추가) 기능은 범위에서 제외** — 경량 분류기(SVM)는 고정 클래스만 예측 가능해
-  재학습 없는 실시간 등록이 성립하지 않음. DB 템플릿은 `services/data/src/seed_templates.py`로
-  오프라인 시드
+## 2. 성능
 
-## 3. 로컬 실행 (개발 PC, mock)
+학습에 한 번도 쓰지 않은 팀원 3명의 촬영 데이터(3명 × 7종 × 10회 = 210번 시도)로 쟀습니다.
 
-하드웨어 없이 개발 PC에서 서비스 4개(vision·actuation·picar·web)를 한꺼번에 띄운다(data-tools는 `--profile tools`로 따로).
-카메라·서보·모터는 전부 목업 응답이다. mock 카메라는 "손 미검출"만 내므로 판정은 일어나지 않고 약 3초 뒤 SC-04로
-넘어간다 — 연결 확인용이다(2026-09-28 확인, [16 §2.3](document/16_통합테스트_KPI_CI.md)).
-**실물(RPi5 + RPi4B)로 돌리려면 [4. 실물 실행](#4-실물-실행--네이티브-rpi5--rpi4b)을 볼 것.**
+| 항목 | 결과 | 목표 |
+| --- | --- | --- |
+| 정답률 | **95.2%** (200 / 210) | 92% 이상 |
+| 미판정률 (보류) | **4.8%** (10 / 210) | 5% 이하 |
+| 다른 신호로 잘못 판정 | **0건** | — |
+| 판정 지연 (95% 지점) | **0.046초** | 1.0초 이하 |
+| 물리 피드백 시작 (95% 지점) | **0.089초** — picar·micro:bit가 명령을 받기까지 | 2.0초 이하 |
 
-```bash
-docker compose up --build
-```
+- 정확도는 2026-09-30, 지연은 2026-10-02에 실물(RPi5 + RPi4B)로 측정했습니다.
+- 정답률과 미판정률은 95% 신뢰구간이 목표선에 걸쳐 있어 **잠정 달성**으로 기록했습니다.
+- 수신호별 정답(30회 중): 정지 30 · 서행 29 · 좌회전 유도 30 · 우회전 유도 30 · 확인 완료 27 · 후진 24 · 주의 30.
 
-- vision    → http://localhost:8001/health , http://localhost:8001/latest
-- actuation → http://localhost:8002/health
-- picar     → http://localhost:8003/health
-- web       → http://localhost:8000
+## 3. 구성품
 
-데이터 수집/DB 초기화 도구는 상시 구동 서비스가 아니라 필요할 때만 실행합니다.
+| 부품 | 역할 | 연결 |
+| --- | --- | --- |
+| Raspberry Pi 5 (4GB) | 학습자 앞 고정 스테이션 — 손 인식·판정, 교육 화면, 장치 제어 | 카메라 CSI · micro:bit BLE · picar Wi-Fi · 운영 PC 랜선 직결 |
+| Raspberry Pi Camera Module 3 | 학습자 손 촬영 (1280×720) | RPi5에 CSI 케이블(15→22핀) |
+| AI Hand (손가락 서보 5개) | 수신호 시범 | micro:bit 확장보드(StartbitV2)가 서보 구동 |
+| micro:bit v2 | AI Hand 제어 · O/X 표시 · A 버튼(확인) | RPi5와 BLE(무선) |
+| Raspberry Pi 4B (8GB) | picar 제어 | RPi5와 Wi-Fi (RPi5가 AP) |
+| picar 차체 (모터 4개) | 정답 신호대로 정지·서행·좌우회전·후진 | RPi4B → 모터 제어 보드(I2C) |
+| LED 4개 (적색 2 · 황색 2) | 신호별 점등·점멸 | RPi4B GPIO 4핀 + 저항 220Ω |
+| 배터리 3S 11.1V | picar·RPi4B 전원 | 차체 강압 회로로 5V 공급 |
 
-```bash
-docker compose --profile tools run --rm data-tools python src/init_db.py
-docker compose --profile tools run --rm data-tools python src/seed_templates.py
-```
+판정 모델 파일(`svm_classifier.joblib`)은 저장소에 포함하지 않고 제품과 함께 따로 제공합니다(§4.1 ④).
 
-> ⚠️ Windows Docker Desktop은 CSI 카메라·GPIO·I2C·BLE 장치 전달을 지원하지 않으므로, 개발 PC에서는
-> `MOCK_CAMERA=true`, `MOCK_HARDWARE=true`(둘 다 기본값)로 목업 응답을 받으며 개발한다. 로컬
-> docker-compose에서 `web`이 `picar`를 호출하는 것은 실물 배포에서의 **Wi-Fi 통신을 흉내 낸 것**이다.
-
-## 4. 실물 실행 — 네이티브 (RPi5 + RPi4B)
-
-실물은 **Docker 없이 각 보드에서 서비스를 직접 띄우는 방식(네이티브)** 으로 운영한다(2026-09-28 결정, §1).
-2026-09-25 전 구간 통합 테스트를 이 방식으로 통과했다. 기동·종료는 `scripts/rpi/`
-([17](document/17_실물실행_스크립트_사용법.md))로 한다.
-
-> `docker-compose.hw.yml`(actuation·picar 실물 오버라이드)은 **미검증·선택 사항**이며 시연 전에는 검증하지
-> 않는다. vision은 컨테이너에서 CSI 카메라를 쓸 수 없어 이 파일에 없다.
+## 4. 설치와 실행
 
 ### 4.0 구성 한눈에
 
 ```
- [시연 PC] ──UTP── [RPi5 (고정 스테이션)] ──Wi-Fi(AP)── [RPi4B (picar 차체)]
+ [운영 PC] ──랜선── [RPi5 (고정 스테이션)] ──Wi-Fi(AP)── [RPi4B (picar 차체)]
   브라우저            vision    :8001                       picar :8000
                       actuation :8002 ──BLE── micro:bit ── AI Hand
                       web       :8000
@@ -102,14 +80,14 @@ docker compose --profile tools run --rm data-tools python src/seed_templates.py
 
 | 보드 | 서비스 | 폴더 | 포트 | 주소 |
 | --- | --- | --- | --- | --- |
-| RPi4B | picar | `services/picar` | 8000 | `192.168.50.10` (AP 고정) |
-| RPi5 | actuation | `services/actuation` | 8002 | `localhost` |
-| RPi5 | vision | `services/vision` | 8001 | `localhost` |
-| RPi5 | web | `services/web` | 8000 | PC에서 `http://<RPi5 eth0 주소>:8000` |
+| RPi4B | picar | [services/picar](services/picar) | 8000 | `192.168.50.10` (AP 고정) |
+| RPi5 | actuation | [services/actuation](services/actuation) | 8002 | `localhost` |
+| RPi5 | vision | [services/vision](services/vision) | 8001 | `localhost` |
+| RPi5 | web | [services/web](services/web) | 8000 | PC에서 `http://<RPi5 eth0 주소>:8000` |
 
-- RPi5 ↔ RPi4B 무선(AP) 구성은 [document/07_네트워크설정법.md](document/07_네트워크설정법.md)를 먼저 끝낸다.
-- **PC ↔ RPi5 유선(UTP) 대역은 현장마다 다르다.** 조건은 하나 — picar AP 대역 `192.168.50.x`와 겹치지 않을 것
-  (`document/11_하드웨어설계서.md` §6.1). web은 `0.0.0.0`에 뜨므로 코드는 바꿀 필요가 없다.
+- RPi5 ↔ RPi4B 무선(AP) 구성은 **[docs/network_setup.md](docs/network_setup.md)** 를 먼저 끝냅니다.
+- 운영 PC ↔ RPi5 랜선 대역은 현장에 맞게 정합니다. 조건은 하나, picar AP 대역 `192.168.50.x`와 겹치지 않을 것.
+  web은 `0.0.0.0`에 뜨므로 코드는 바꿀 필요가 없습니다.
 
 ### 4.1 최초 1회 준비
 
@@ -117,8 +95,8 @@ docker compose --profile tools run --rm data-tools python src/seed_templates.py
 
 ```bash
 # RPi5와 RPi4B 각각에서
+git clone -b main https://github.com/Lee35678/SafeSign_PhysicalAI.git ~/git/SafeSign_PhysicalAI
 cd ~/git/SafeSign_PhysicalAI
-git pull
 git log --oneline -1          # 두 보드의 커밋이 같아야 한다
 ```
 
@@ -138,7 +116,7 @@ pip install -r requirements.txt
 
 ```bash
 # 카메라 라이브러리는 pip가 아니라 apt로 설치한다
-sudo apt update && sudo apt install -y python3-picamera2 fonts-nanum
+sudo apt update && sudo apt install -y python3-picamera2 fonts-nanum tmux
 rpicam-hello --list-cameras   # imx708 (Camera Module 3) 이 보여야 한다
 
 cd ~/git/SafeSign_PhysicalAI/services/vision
@@ -154,171 +132,162 @@ python3 -m venv .venv
 source .venv/bin/activate && pip install -r requirements.txt && deactivate
 ```
 
-> 🔴 `pip install`에서 `error: externally-managed-environment`가 나면 **가상환경이 켜지지 않은 것**이다.
-> `source .venv/bin/activate`부터 하고, **`--break-system-packages`는 쓰지 않는다**(OS의 Python이 깨질 수 있다).
+> 🔴 `pip install`에서 `error: externally-managed-environment`가 나면 **가상환경이 켜지지 않은 것**입니다.
+> `source .venv/bin/activate`부터 하고, **`--break-system-packages`는 쓰지 않습니다**(OS의 Python이 깨질 수 있다).
 
-**④ RPi5 — 판정 모델 파일 복사** (`svm_classifier.joblib`은 git에 없다)
+**④ RPi5 — 판정 모델 파일 넣기**
+
+제품과 함께 받은 `svm_classifier.joblib`을 `services/vision/models/`에 넣습니다.
 
 ```bash
-# 모델이 있는 PC에서
-scp services/vision/models/svm_classifier.joblib <사용자>@<RPi5 주소>:~/git/SafeSign_PhysicalAI/services/vision/models/
+# 모델 파일이 있는 PC에서
+scp svm_classifier.joblib <계정>@<RPi5 주소>:~/git/SafeSign_PhysicalAI/services/vision/models/
 ```
+
+손 관절 모델(`hand_landmarker.task`)은 저장소에 들어 있습니다. 자세한 내용은 [services/vision/models/README.md](services/vision/models/README.md).
 
 **⑤ micro:bit — 펌웨어 플래시**
 
-MakeCode(makecode.microbit.org)에서 **StartbitV2 확장이 들어 있는 기존 프로젝트**를 열고, JavaScript 보기에서
+MakeCode(makecode.microbit.org)에서 **StartbitV2 확장이 들어 있는 프로젝트**를 열고, JavaScript 보기에서
 기존 내용을 지운 뒤 [services/actuation/src/firmware/aihand_control.ts](services/actuation/src/firmware/aihand_control.ts)를
-**통째로 붙여 넣어** 플래시한다. 켜면 LED에 ◇가 뜬다.
+**통째로 붙여 넣어** 플래시합니다. 켜면 LED에 ◇가 뜹니다.
 
-> ⚠️ 일부만 고쳐 넣지 말 것 — 저장소와 micro:bit가 어긋나도 동작만 보고는 모를 수 있다(2026-09-25 `gesture5` 사례).
+> ⚠️ 일부만 고쳐 넣지 않습니다 — 저장소와 micro:bit가 어긋나도 동작만 보고는 알기 어렵습니다.
 
-### 4.2 실행 — 매번 (터미널 4개, 이 순서대로)
-
-**터미널 1 — RPi4B: picar**
-
-```bash
-cd ~/git/SafeSign_PhysicalAI/services/picar
-source .venv/bin/activate
-MOCK_HARDWARE=false uvicorn app:app --app-dir src --host 0.0.0.0 --port 8000
-```
-
-- 🔴 RPi4B는 차체 배터리에서 급전받는다. **USB-C 어댑터를 동시에 꽂지 않는다**(헤더 5V에 역류 방지 없음).
-- 배터리 스위치를 손 닿는 곳에 둔다.
-
-**터미널 2 — RPi5: actuation (AI Hand + micro:bit)**
-
-```bash
-bluetoothctl show | grep Discovering   # → no 여야 한다. yes면 scan on 켠 창에서 scan off / 모르면 pkill bluetoothctl
-
-cd ~/git/SafeSign_PhysicalAI/services/actuation
-source .venv/bin/activate
-MOCK_HARDWARE=false uvicorn app:app --app-dir src --host 0.0.0.0 --port 8002
-```
-
-콘솔에 `micro:bit BLE 연결됨: BBC micro:bit [...]`이 뜨고 micro:bit LED가 ✓로 바뀌면 성공이다.
-
-**터미널 3 — RPi5: vision (카메라 + 판정)**
-
-```bash
-cd ~/git/SafeSign_PhysicalAI/services/vision
-bash scripts/run_rpi5.sh       # 가상환경을 알아서 켜고 CSI 카메라로 :8001에 뜬다
-```
-
-"`svm_classifier.joblib` 이 없습니다" 경고가 나오면 4.1 ④를 먼저 한다.
-
-**터미널 4 — RPi5: web**
-
-```bash
-cd ~/git/SafeSign_PhysicalAI/services/web     # ⚠️ 이 폴더에서 실행해야 화면 파일(frontend/)을 찾는다
-source .venv/bin/activate
-VISION_URL=http://localhost:8001 ACTUATION_URL=http://localhost:8002 PICAR_URL=http://192.168.50.10:8000 \
-  uvicorn backend.app:app --host 0.0.0.0 --port 8000
-```
-
-`PICAR_URL`을 빼면 기본값(`localhost:8003`)으로 가서 picar가 움직이지 않는다.
-`VISION_URL`·`ACTUATION_URL`도 빼지 않는다 — 루트 `.env`가 `.env.example` 복사본이면 docker-compose용 `http://vision:8000`·`http://actuation:8000`이
-채워져 장치 상태가 unreachable, 실시간 화면·AI Hand가 안 된다(아래 `.env` 참고).
-
-회원 기록을 Supabase에 저장하려면 저장소 루트에 `.env`(git 제외 — 노트북에서 `scp .env`로 복사)를 두면 web이 시작할 때 읽는다
-(`SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`, 셸에서 준 값이 우선. 없으면 로컬 모드 — [services/web/supabase/README.md](services/web/supabase/README.md)). vision 모델 번들은 2026-09-30 갱신본(일치율 클래스별 환산 포함)을 복사해 둔다.
-
-**PC — 브라우저**
-
-```bash
-# RPi5에서 유선 주소 확인
-ip -4 addr show eth0
-```
-
-PC 브라우저에서 `http://<위 주소>:8000` → SC-01 화면. 상단 장치 상태가 전부 정상이어야 한다.
-
-### 4.2-S 스크립트로 한 번에 — tmux (권장 · 실물 첫 검증 전이라 4.2 수동 절차도 유지)
-
-위 터미널 4개를 RPi5에서 명령 하나로 띄운다. 서비스가 **tmux 안에서** 돌기 때문에 SSH가 끊겨도 죽지 않는다
-(→ 4.5의 "SSH 끊김 → BLE 연결 잔류"가 생기지 않는다). 최초 1회 두 보드 모두 `sudo apt install -y tmux`.
+**⑥ RPi5 — 설정 파일 (`.env`)**
 
 ```bash
 cd ~/git/SafeSign_PhysicalAI
-bash scripts/rpi/start_all.sh      # 사전 점검 → picar(RPi4B, SSH) → actuation → vision → web, 각 /health 확인
-bash scripts/rpi/status.sh         # 4.3 확인 4종 + 온도·스로틀링 + 세션
+cp .env.example .env          # 회원 기록을 Supabase에 남기려면 SUPABASE_URL·SUPABASE_SERVICE_ROLE_KEY를 채운다
+```
+
+키를 비워 두면 RPi5 안에만 저장하는 로컬 모드로 동작합니다(§4.4). `.env`는 git에 올리지 않습니다.
+
+### 4.2 실행
+
+**스크립트로 한 번에 (권장)** — RPi5에서 실행합니다. 서비스가 tmux 안에서 돌기 때문에 SSH가 끊겨도 꺼지지 않습니다.
+RPi4B에도 `sudo apt install -y tmux`가 필요합니다.
+
+```bash
+cd ~/git/SafeSign_PhysicalAI
+bash scripts/rpi/start_all.sh      # 사전 점검 → picar(RPi4B, SSH) → actuation → vision → web, 각각 /health 확인
+bash scripts/rpi/status.sh         # 상태 확인 (§4.3) + 온도·스로틀링 + 세션
 bash scripts/rpi/stop_all.sh       # picar 정지 명령 → 역순 Ctrl+C → 세션 정리
 tmux attach -t safesign            # 로그 보기 (창 0 actuation · 1 vision · 2 web, 빠져나오기 Ctrl+b d)
 ```
 
-- RPi4B 계정이 RPi5와 다르면 `PICAR_SSH=<rpi4b 계정>@192.168.50.10 bash scripts/rpi/start_all.sh`.
-- 사전 점검(남은 uvicorn, BLE `Discovering`, 모델 파일, 두 보드 커밋, `get_throttled`, picar 안전 확인)을 통과하지 못하면 아무것도 띄우지 않는다.
-- 창별 로그와 실행 환경 기록(`env.txt` — 06 §1-1용)은 `~/safesign_logs/<시각>/`에 쌓인다.
-- **준비·설정·사전 점검 조치·문제 해결은 [document/17_실물실행_스크립트_사용법](document/17_실물실행_스크립트_사용법.md).** ⚠️ 실물 첫 검증 전 — 처음엔 바퀴를 띄우고 17 §6 체크리스트대로.
+- RPi4B 계정이 RPi5와 다르면 `PICAR_SSH=<계정>@192.168.50.10 bash scripts/rpi/start_all.sh`.
+- 사전 점검(남은 uvicorn, BLE 스캔 상태, 모델 파일, 두 보드 커밋, 전원·온도 상태, picar 안전 확인)을 통과하지 못하면 아무것도 띄우지 않습니다.
+- 창별 로그와 실행 환경 기록(`env.txt`)은 `~/safesign_logs/<시각>/`에 쌓입니다.
+- 부팅할 때 자동으로 켜려면 `sudo bash scripts/rpi/systemd/install.sh rpi5 --enable`(RPi4B는 `rpi4b`). 아직 실물 장기 운전으로 검증하지 않은 선택 기능이며, tmux 스크립트와 동시에 쓰지 않습니다.
 
-### 4.3 한 번에 상태 확인 (RPi5의 새 터미널)
+> 🔴 **전원·안전** — RPi4B는 차체 배터리에서 전원을 받습니다. **USB-C 어댑터를 동시에 꽂지 않습니다**(헤더 5V에 역류 방지가 없다).
+> 배터리 스위치를 손 닿는 곳에 둡니다. 처음 켤 때는 바퀴를 띄우거나 주행 공간을 비워 둡니다.
+
+**수동 실행 (터미널 4개, 이 순서대로)** — 스크립트에서 문제가 날 때 어느 서비스인지 가르는 용도입니다.
+
+```bash
+# 터미널 1 — RPi4B: picar
+cd ~/git/SafeSign_PhysicalAI/services/picar && source .venv/bin/activate
+MOCK_HARDWARE=false uvicorn app:app --app-dir src --host 0.0.0.0 --port 8000
+
+# 터미널 2 — RPi5: actuation (AI Hand + micro:bit)
+bluetoothctl show | grep Discovering   # → no 여야 한다
+cd ~/git/SafeSign_PhysicalAI/services/actuation && source .venv/bin/activate
+MOCK_HARDWARE=false uvicorn app:app --app-dir src --host 0.0.0.0 --port 8002
+
+# 터미널 3 — RPi5: vision (카메라 + 판정)
+cd ~/git/SafeSign_PhysicalAI/services/vision
+bash scripts/run_rpi5.sh
+
+# 터미널 4 — RPi5: web (⚠️ services/web 폴더에서 실행해야 화면 파일을 찾는다)
+cd ~/git/SafeSign_PhysicalAI/services/web && source .venv/bin/activate
+VISION_URL=http://localhost:8001 ACTUATION_URL=http://localhost:8002 PICAR_URL=http://192.168.50.10:8000 \
+  uvicorn backend.app:app --host 0.0.0.0 --port 8000
+```
+
+actuation 콘솔에 `micro:bit BLE 연결됨`이 뜨고 micro:bit LED가 ✓로 바뀌면 연결된 것입니다.
+운영 PC 브라우저에서 `http://<RPi5 eth0 주소>:8000`(RPi5에서 `ip -4 addr show eth0`)을 열면 시작 화면이 나옵니다.
+화면 상단 장치 상태(카메라 · AI Hand · picar)가 모두 정상이어야 합니다.
+
+### 4.3 상태 확인
 
 ```bash
 curl -s localhost:8001/health | python3 -m json.tool           # model.loaded: true, camera.state: running
 curl -s localhost:8002/health                                  # microbit_connected: true
-curl -s 192.168.50.10:8000/health | python3 -m json.tool       # status: ok, hardware.i2c.reachable: true, max_speed_pct: 50
+curl -s 192.168.50.10:8000/health | python3 -m json.tool       # status: ok, hardware.i2c.reachable: true
 curl -s localhost:8000/api/state | python3 -m json.tool        # devices 3개 모두 ok
 ```
 
-진행 중 이상하면 `/api/state`의 `last_dispatch`(어느 장치로 보낸 명령이 실패했는지)와 `live_judgment`를 본다.
-`ok: true`여도 `body.status`가 `timeout`·`partial`이면 실패다.
+진행 중 이상하면 `/api/state`의 `last_dispatch`(어느 장치로 보낸 명령이 실패했는지)와 `live_judgment`를 봅니다.
+`ok: true`여도 `body.status`가 `timeout`·`partial`이면 실패입니다.
 
-### 4.4 (선택) web 없이 하드웨어만 통합 확인
+### 4.4 회원 DB · 회사 사이트
 
-web에서 문제가 나면 **하드웨어 쪽인지 web 쪽인지** 가르기 위해 web 없이 돌린다. 터미널 1~3만 띄운 상태에서:
-
-```bash
-cd ~/git/SafeSign_PhysicalAI/services/actuation
-source .venv/bin/activate
-python3 scripts/aihand_vision_picar_demo.py --picar http://192.168.50.10:8000
-```
-
-AI Hand 시범 → (3초 보기) → 학습자가 따라 하기 → 판정 → picar·micro:bit 반응 순으로 7종을 진행하고, 끝나면
-요약 표와 CSV를 남긴다. 보는 시간은 `--observe`, 오답 확정 시간은 `--wrong-confirm`으로 조절한다.
-
-장치별 단독 확인은 각 서비스 폴더의 스크립트를 쓴다:
-`services/actuation/scripts/aihand_test.py --auto --repeat 1` · `services/picar/scripts/load_test.py --url http://localhost:8000 --pattern spin --speed 40 --duration 15`
+- **회원 DB** — Supabase 프로젝트에 [services/web/supabase/schema.sql](services/web/supabase/schema.sql)을 한 번 실행하고,
+  `.env`에 `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY`를 넣습니다. 절차는 [services/web/supabase/README.md](services/web/supabase/README.md).
+  서비스 키는 서버 전용이라 브라우저·git·메신저에 노출하지 않습니다.
+- **회사 사이트** — 같은 회원 DB로 회원가입·로그인·학습 기록·수료증 재발급을 제공합니다. 교육장 장비가 없어도 됩니다.
+  [render.yaml](render.yaml)로 Render에 올립니다. 절차는 [services/portal/README.md](services/portal/README.md).
 
 ### 4.5 모니터링 · 종료
 
 ```bash
-# RPi5 — 온도·스로틀링 (2026-09-25 86.2°C 기록, 액티브 쿨러 필요)
-watch -n2 'vcgencmd measure_temp; vcgencmd get_throttled'   # get_throttled=0x0 이어야 정상
+watch -n2 'vcgencmd measure_temp; vcgencmd get_throttled'   # RPi5 — get_throttled=0x0 이어야 정상 (액티브 쿨러 필요)
+python3 scripts/rpi/monitor.py                              # 메모리·CPU·온도·판정 fps를 CSV로 기록, Ctrl+C로 끝내면 요약
 ```
 
-**종료는 역순으로, 반드시 `Ctrl+C`로** 한다: web → vision → actuation → picar.
-actuation을 `kill -9`로 끄거나 SSH가 끊기면 **BlueZ에 BLE 연결이 남아** 다음 실행 때 micro:bit가 스캔에 안
-보인다(micro:bit가 ✓ 그대로). 그때는 micro:bit 리셋 또는 `bluetoothctl disconnect <MAC>`.
-picar는 끝나면 배터리 스위치를 내린다(정상 종료가 필요하면 `sudo shutdown -h now` 후).
+**종료는 `bash scripts/rpi/stop_all.sh`** 를 씁니다. 수동으로 끌 때는 역순(web → vision → actuation → picar)으로, **반드시 `Ctrl+C`** 로 끕니다.
+actuation을 `kill -9`로 끄거나 SSH가 끊기면 **BLE 연결이 남아** 다음 실행 때 micro:bit가 스캔에 안 보입니다(micro:bit에 ✓가 그대로).
+그때는 micro:bit를 리셋하거나 `bluetoothctl disconnect <MAC>`.
+picar는 `ssh <RPi4B> 'sudo shutdown -h now'`로 끈 뒤, LED가 꺼지면 배터리 스위치를 내립니다.
 
 ### 4.6 자주 겪는 문제
 
 | 증상 | 원인 | 조치 |
 | --- | --- | --- |
 | `uvicorn: command not found` | 가상환경이 안 켜짐 | `source .venv/bin/activate` |
-| `externally-managed-environment` | 가상환경 밖 pip | 위와 같음. `--break-system-packages` 금지 |
-| `micro:bit BLE 연결 실패: TimeoutError` | 다른 BLE 스캔이 켜져 있음 | `bluetoothctl show \| grep Discovering` → `no`로 |
-| micro:bit가 스캔에 안 보임 | 이전 서버·bluetoothctl이 연결을 잡고 있음(✓ 표시) | `pgrep -af uvicorn`, micro:bit 리셋 |
-| vision `model_not_loaded`로 화면이 계속 대기 | 모델 파일 없음 | 4.1 ④ |
-| vision `camera.error: picamera2…` | apt 미설치 또는 venv를 `--system-site-packages` 없이 만듦 | 4.1 ③ 다시 |
-| picar가 안 움직임 | web의 `PICAR_URL` 누락, 또는 AP 끊김 | 4.2 터미널 4 · `ping 192.168.50.10` |
-| `get_throttled`가 `0x0`이 아님 | RPi5 과열 | 쿨러·통풍, 온도 확인 |
+| `externally-managed-environment` | 가상환경 밖에서 pip | 위와 같음. `--break-system-packages` 금지 |
+| `micro:bit BLE 연결 실패: TimeoutError` | 다른 BLE 스캔이 켜져 있음 | `bluetoothctl show \| grep Discovering` → `no`로 (모르면 `pkill bluetoothctl`) |
+| micro:bit가 스캔에 안 보임 | 이전 서버·bluetoothctl이 연결을 잡고 있음(✓ 표시) | `pgrep -af uvicorn` 확인, micro:bit 리셋 또는 `bluetoothctl disconnect <MAC>` |
+| 화면이 계속 대기, vision `model_not_loaded` | 모델 파일 없음 | §4.1 ④ |
+| vision `camera.error: picamera2…` | apt 미설치, 또는 venv를 `--system-site-packages` 없이 만듦 | §4.1 ③ 다시 |
+| picar가 안 움직임 | web의 `PICAR_URL` 누락, AP 끊김, I2C 꺼짐 | §4.2 터미널 4 · `ping 192.168.50.10` · `i2cdetect -y 1` |
+| `get_throttled`가 `0x0`이 아님 | RPi5 과열·전원 부족 | 쿨러·통풍·전원 어댑터 확인 후 재부팅 |
 
-더 자세한 내용: [services/actuation/README.md](services/actuation/README.md)(BLE 문제 해결) ·
-[services/vision/README.md](services/vision/README.md)(카메라) · [services/picar/README.md](services/picar/README.md)(모터·LED·속도) ·
-[document/07_네트워크설정법.md](document/07_네트워크설정법.md)(AP·SSH).
+장치별 자세한 내용: [actuation](services/actuation/README.md)(BLE) · [vision](services/vision/README.md)(카메라) ·
+[picar](services/picar/README.md)(모터·LED·속도) · [web](services/web/README.md)(교육 화면) · [네트워크](docs/network_setup.md)(AP·SSH).
 
-## 5. Git / 브랜치 전략 (제안)
+## 5. 폴더 구조
 
-- 각자 자기 서비스 폴더(`services/<본인담당>/`)를 중심으로 작업 브랜치를 나눕니다.
-  예: `feat/vision-classifier`, `feat/actuation-aihand`, `feat/picar-motor`, `feat/web-sc03`,
-  `feat/data-collection`
-- `shared/schemas/`를 변경하는 PR은 반드시 관련자 전원 리뷰(C) 후 머지합니다.
-- 통합 확인은 `main`에 머지 후 `docker compose up --build`(mock)로 서비스 4개가 함께 뜨는지 확인하고,
-  실물 동작은 §4 네이티브 경로로 확인합니다.
+```
+SafeSign_PhysicalAI/
+├── services/
+│   ├── vision/      # RPi5 — 카메라, 손 관절 인식(MediaPipe), 수신호 판정(SVM)
+│   ├── actuation/   # RPi5 — AI Hand · micro:bit BLE 제어 (+ micro:bit 펌웨어 src/firmware/)
+│   ├── web/         # RPi5 — 교육 화면, 교육 진행 상태머신, 회원 기록
+│   ├── picar/       # RPi4B — picar 주행 · LED
+│   └── portal/      # 클라우드 — 회사 사이트 (같은 회원 DB)
+├── scripts/rpi/     # 실물 기동 · 상태 · 종료 · 모니터 스크립트, systemd 유닛
+├── docs/            # 네트워크(AP) 설정
+├── assets/          # 시연 영상
+├── .env.example     # 설정 예시 (복사해서 .env)
+└── render.yaml      # 회사 사이트 호스팅 설정
+```
 
-## 6. 문서 연동 체크
+## 6. 개발 자료
 
-- 서비스 간 메시지 필드/스키마 변경 시 → `document/03_인터페이스계약서.md` 갱신
-- 아키텍처/범위가 바뀌면 → `document/10_PRD.md`도 함께 갱신 (개별 문서만 고치고 PRD를 방치하지 않기)
-- 통합 7종 수신호 목록은 `document/02_설계문서.md` §4·§4-1 · `document/04_데이터셋명세서.md` §1 ·
-  `shared/schemas/aihand_command.schema.json` · `shared/schemas/picar_command.schema.json`에서
-  동일하게 유지
+이 브랜치(main)에는 장비에 설치하는 파일만 있습니다. 설계·시험 문서, 자동 테스트, 학습 파이프라인, 데이터 수집 도구,
+KPI 측정 자료는 개발 브랜치 **[dev](https://github.com/Lee35678/SafeSign_PhysicalAI/tree/dev)** 에 있습니다.
+코드 주석의 `document/…`, `05_모델카드 §…` 같은 표기는 dev 브랜치의 문서를 가리킵니다.
+
+## 7. 만든 사람 — 팀 심기일전
+
+| 이름 | 맡은 일 |
+| --- | --- |
+| 송승호 (팀장) | AI Hand · micro:bit · picar 하드웨어와 제어, 실물 통합 시험 · 자동 테스트, KPI 측정 |
+| 이동혁 | 손 인식 · 판정(MediaPipe + SVM), 판정 타이밍, 회원 DB · 회사 사이트, 화면 디자인 |
+| 조은수 | 교육 화면 첫 구현, 판정 타이밍 화면, KPI 집계 |
+| 김지훈 | 학습 데이터 확보(공개 데이터셋 27,735건), 사용자 시나리오, 결과 저장 DB 연동 |
+
+2026 Physical AI 프로젝트 (2026-09-04 ~ 10-12)
